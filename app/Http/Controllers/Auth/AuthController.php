@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Models\Company;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -16,10 +17,15 @@ class AuthController extends Controller
             'email' => 'required|email|unique:users,email',
             'password' => 'required|min:6|confirmed',
         ]);
+        $company = Company::query()->create([
+            'name'=> 'Azim',
+            'is_active'=>1
+        ]);
 
         $user = User::create([
             'name' => $data['name'],
             'email' => $data['email'],
+            'company_id' => $company->id,
             'password' => Hash::make($data['password']),
             'role'=>'company'
         ]);

@@ -11,7 +11,7 @@
     @vite(['resources/css/company/app.css', 'resources/js/company/app.js'])
 
 </head>
-<body>
-    <div id="app"></div>
+<body class="chat-show-page" id="app">
+
 </body>
 </html>
