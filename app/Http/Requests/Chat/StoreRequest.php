@@ -23,8 +23,8 @@ class StoreRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'message' => 'required|string|min:3',
-            'data_file' => 'required|mimes:csv,txt'
+            'message' => 'required|string|min:1',
+            'data_file' => 'nullable|file|mimes:csv,txt'
         ];
     }
 }

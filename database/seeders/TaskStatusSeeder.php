@@ -38,6 +38,10 @@ class TaskStatusSeeder extends Seeder
                 'name'=>'failed',
                 'description'=>'failed',
             ],
+            [
+                'name'=>'in_progress',
+                'description'=>'in_progress',
+            ]
         ];
 
         foreach ($tasks_statuses as $status) {

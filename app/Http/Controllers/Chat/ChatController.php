@@ -4,6 +4,9 @@ namespace App\Http\Controllers\Chat;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Chat\StoreRequest;
+use App\Jobs\DataHandlerJob;
+use App\Jobs\GeneratorDashboardJob;
+
 use App\Models\AiChat;
 use App\Models\AiChatMessage;
 use App\Models\AiChatTask;
@@ -11,6 +14,7 @@ use App\Models\UploadedFile;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Bus;
 
 class ChatController extends Controller
 {
@@ -18,6 +22,17 @@ class ChatController extends Controller
 
         $user = auth()->user();
         return $user;
+    }
+
+    public function show($id){
+
+        $user = auth()->user();
+
+        $chat = AiChat::query()->where('id', $id)
+            ->where('company_id',$user->company->id)->first();
+
+        return $chat;
+
     }
 
     public function store(StoreRequest $request)
@@ -50,23 +65,33 @@ class ChatController extends Controller
                     $name
                 );
                 $fullPath = Storage::disk('company')->path($storedPath);
-                UploadedFile::create([
+                $upload=UploadedFile::create([
                     'company_id'    => $user->company->id,
                     'chat_id'       => $chat->id,
                     'message_id'    => $message->id,
                     'original_name' => $file->getClientOriginalName(),
                     'file_path'     => $fullPath,
-                    'file_type'     => $file->getClientMimeType(),
+                    'file_type' => $file->getClientOriginalExtension(),
                     'file_size'     => $file->getSize(),
                 ]);
             }
 
-            AiChatTask::create([
+            $task=AiChatTask::create([
                 'chat_id'   => $chat->id,
-                'task_id'   => 1,
-                'status_id' => 1,
+                'task_id'   => 3,
+                'status_id' => 7,
             ]);
 
-            return $chat;
+            Bus::chain([
+                new DataHandlerJob($chat->id, $upload->id, $user->id, $task->id),
+                new GeneratorDashboardJob($message->id,$chat->id,$user->id),
+            ])->dispatch();
+            return ['chat' => $chat,'message'=>$message];
         });
-    }}
+    }
+
+
+
+}
+
+

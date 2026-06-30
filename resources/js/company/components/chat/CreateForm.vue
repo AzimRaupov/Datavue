@@ -57,6 +57,7 @@ import { ref, reactive } from 'vue';
 import { useRouter } from 'vue-router';
 
 import api from '../../api.js';
+import {bootstrap} from "@tabler/core";
 
 const router = useRouter();
 
@@ -83,10 +84,12 @@ async function createChat() {
 
         console.log(response.data);
 
-        // Редирект
-        router.push({ name: 'company.chat', params: { id: response.data.id, }, });
-        // или:
-        // router.push({ name: 'chat.show', params: { id: response.data.id } });
+
+        const modal = document.getElementById('modal-report');
+        const bsModal = new bootstrap.Modal(modal);
+        bsModal.hide();
+
+        router.push({ name: 'company.chat', params: { id: response.data.id } });
 
     } catch (error) {
         console.error(error);

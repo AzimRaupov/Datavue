@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Chat\ChatController;
+use App\Http\Controllers\Chat\MessageController;
 use App\Http\Controllers\Dashboard\DashboardController;
 use App\Http\Controllers\UploadFile\FileController;
 use Illuminate\Http\Request;
@@ -18,6 +19,8 @@ Route::post('/login', [AuthController::class, 'login']);
 Route::middleware('auth:sanctum')->prefix('company')->group(function () {
     Route::apiResource('chats', ChatController::class);
     Route::apiResource('dashboards', DashboardController::class);
+    Route::apiResource('message', MessageController::class);
+
 });
 
 Route::apiResource('/upload', FileController::class);

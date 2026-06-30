@@ -22,6 +22,10 @@ class TaskSeeder extends Seeder
                 'name'=>'response_in_chat',
                 'description'=>'response_in_chat',
             ],
+            [
+                'name'=>'data_processing',
+                'description'=>'data_processing',
+            ]
         ];
 
         foreach ($tasks as $task) {
