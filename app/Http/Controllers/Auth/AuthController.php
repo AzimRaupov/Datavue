@@ -33,7 +33,7 @@ class AuthController extends Controller
         $token = $user->createToken('api')->plainTextToken;
 
         return response()->json([
-            'user' => $user,
+            'user' => $user->load('company'),
             'token' => $token
         ]);
     }
@@ -55,7 +55,7 @@ class AuthController extends Controller
         $token = $user->createToken('api')->plainTextToken;
 
         return response()->json([
-            'user' => $user,
+            'user' => $user->load('company'),
             'token' => $token
         ]);
     }

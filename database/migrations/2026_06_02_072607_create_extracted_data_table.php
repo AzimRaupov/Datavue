@@ -17,7 +17,7 @@ return new class extends Migration
             $table->foreignId('chat_id')->nullable()->constrained('ai_chats')->nullOnDelete();;
             $table->foreignId('company_id')->nullable()->constrained()->nullOnDelete();
             $table->string('document_type')->nullable();
-            $table->string('data_path')->nullable();
+            $table->string('data_path',300)->nullable();
             $table->timestamp('extracted_at')->nullable();
             $table->enum('status',['success','failed'])->default('success');
             $table->timestamps();

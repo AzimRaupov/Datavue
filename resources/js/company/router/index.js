@@ -12,7 +12,7 @@ const routes = [
         component: DashboardPage,
     },
     {
-        path: '/chat/:id',
+        path: '/chat/:id/:dashboard?',
         name: 'company.chat',
         component: ChatPage,
     },

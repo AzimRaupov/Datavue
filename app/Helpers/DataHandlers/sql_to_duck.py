@@ -108,15 +108,20 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "sql_file",
+        "--sql",
+        required=True,
         help="Путь к SQL-файлу"
     )
 
     parser.add_argument(
-        "db_path",
-        help="Куда сохранить DuckDB-файл"
+        "--path",
+        required=True,
+        help="Путь к DuckDB-файлу"
     )
 
     args = parser.parse_args()
 
-    import_sql_to_duckdb(args.sql_file, args.db_path)
+    import_sql_to_duckdb(
+        sql_file=args.sql,
+        db_path=args.path
+    )

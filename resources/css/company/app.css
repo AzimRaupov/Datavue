@@ -7,6 +7,11 @@
     --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
     'Segoe UI Symbol', 'Noto Color Emoji';
 }
+html, body, #app {
+    height: 100%;
+    overflow-y: auto; /* или просто убрать overflow: hidden, если он где-то стоит */
+}
+
 
 #nprogress .bar {
     background: #3b82f6 !important;
@@ -26,13 +31,6 @@
      overflow: hidden;
  }
 
-.chat-show-page .page {
-    height: 100vh;
-    min-height: 0;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-}
 
 .chat-show-page .page-wrapper {
     flex: 1 1 auto;
@@ -238,3 +236,35 @@
     .chat-fab { display: flex; }
 }
 
+.ai-chat-sidebar {
+    position: relative;
+}
+.chat-resize-handle {
+    position: absolute;
+    left: -3px;
+    top: 0;
+    bottom: 0;
+    width: 6px;
+    cursor: col-resize;
+    z-index: 5;
+}
+.chat-resize-handle:hover {
+    background: rgba(var(--tblr-primary-rgb, 6,111,209), .25);
+}
+@media (max-width: 991.98px) {
+    .chat-resize-handle { display: none; }
+}
+
+
+
+ :root {
+     --chart-demo-pie-color-0: color-mix(in srgb, transparent, var(--tblr-primary) 100%);
+     --chart-demo-pie-color-1: color-mix(in srgb, transparent, var(--tblr-primary) 80%);
+     --chart-demo-pie-color-2: color-mix(in srgb, transparent, var(--tblr-primary) 60%);
+     --chart-demo-pie-color-3: color-mix(in srgb, transparent, var(--tblr-gray-300) 100%);
+ }
+:root {
+    --chart-active-users-2-color-0: color-mix(in srgb, transparent, var(--tblr-primary) 100%);
+    --chart-active-users-2-color-1: color-mix(in srgb, transparent, var(--tblr-azure) 100%);
+    --chart-active-users-2-color-2: color-mix(in srgb, transparent, var(--tblr-green) 100%);
+}

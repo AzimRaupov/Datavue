@@ -281,7 +281,7 @@ TEXT;
         File::put($path, $pythonCode);
 
 
-
+        $dashboard_widget->code_path= $path;
         $dashboard_widget->status = 'active';
         $dashboard_widget->position = $position;
         $dashboard_widget->save();

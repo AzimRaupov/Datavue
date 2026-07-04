@@ -240,11 +240,12 @@ class SqlDataHandler
         $runner = new PythonRunner(
             $path,
             [
-                $this->sqlFilePath,
-                $this->dbFilePath,
+                '--sql'  => $this->sqlFilePath,
+                '--path' => $this->dbFilePath,
             ]
         );
-        $runner->run();
+
+        $result = $runner->run();
 
         return $this->dbFilePath;
     }

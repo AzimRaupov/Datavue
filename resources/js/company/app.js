@@ -15,6 +15,7 @@ import '@tabler/core/dist/js/tabler-theme.js';
 import '@tabler/core/dist/js/tabler-theme.esm.js';
 import '@tabler/core/dist/js/tabler.esm.js';
 
+
 const app = createApp(App);
 
 app.use(router);

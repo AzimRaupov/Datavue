@@ -2,21 +2,36 @@ import { createI18n } from 'vue-i18n';
 
 const messages = {
     ru: {
-        login: 'Вход',
-        register: 'Регистрация',
-        dashboard: 'Панель управления',
+        chatPage: {
+            login: 'Login',
+            register: 'Register',
+            dashboard: 'Dashboard',
+        },
+        header: {
+            logout: 'Выход'
+        }
     },
 
     en: {
-        login: 'Login',
-        register: 'Register',
-        dashboard: 'Dashboard',
+        chatPage: {
+            login: 'Login',
+            register: 'Register',
+            dashboard: 'Dashboard',
+        },
+        header: {
+            logout: 'Logout'
+        }
     },
 
     tj: {
-        login: 'Воридшавӣ',
-        register: 'Бақайдгирӣ',
-        dashboard: 'Панели идоракунӣ',
+        chatPage: {
+            login: 'Login',
+            register: 'Register',
+            dashboard: 'Dashboard',
+        },
+        header: {
+            logout: 'Буромад'
+        }
     }
 };
 

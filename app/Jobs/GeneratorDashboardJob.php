@@ -53,7 +53,6 @@ class GeneratorDashboardJob implements ShouldQueue
         $dashboard_generate->generateContentToWidgets();
         $dashboard=$dashboard_generate->getDashboard();
 
-        dd($dashboard);
 
 
 

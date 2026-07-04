@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::create('uploaded_files', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('company_id')->constrained()->nullOnDelete();
+            $table->foreignId('company_id')->constrained();
             $table->foreignId('message_id')->nullable()->constrained('ai_chat_messages')->nullOnDelete();
             $table->foreignId('chat_id')->nullable()->constrained('ai_chats')->nullOnDelete();
             $table->string('original_name');
