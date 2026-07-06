@@ -7,21 +7,52 @@ import AiChatSidebar from "../components/chat/AiChatSidebar.vue";
 import { useRoute, useRouter } from "vue-router";
 import api from "../api.js";
 import WidgetContainer from "../components/WidgetContainer.vue";
+import Echo from 'laravel-echo';
+import Pusher from 'pusher-js';
+
+
+
+window.Pusher = Pusher;
+
+
+const echo = new Echo({
+    broadcaster: 'reverb',
+    key: import.meta.env.VITE_REVERB_APP_KEY,
+    wsHost: import.meta.env.VITE_REVERB_HOST || '127.0.0.1',
+    wsPort: import.meta.env.VITE_REVERB_PORT || 8080,
+    wssPort: import.meta.env.VITE_REVERB_PORT || 8080,
+    forceTLS: false,
+    disableStats: true,
+    enabledTransports: ['ws'],
+});
+
 const route = useRoute();
 const router = useRouter();
-
 const chatId = route.params.id;
-// `let`, а не `const` — значение может быть переопределено ниже
 let dashboardId = route.params.dashboard ?? null;
-
 const chat = ref({});
 const dashboards = ref([]);
 const error = ref(null);
-
 const selectedDashboardId = ref(null);
-
 const currentDashboard = ref({});
 const widgets = ref([]); // исправлена опечатка "wedgets" -> "widgets"
+
+let currentChannelName = null; // чтобы можно было отписаться при смене дашборда
+let isRefreshing = false; // защита от параллельных перезагрузок
+
+// Составной ключ для v-for. widget.id один и тот же при UPDATE,
+// поэтому Vue не пересоздаёт компонент без изменения ключа.
+// Добавляем поля, которые реально меняются при генерации контента виджета:
+// status, code_path, updated_at (и position на всякий случай).
+function widgetKey(widget) {
+    return [
+        widget.id,
+        widget.status,
+        widget.code_path,
+        widget.updated_at,
+        widget.position,
+    ].join('-');
+}
 
 async function getCurrentDashboard() {
     // если id дашборда не передан в роуте — берём выбранный (или первый из списка)
@@ -44,6 +75,27 @@ async function getCurrentDashboard() {
     } catch (err) {
         console.error(err);
         error.value = "Не удалось загрузить дашборд";
+    }
+}
+
+// Отдельная функция именно для «мягкого» обновления виджетов по сокет-событию,
+// чтобы не перезатирать error/currentDashboard лишний раз и не мигать UI.
+async function refreshWidgets() {
+    if (!currentDashboard.value?.id) return;
+    if (isRefreshing) return; // если уже идёт обновление — пропускаем повторный вызов
+
+    isRefreshing = true;
+    try {
+        const { data } = await api.get(`/dashboards/${currentDashboard.value.id}`);
+        // Полная замена массива новыми объектами — важно, чтобы это были
+        // НОВЫЕ объекты (а не мутация старых), тогда composite key из
+        // widgetKey() посчитается заново и Vue пересоздаст изменившиеся
+        // WidgetContainer.
+        widgets.value = data.widgets ?? [];
+    } catch (err) {
+        console.error("Не удалось обновить виджеты:", err);
+    } finally {
+        isRefreshing = false;
     }
 }
 
@@ -80,14 +132,43 @@ function closeChat() {
     chatOpen.value = false;
 }
 
+function subscribeToDashboardChannel() {
+    // отписываемся от предыдущего канала, если он был
+    if (currentChannelName) {
+        echo.leave(currentChannelName);
+        currentChannelName = null;
+    }
+
+    if (!currentDashboard.value?.id) return;
+
+    // канал, который бродкастит событие на бекенде — `dashboard.{id}`
+    currentChannelName = `dashboard.${currentDashboard.value.id}`;
+
+    // Подписываемся на публичный канал дашборда и слушаем событие, которое
+    // возвращает back-end через `broadcastAs()` — `DashboardWidgetChanged`.
+    echo.channel(currentChannelName)
+        .listen('.DashboardWidgetChanged', (e) => {
+            console.log('--- РЕАЛТАЙМ ИЗМЕНЕНИЕ ДАШБОРДА ПОЙМАНО ---', e);
+
+            // при получении события — подтягиваем свежие данные виджетов
+            refreshWidgets();
+        });
+}
+
 onMounted(async () => {
     document.body.classList.add("chat-page");
     await getChat();
     await getCurrentDashboard();
+
+    subscribeToDashboardChannel();
 });
 
 onUnmounted(() => {
     document.body.classList.remove("chat-page");
+
+    if (currentChannelName) {
+        echo.leave(currentChannelName);
+    }
 });
 </script>
 
@@ -166,20 +247,18 @@ body.chat-page .page {
             <div class="container-xl">
                 <div
                     v-for="widget in widgets"
-                    :key="widget.id"
+                    :key="widgetKey(widget)"
                     class="row row-cards widgets-content"
                 >
                     <div class="col-12">
                         <h3 class="h3">{{ widget.title }}</h3>
 
-                        <div class="card">
-                            <div class="card-body">
-                                    <WidgetContainer
-                                    :widget="widget"
-                                    :chat-id="chatId"
-                                    />
-                            </div>
-                        </div>
+
+                        <WidgetContainer
+                            :widget="widget"
+                            :chat-id="chatId"
+                        />
+
                     </div>
                 </div>
             </div>

@@ -14,7 +14,18 @@ class TaskSeeder extends Seeder
     public function run(): void
     {
         $tasks = [
-
+                [
+                    'name'=>'detect_schema_dashboard',
+                    'description'=>'Определение схемы дашборда',
+                ],
+                [
+                    'name'=>'define_task',
+                    'description'=>'define_task'
+                ],
+                [
+                  'name'=>'generate_widgets_dashboard',
+                  'description'=>'Генератсия виджетов.',
+                ],
                 [
                     'name' => 'generate_dashboard',
                     "description" => "Используется, когда пользователь хочет визуализировать,

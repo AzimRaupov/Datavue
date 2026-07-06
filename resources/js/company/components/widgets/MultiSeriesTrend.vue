@@ -1,73 +1,80 @@
 <template>
+
     <div class="card">
         <div class="card-body">
-            <div class="d-flex">
-                <h3 class="card-title">Active users</h3>
-
-                <div class="ms-auto">
-                    <div class="dropdown">
-                        <a
-                            class="dropdown-toggle text-secondary"
-                            id="active-users-dropdown"
-                            href="#"
-                            data-bs-toggle="dropdown"
-                            aria-expanded="false"
-                        >
-                            Last 7 days
-                        </a>
-
-                        <div class="dropdown-menu dropdown-menu-end">
-                            <a class="dropdown-item active" href="#">Last 7 days</a>
-                            <a class="dropdown-item" href="#">Last 30 days</a>
-                            <a class="dropdown-item" href="#">Last 3 months</a>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="row">
+            <div class="row align-items-center">
                 <div class="col">
                     <div ref="chartRef" class="position-relative"></div>
                 </div>
 
-                <div class="col-md-auto">
+                <div class="col-md-auto mt-3 mt-md-0">
                     <div class="divide-y divide-y-fill">
-                        <div class="px-3">
-                            <div class="text-secondary">
-                                <span class="status-dot bg-primary"></span> Mobile
+                        <div
+                            v-for="(item, index) in props.series"
+                            :key="index"
+                            class="px-3 py-2"
+                        >
+                            <div class="text-secondary d-flex align-items-center gap-2">
+                                <span
+                                    class="status-dot"
+                                    :style="{ backgroundColor: `var(--chart-active-users-2-color-${index}, var(--tblr-primary))` }"
+                                ></span>
+                                {{ item.name }}
                             </div>
-                            <div class="h2">11,425</div>
-                        </div>
-
-                        <div class="px-3">
-                            <div class="text-secondary">
-                                <span class="status-dot bg-azure"></span> Desktop
+                            <div class="h2 m-0 mt-1">
+                                {{ item.data && item.data.length ? item.data[item.data.length - 1] : 0 }}
                             </div>
-                            <div class="h2">6,458</div>
-                        </div>
-
-                        <div class="px-3">
-                            <div class="text-secondary">
-                                <span class="status-dot bg-green"></span> Tablet
-                            </div>
-                            <div class="h2">3,985</div>
                         </div>
                     </div>
                 </div>
-
             </div>
+
         </div>
     </div>
+
 </template>
 
+<style scoped>
+/* Дефолтные цвета на случай, если они не объявлены глобально */
+.card {
+    --chart-active-users-2-color-0: var(--tblr-primary, #206bc4);
+    --chart-active-users-2-color-1: var(--tblr-azure, #4299e1);
+    --chart-active-users-2-color-2: var(--tblr-green, #2fb344);
+}
+</style>
+
 <script setup>
-import { onMounted, ref, onBeforeUnmount } from "vue"
+import { onMounted, ref, watch, onBeforeUnmount } from "vue"
 import ApexCharts from "apexcharts"
 
 const chartRef = ref(null)
 let chart = null
 
+const props = defineProps({
+    labels: {
+        type: Array,
+        default: () => []
+    },
+    series: {
+        type: Array,
+        default: () => []
+    }
+})
+
+// Следим за изменениями пропсов для динамического обновления
+watch(() => [props.series, props.labels], ([newSeries, newLabels]) => {
+    if (chart) {
+        chart.updateOptions({
+            series: newSeries,
+            labels: newLabels
+        })
+    }
+}, { deep: true })
+
 onMounted(() => {
+    if (!chartRef.value) return
+    if (!window.ApexCharts && !ApexCharts) return
+
     chart = new ApexCharts(chartRef.value, {
         chart: {
             type: "line",
@@ -76,28 +83,19 @@ onMounted(() => {
             toolbar: { show: false },
             animations: { enabled: false },
         },
-
         stroke: {
             width: 2,
             curve: "smooth",
             lineCap: "round",
         },
-
-        series: [
-            {
-                name: "Users",
-                data: [1, 2, 3],
-            },
-        ],
-
-        labels: ["1", "2", "3"],
-
+        // ИСПРАВЛЕНО: Передаем массив напрямую, без дополнительной обертки []
+        series: props.series,
+        labels: props.labels,
         colors: [
             "var(--chart-active-users-2-color-0)",
             "var(--chart-active-users-2-color-1)",
             "var(--chart-active-users-2-color-2)",
         ],
-
         grid: {
             padding: {
                 top: -20,
@@ -107,21 +105,17 @@ onMounted(() => {
             },
             strokeDashArray: 4,
         },
-
         xaxis: {
             type: "category",
             labels: { padding: 0 },
             tooltip: { enabled: false },
         },
-
         yaxis: {
             labels: { padding: 4 },
         },
-
         tooltip: {
             theme: "dark",
         },
-
         legend: {
             show: false,
         },

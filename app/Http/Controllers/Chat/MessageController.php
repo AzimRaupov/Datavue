@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Chat;
 
+use App\Events\MessageTasksChanged;
+use App\Helpers\Task\RouterTask;
 use App\Http\Controllers\Controller;
 use App\Models\AiChat;
 use App\Models\AiChatMessage;
@@ -22,6 +24,7 @@ class MessageController extends Controller
             ->whereHas('chat', function ($query) use ($user) {
                 $query->where('company_id', $user->company->id);
             })
+            ->with(['tasks.status','tasks.task'])
             ->orderBy('created_at')
             ->get();
 
@@ -47,6 +50,8 @@ class MessageController extends Controller
             'message' => $request->message,
         ]);
 
+        $router= new RouterTask($message->id,$chat->id);
+        $router->define();
         return response()->json($message, 201);
     }
 

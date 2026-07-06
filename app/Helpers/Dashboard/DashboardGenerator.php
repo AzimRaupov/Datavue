@@ -2,13 +2,17 @@
 
 namespace App\Helpers\Dashboard;
 
+use App\Events\DashboardWidgetChanged;
 use App\Helpers\Ai\AIService;
 use App\Helpers\DuckDB;
 use App\Helpers\PythonRunner;
 use App\Models\AiChat;
 use App\Models\AiChatMessage;
+use App\Models\AiChatTask;
 use App\Models\Dashboard;
 use App\Models\DashboardWidget;
+use App\Models\Task;
+use App\Models\TaskStatus;
 use App\Models\Widget;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
@@ -30,7 +34,9 @@ class DashboardGenerator
     public $duckdb;
     public $dbSchema;
 
-    public function __construct($chat_id, $message_id)
+    public $tasks;
+    public $tasks_statuses;
+    public function __construct($chat_id, $message_id,$dashboard_id)
     {
         $this->chat = AiChat::query()->with('user','extractedData')->find($chat_id);
         $this->message = AiChatMessage::query()->find($message_id);
@@ -45,14 +51,15 @@ class DashboardGenerator
         $this->duckdb = new DuckDB($this->chat->extractedData->data_path);
 
         $this->widgets = Widget::all();
-        $this->dashboard = Dashboard::query()->create(
-            [
-                'chat_id' => $this->chat->id,
-                'company_id' => $this->chat->user->company_id,
-                'name' => 'sas',
-                'status' => 'generating',
-            ]
-        );
+        $this->dashboard = Dashboard::query()->find($dashboard_id);
+
+        $this->tasks_statuses = TaskStatus::query()
+            ->pluck('id', 'name')
+            ->toArray();
+        $this->tasks = Task::query()
+            ->pluck('id', 'name')
+            ->toArray();
+
         $this->fetchSchemaDb();
 
     }
@@ -95,6 +102,14 @@ class DashboardGenerator
 
     public function generateWidgets()
     {
+        $task = AiChatTask::query()->create([
+            'chat_id' => $this->chat->id,
+            'message_id' => $this->message->id,
+            'task_id'=>$this->tasks['detect_schema_dashboard'],
+            'status_id'=>$this->tasks_statuses['in_progress'],
+        ]);
+
+
         $text=$this->message->message;
         $widgetsList = $this->widgets->select(['name', 'description']);
         $widgets = json_encode($widgetsList, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
@@ -149,7 +164,8 @@ $widgets
 ---
 
 ### 4. РАЗНООБРАЗИЕ ВИДЖЕТОВ:
-- Используй KPI для общих метрик
+- Виджеты mini-cards используй для общих метрик.
+- Размети первыми виджеты mini-cards
 - Используй разные графики для разных срезов
 - Не дублируй смысл виджетов
 
@@ -197,6 +213,10 @@ TEXT;
                 'tables'=> json_encode($list['tables']),
             ]);
         }
+        $task->status_id = $this->tasks_statuses['completed'];
+        $task->save();
+        event(new DashboardWidgetChanged($this->dashboard));
+
     }
 
     public function generateContentToWidgets()
@@ -206,14 +226,23 @@ TEXT;
 
         $results = [];
 
+        $task = AiChatTask::query()->create([
+            'chat_id' => $this->chat->id,
+            'message_id' => $this->message->id,
+            'task_id'=>$this->tasks['generate_widgets_dashboard'],
+            'status_id'=>$this->tasks_statuses['in_progress'],
+        ]);
+
         foreach ($widgets_dash as $index => $widget) {
             $widget_tables = json_decode($widget->tables, true) ?? [];
 
-
             $tables_scheme = collect($this->dbSchema)->only($widget_tables)->toArray();
-
             $results[] = $this->generateContentWidget($widget, $index, $tables_scheme);
+
+
         }
+        $task->status_id = $this->tasks_statuses['completed'];
+        $task->save();
         return $results;
 
     }
@@ -236,7 +265,7 @@ TEXT;
 Напиши автономный Python-скрипт, который агрегирует данные из DuckDB и форматирует их в нужный вид.
 
 ОБЯЗАТЕЛЬНАЯ СТРУКТУРА СКРИПТА:
-1. Импорт модулей: `duckdb`, `pandas as pd`, `json`, `sys`.
+1. Импорт модулей: `duckdb`, `pandas as pd`, `json`, `sys`, `argparse`.
 2. Парсинг единственного аргумента `--path` (через sys.argv или argparse).
 3. Подключение к базе данных через `duckdb.connect()`.
 5. Получение DataFrame через `.df()`, финальная подгонка под JSON-структуру.
@@ -249,7 +278,7 @@ TEXT;
 ДОСТУПНАЯ СХЕМА DUCKDB:
 {$tablesJson}
 
-ИНСТРУКЦИЯ ПО ВЫБОРКЕ ДАННЫХ:
+ИНСТРУКЦИЯ ПО КАК ДОЛЖНО БЫТ:
 {$dashboard_widget->instruction}
 
 ЦЕЛЕВАЯ JSON СХЕМА ВЫВОДА:
@@ -285,6 +314,8 @@ TEXT;
         $dashboard_widget->status = 'active';
         $dashboard_widget->position = $position;
         $dashboard_widget->save();
+        event(new DashboardWidgetChanged($this->dashboard));
+
         return $dashboard_widget;
     }
 }

@@ -2,165 +2,404 @@
 
 namespace App\Helpers\DataHandlers;
 
-use App\Helpers\Ai\AIService;
+use App\Helpers\PythonRunner;
 use App\Models\AiChatMessage;
+use App\Models\ExtractedData;
 use App\Models\UploadedFile;
-use Maatwebsite\Excel\Facades\Excel;
-use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class TableDataHandler
 {
     public $pathData;
-    public $message;
-    public $uploadData;
+    public $chat;
+    public $uploadFile;
+    public $outputDisk = 'company';
 
-    public function __construct($message_id, $upload_id)
+    public $outputPath;
+    public $sqlFilePath;
+    public $dbFilePath;
+    public $isSuccess = false;
+    public $errorMessage;
+    public $stats = [];
+    public $storage;
+
+    private array $allowedExtensions = ['csv', 'xlsx', 'xls'];
+
+    public function __construct($chat, $uploadFile, $storage)
     {
-        $this->message = AiChatMessage::query()->findOrFail($message_id);
-        $this->uploadData = UploadedFile::query()->findOrFail($upload_id);
+        ini_set('memory_limit', '2G');
+        set_time_limit(300);
 
-        $this->pathData = storage_path(
-            'app/company/' . $this->uploadData->file_path
-        );
+        try {
+            $this->chat = $chat;
+            $this->uploadFile = $uploadFile;
+            $this->storage = $storage;
 
-        $data = match ($this->uploadData->file_type) {
-            'xlsx' => $this->xlsx(),
-            'xls'  => $this->xls(),
-            'csv'  => $this->csv(),
-            default => [],
-        };
+            $this->pathData = $this->uploadFile->file_path;
+            $this->outputPath = $storage . '/extracted_data';
 
-        $jsonPath = storage_path(
-            'app/company/j/' .
-            pathinfo($this->uploadData->file_path, PATHINFO_FILENAME) .
-            '.json'
-        );
+            Log::info('ExcelCsvDataHandler: начало обработки', [
+                'chat_id' => $chat->id,
+                'upload_id' => $uploadFile->id,
+                'source' => $this->pathData,
+                'output_path' => $this->outputPath,
+            ]);
 
-        $this->saveJson($data, $jsonPath);
-        $this->saveScheme();
-    }
-    /**
-     * Получить заголовки из первой строки Excel/CSV
-     */
-    protected function getHeaders(): array
-    {
-        $sheets = Excel::toArray([], $this->pathData);
+            $this->process();
 
-        if (empty($sheets) || empty($sheets[0])) {
-            return [];
+        } catch (\Throwable $e) {
+            $this->isSuccess = false;
+            $this->errorMessage = $e->getMessage();
+
+            Log::error('ExcelCsvDataHandler: ошибка инициализации', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
         }
-
-        return array_values(
-            array_filter(
-                $sheets[0][0] ?? [],
-                fn ($value) => !is_null($value) && $value !== ''
-            )
-        );
-    }
-    protected function saveScheme(?int $upload_id = null)
-    {
-        $upload_id ??= $this->uploadData->id;
-
-        $data=$this->to_json(3);
-        $data=json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-        $prompt = <<<PROMPT
-You are a data schema analyst. Analyze the provided data sample and generate a JSON Schema that accurately describes its structure.
-
-## Input Data (first rows of the dataset):
-{$data}
-
-## Task:
-Generate a JSON Schema for this dataset following these strict rules:
-
-1. The schema must be a JSON object with these exact top-level keys:
-   - "title" — short name for the schema (in the same language as the column headers)
-   - "description" — one sentence describing what the dataset represents
-   - "type" — always "array"
-   - "items" — object describing a single row
-
-2. Inside "items.properties", create one entry per column with:
-   - "type" — infer correctly: "integer", "number", "string", "boolean"
-   - "format" — add "date" for date strings (YYYY-MM-DD), omit otherwise
-   - "description" — one sentence explaining what this field represents (same language as headers)
-
-3. "items.required" must list ALL column names.
-
-4. Column names must be taken EXACTLY as they appear in the header row (row 0).
-
-5. Return ONLY valid JSON. No markdown, no backticks, no explanation — just the raw JSON object.
-PROMPT;
-
-
-        $res = (new AIService(responseFormat: 'json'))->ask($prompt);
-        dd($res);
-
     }
 
-    protected function to_json(?int $line = null, ?string $outputPath = null): array
+    private function process(): void
     {
-        $sheets = Excel::toArray([], $this->pathData);
-
-        if (empty($sheets) || empty($sheets[0])) {
-            return [];
+        if (!file_exists($this->pathData)) {
+            throw new \RuntimeException("Исходный файл не найден: {$this->pathData}");
         }
 
-        $rows = $sheets[0];
-
-        // лимит строк (если задан)
-        if ($line !== null) {
-            $rows = array_slice($rows, 0, $line);
+        if (!is_readable($this->pathData)) {
+            throw new \RuntimeException("Файл не доступен для чтения: {$this->pathData}");
         }
 
-        $result = [];
+        $extension = strtolower(pathinfo($this->pathData, PATHINFO_EXTENSION));
 
-        foreach ($rows as $row) {
-            $row = array_values($row);
+        if (!in_array($extension, $this->allowedExtensions, true)) {
+            throw new \RuntimeException("Неподдерживаемый формат файла: .{$extension}");
+        }
 
-            // пропускаем полностью пустые строки
-            if (count(array_filter($row, fn($v) => $v !== null && $v !== '')) === 0) {
+        $this->stats['source_extension'] = $extension;
+
+        // 1. Читаем файл и превращаем каждый лист/csv в набор строк
+        $sheets = $extension === 'csv'
+            ? $this->readCsv($this->pathData)
+            : $this->readExcel($this->pathData);
+
+        if (empty($sheets)) {
+            throw new \RuntimeException("Не удалось извлечь данные из файла: {$this->pathData}");
+        }
+
+        // 2. Генерируем CREATE TABLE + INSERT для каждой "таблицы" (листа/csv)
+        $createStatements = [];
+        $insertStatements = [];
+        $usedNames = [];
+
+        foreach ($sheets as $sheetName => $rows) {
+            if (empty($rows)) {
                 continue;
             }
 
-            $result[] = $row;
+            $tableName = $this->makeUniqueTableName($this->sanitizeIdentifier($sheetName), $usedNames);
+
+            $header = array_shift($rows); // первая строка — заголовки колонок
+            $columns = $this->normalizeColumnNames($header);
+
+            if (empty($columns)) {
+                continue;
+            }
+
+            $createStatements[] = $this->buildCreateTable($tableName, $columns, $rows);
+            $insertStatements[] = $this->buildInsertStatements($tableName, $columns, $rows);
+
+            $this->stats['tables'][$tableName] = count($rows);
         }
 
-        // ===== СОХРАНЕНИЕ В JSON =====
-        if ($outputPath) {
-            file_put_contents(
-                $outputPath,
-                json_encode($result, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)
-            );
+        $this->stats['create_count'] = count($createStatements);
+        $this->stats['insert_batches'] = count($insertStatements);
+
+        // 3. Формируем итоговый .sql контент — так же, как в SqlDataHandler
+        $content = "-- Сгенерировано для DuckDB (из Excel/CSV)\n";
+        $content .= "-- Источник: {$this->uploadFile->file_path}\n";
+        $content .= "-- Дата: " . now()->toDateTimeString() . "\n";
+        $content .= "-- Таблиц: " . count($createStatements) . "\n\n";
+        $content .= implode("\n\n", $createStatements) . "\n\n";
+        $content .= implode("\n\n", $insertStatements) . "\n";
+
+        // 4. Сохраняем .sql так же, как оригинал
+        $this->sqlFilePath = $this->saveSqlFile($content);
+
+        // 5. Вызываем ТОТ ЖЕ sql_to_duck.py, что и SqlDataHandler
+        $this->dbFilePath = $this->createDuckdbDatabase();
+
+        $this->isSuccess = true;
+
+        Log::info('ExcelCsvDataHandler: обработка завершена', [
+            'sql_file' => $this->sqlFilePath,
+            'db_file' => $this->dbFilePath,
+            'stats' => $this->stats,
+        ]);
+    }
+
+    /**
+     * Читает CSV-файл, возвращает одну "виртуальную таблицу"
+     * с именем на основе имени файла.
+     */
+    private function readCsv(string $path): array
+    {
+        $rows = [];
+        $handle = fopen($path, 'r');
+        if ($handle === false) {
+            throw new \RuntimeException("Не удалось открыть CSV файл: {$path}");
+        }
+
+        // Определяем разделитель (запятая или точка с запятой)
+        $firstLine = fgets($handle);
+        rewind($handle);
+        $delimiter = (substr_count($firstLine, ';') > substr_count($firstLine, ',')) ? ';' : ',';
+
+        while (($row = fgetcsv($handle, 0, $delimiter)) !== false) {
+            $rows[] = $row;
+        }
+        fclose($handle);
+
+        $tableName = pathinfo($path, PATHINFO_FILENAME);
+
+        return [$tableName => $rows];
+    }
+
+    /**
+     * Читает Excel-файл (xlsx/xls), возвращает массив ["ИмяЛиста" => [[строки]]]
+     */
+    private function readExcel(string $path): array
+    {
+        $spreadsheet = IOFactory::load($path);
+        $result = [];
+
+        foreach ($spreadsheet->getAllSheets() as $sheet) {
+            $rows = $sheet->toArray(null, true, true, false);
+
+            // Убираем полностью пустые строки в конце
+            while (!empty($rows) && $this->isRowEmpty(end($rows))) {
+                array_pop($rows);
+            }
+
+            if (empty($rows)) {
+                continue;
+            }
+
+            $result[$sheet->getTitle()] = $rows;
         }
 
         return $result;
     }
 
-    protected function saveJson(array $data, string $path): bool
+    private function isRowEmpty(array $row): bool
     {
-        File::ensureDirectoryExists(dirname($path));
-
-        return File::put(
-                $path,
-                json_encode(
-                    $data,
-                    JSON_UNESCAPED_UNICODE |
-                    JSON_PRETTY_PRINT |
-                    JSON_INVALID_UTF8_SUBSTITUTE
-                )
-            ) !== false;
-    }
-    public function xlsx(): array
-    {
-        return $this->to_json();
+        foreach ($row as $cell) {
+            if ($cell !== null && trim((string) $cell) !== '') {
+                return false;
+            }
+        }
+        return true;
     }
 
-    public function xls(): array
+    /**
+     * Приводит имена колонок из заголовка к валидным SQL-идентификаторам,
+     * подставляет col_N для пустых/дублирующихся заголовков.
+     */
+    private function normalizeColumnNames(array $header): array
     {
-        return $this->getHeaders();
+        $columns = [];
+        $used = [];
+
+        foreach ($header as $i => $col) {
+            $name = trim((string) $col);
+            $name = $name === '' ? "col_{$i}" : $this->sanitizeIdentifier($name);
+            $columns[] = $this->makeUniqueTableName($name, $used);
+        }
+
+        return $columns;
     }
 
-    public function csv(): array
+    private function sanitizeIdentifier(string $name): string
     {
-        return $this->to_json();
+        $name = preg_replace('/[^0-9a-zA-Zа-яА-Я_]/u', '_', trim($name));
+        $name = preg_replace('/_+/', '_', $name);
+        $name = trim($name, '_');
+
+        if ($name === '') {
+            $name = 'col';
+        }
+
+        if (preg_match('/^[0-9]/', $name)) {
+            $name = 'c_' . $name;
+        }
+
+        return mb_strtolower($name);
+    }
+
+    private function makeUniqueTableName(string $name, array &$used): string
+    {
+        $base = $name;
+        $i = 1;
+        while (in_array($name, $used, true)) {
+            $name = $base . '_' . $i;
+            $i++;
+        }
+        $used[] = $name;
+        return $name;
+    }
+
+    /**
+     * Определяет DuckDB-совместимый тип колонки на основе значений столбца.
+     */
+    private function inferColumnType(array $rows, int $colIndex): string
+    {
+        $isInteger = true;
+        $isDouble = true;
+        $hasValue = false;
+
+        foreach ($rows as $row) {
+            $value = $row[$colIndex] ?? null;
+
+            if ($value === null || $value === '') {
+                continue;
+            }
+
+            $hasValue = true;
+            $value = trim((string) $value);
+
+            if (!preg_match('/^-?\d+$/', $value)) {
+                $isInteger = false;
+            }
+            if (!is_numeric($value)) {
+                $isDouble = false;
+                $isInteger = false;
+            }
+        }
+
+        if (!$hasValue) {
+            return 'VARCHAR';
+        }
+        if ($isInteger) {
+            return 'BIGINT';
+        }
+        if ($isDouble) {
+            return 'DOUBLE';
+        }
+
+        return 'VARCHAR';
+    }
+
+    private function buildCreateTable(string $tableName, array $columns, array $rows): string
+    {
+        $columnDefs = [];
+
+        foreach ($columns as $i => $colName) {
+            $type = $this->inferColumnType($rows, $i);
+            $columnDefs[] = "\"{$colName}\" {$type}";
+        }
+
+        $sql = "DROP TABLE IF EXISTS \"{$tableName}\";\n";
+        $sql .= "CREATE TABLE \"{$tableName}\" (\n    " . implode(",\n    ", $columnDefs) . "\n);";
+
+        return $sql;
+    }
+
+    private function buildInsertStatements(string $tableName, array $columns, array $rows): string
+    {
+        if (empty($rows)) {
+            return '';
+        }
+
+        $columnList = implode(', ', array_map(fn($c) => "\"{$c}\"", $columns));
+        $statements = [];
+        $chunkSize = 500; // батчами, чтобы не делать гигантский один INSERT
+
+        foreach (array_chunk($rows, $chunkSize) as $chunk) {
+            $valueRows = [];
+
+            foreach ($chunk as $row) {
+                $values = [];
+                foreach ($columns as $i => $col) {
+                    $values[] = $this->formatSqlValue($row[$i] ?? null);
+                }
+                $valueRows[] = '(' . implode(', ', $values) . ')';
+            }
+
+            $statements[] = "INSERT INTO \"{$tableName}\" ({$columnList}) VALUES\n" . implode(",\n", $valueRows) . ';';
+        }
+
+        return implode("\n\n", $statements);
+    }
+
+    private function formatSqlValue($value): string
+    {
+        if ($value === null || $value === '') {
+            return 'NULL';
+        }
+
+        $value = (string) $value;
+
+        // Числа вставляем как есть
+        if (preg_match('/^-?\d+(\.\d+)?$/', $value)) {
+            return $value;
+        }
+
+        // Строки — экранируем одинарные кавычки
+        $escaped = str_replace("'", "''", $value);
+        return "'{$escaped}'";
+    }
+
+    private function saveSqlFile(string $content): string
+    {
+        if (!is_dir($this->outputPath)) {
+            if (!mkdir($this->outputPath, 0755, true) && !is_dir($this->outputPath)) {
+                throw new \RuntimeException("Не удалось создать директорию: {$this->outputPath}");
+            }
+        }
+
+        $finalAbsoluteLogPath = $this->outputPath . '/duckdb_ready.sql';
+
+        $result = file_put_contents($finalAbsoluteLogPath, $content);
+
+        if ($result === false) {
+            throw new \RuntimeException("Не удалось сохранить SQL файл по пути: {$finalAbsoluteLogPath}");
+        }
+
+        return $finalAbsoluteLogPath;
+    }
+
+    private function createDuckdbDatabase()
+    {
+        // ВАЖНО: тот же самый скрипт, что и в SqlDataHandler
+        $path = "/home/azim/projects/Datavue/app/Helpers/DataHandlers/sql_to_duck.py";
+
+        $this->dbFilePath = $this->outputPath . '/data.duckdb';
+
+        $runner = new PythonRunner(
+            $path,
+            [
+                '--sql'  => $this->sqlFilePath,
+                '--path' => $this->dbFilePath,
+            ]
+        );
+
+        $result = $runner->run();
+
+        return $this->dbFilePath;
+    }
+
+    public function end(): array
+    {
+        return [
+            'file_id'    => $this->uploadFile->id,
+            'company_id' => $this->chat->company_id,
+            'chat_id'    => $this->chat->id,
+            'data_path'  => $this->dbFilePath,
+        ];
+    }
+
+    public function getOutputFiles(): array
+    {
+        return Storage::disk($this->outputDisk)->files($this->outputPath);
     }
 }

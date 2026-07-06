@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class AiChatMessage extends Model
@@ -35,6 +36,10 @@ class AiChatMessage extends Model
         ];
     }
 
+    public function tasks(): HasMany
+    {
+        return $this->hasMany(AiChatTask::class, 'chat_id');
+    }
     /**
      * Get the AI chat that owns the message.
      */

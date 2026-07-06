@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Helpers\DataHandlers\SqlDataHandler;
+use App\Helpers\DataHandlers\TableDataHandler;
 use App\Models\AiChat;
 use App\Models\AiChatTask;
 use App\Models\ExtractedData;
@@ -32,22 +33,35 @@ class DataHandlerJob implements ShouldQueue
 
     public $tasks_status;
 
+    public $dashboard_id;
+    public $message_id;
     /**
      * Create a new job instance.
      */
-    public function __construct($chat_id,$upload_file_id,$user_id,$chat_task_id)
+    public function __construct($chat_id,$upload_file_id,$user_id,$message_id,$dashboard_id)
     {
-        $user= User::query()->with('company')->find($user_id);
+        $this->dashboard_id = $dashboard_id;
+        $this->message_id = $message_id;
+
+        $this->user= User::query()->with('company')->find($user_id);
         $this->chat=AiChat::query()->find($chat_id);
         $this->uploadFile=UploadedFile::query()->find($upload_file_id);
-        $this->chat_task=AiChatTask::query()->find($chat_task_id);
-        $this->storage = storage_path('app/company/' . $user->company->id . '/chats/' . $this->chat->id);
-        $this->tasks = Task::query()
-            ->pluck('id', 'name')
-            ->toArray();
+        $this->storage = storage_path('app/company/' . $this->user->company->id . '/chats/' . $this->chat->id);
+
         $this->tasks_status = TaskStatus::query()
             ->pluck('id', 'name')
             ->toArray();
+        $tasks = Task::query()
+            ->pluck('id', 'name')
+            ->toArray();
+
+        $this->chat_task=AiChatTask::create([
+            'chat_id'   => $chat_id,
+            'message_id' => $message_id,
+            'task_id'   => $tasks['data_processing'],
+            'status_id' => $this->tasks_status['start'],
+        ]);
+
     }
 
     /**
@@ -59,6 +73,13 @@ class DataHandlerJob implements ShouldQueue
 
             if ($this->uploadFile->file_type == 'sql') {
                 $save_handler = new SqlDataHandler(
+                    $this->chat,
+                    $this->uploadFile,
+                    $this->storage
+                );
+            }
+            else if($this->uploadFile->file_type == 'csv' || $this->uploadFile->file_type == 'xls' || $this->uploadFile->file_type == 'xlsx') {
+                $save_handler = new TableDataHandler(
                     $this->chat,
                     $this->uploadFile,
                     $this->storage
@@ -76,6 +97,8 @@ class DataHandlerJob implements ShouldQueue
 
             $this->chat_task->status_id = $this->tasks_status['completed'];
             $this->chat_task->save();
+
+            dispatch(new GeneratorDashboardJob($this->message_id, $this->chat->id,$this->user->id,$this->dashboard_id));
 
         } catch (\Throwable $e) {
 

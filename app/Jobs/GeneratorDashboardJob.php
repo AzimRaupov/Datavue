@@ -21,20 +21,17 @@ class GeneratorDashboardJob implements ShouldQueue
     public $timeout = 600;
     public $upload;
     public $user_id;
+    public $dashboard_id;
     /**
      * Create a new job instance.
      */
-    public function __construct($message_id, $chat_id, $user_id)
+    public function __construct($message_id, $chat_id, $user_id,$dashboard_id)
     {
         $this->message_id = $message_id;
         $this->chat_id = $chat_id;
         $this->user_id = $user_id;
+        $this->dashboard_id = $dashboard_id;
 
-        $chat_task = AiChatTask::query()->create([
-            'chat_id' => $chat_id,
-            'task_id' => 1,
-            'status_id'=> 7
-        ]);
     }
 
     /**
@@ -42,19 +39,21 @@ class GeneratorDashboardJob implements ShouldQueue
      */
     public function handle(): void
     {
+        try {
+            $dashboard_generate = new DashboardGenerator(
+                $this->chat_id,
+                $this->message_id,
+                $this->dashboard_id
+            );
 
+            $dashboard_generate->generateWidgets();
+            $dashboard_generate->generateContentToWidgets();
 
+        } catch (\Throwable $e) {
+            \Log::error($e->getMessage());
+            \Log::error($e->getTraceAsString());
 
-        $dashboard_generate=new DashboardGenerator($this->chat_id, $this->message_id);
-
-        $dashboard_generate->generateWidgets();
-
-
-        $dashboard_generate->generateContentToWidgets();
-        $dashboard=$dashboard_generate->getDashboard();
-
-
-
-
+            throw $e;
+        }
     }
 }

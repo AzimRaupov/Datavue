@@ -15,20 +15,8 @@ class TaskStatusSeeder extends Seeder
     {
         $tasks_statuses = [
             [
-                'name'=>'dashboard_processing_data',
-                'description'=>'dashboard_processing',
-            ],
-            [
-                'name'=>'dashboard_analyzing',
-                'description'=>'dashboard_analyzing',
-            ],
-            [
-                'name'=>'dashboard_creating_structure',
-                'description'=>'dashboard_creating_structure',
-            ],
-            [
-                'name'=>'dashboard_generating_widgets',
-                'description'=>'dashboard_generating_widgets',
+                'name'=>'start',
+                'description'=>'start'
             ],
             [
                 'name'=>'completed',

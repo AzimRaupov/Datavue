@@ -13,6 +13,9 @@ Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
 
+Route::get('/test', function (Request $request) {
+    $router = new \App\Helpers\Task\RouterTask(1,1);
+});
 
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
@@ -20,7 +23,7 @@ Route::post('/login', [AuthController::class, 'login']);
 Route::middleware('auth:sanctum')->prefix('company')->group(function () {
     Route::apiResource('chats', ChatController::class);
     Route::apiResource('dashboards', DashboardController::class);
-    Route::apiResource('message', MessageController::class);
+    Route::apiResource('messages', MessageController::class);
 
     Route::post('get-widget-content/{id}', [WidgetRunController::class, 'run']);
 

@@ -2,7 +2,7 @@
     <div class="card">
         <div class="card-header d-flex align-items-center justify-content-between py-3 px-4 bg-transparent border-bottom">
             <h3 class="card-title m-0" style="font-size: 1.1rem; font-weight: 600; color: #1e293b;">
-                ывы
+                Таблица данных
             </h3>
             <div class="search-box" style="position: relative; max-width: 300px; width: 100%;">
                 <input

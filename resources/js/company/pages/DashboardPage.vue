@@ -1,6 +1,38 @@
 <script setup>
+import { ref ,onMounted} from "vue";
+import api from '../api.js';
 import CreateForm from '../components/chat/CreateForm.vue';
 
+const chats = ref([]);
+const dashboards = ref([]);
+
+async function getChats() {
+
+    try {
+        const response = await api.get('/chats');
+        chats.value = response.data;
+        console.log(chats.value);
+
+    }catch (err){
+        console.log(err);
+    }
+
+}
+
+async function getDashboards(){
+
+    try {
+        const response = await api.get('/dashboards');
+        dashboards.value = response.data;
+        console.log(dashboards.value);
+
+    }catch (err){
+        console.log(err);
+    }
+}
+onMounted(async () => {
+    await getChats();
+});
 </script>
 
 
@@ -99,7 +131,7 @@ import CreateForm from '../components/chat/CreateForm.vue';
                 <div class="row row-cards mb-5">
 
                     <!-- Проект 1 -->
-                    <div class="col-sm-6 col-lg-4 col-xl-3">
+                    <div v-for="chat in chats" class="col-sm-6 col-lg-4 col-xl-3">
                         <div class="card d-flex flex-column justify-content-between h-100">
                             <div class="card-body pb-2">
                                 <div class="d-flex align-items-center justify-content-between mb-2">
@@ -107,26 +139,21 @@ import CreateForm from '../components/chat/CreateForm.vue';
                                     <span class="badge bg-blue-lt">CSV</span>
                                 </div>
                                 <h3 class="card-title mb-3 text-truncate">
-                                    <a href="#" class="text-reset">Продажи 2026</a>
+                                    <router-link
+                                        :to="`/chat/${chat.id}`"
+                                        class="text-reset"
+                                    >
+                                        {{ chat.title }}
+                                    </router-link>
                                 </h3>
                                 <div class="subheader text-secondary mb-2">Связанные дашборды</div>
                             </div>
-                            <div class="list-group list-group-flush border-top">
-                                <a href="/dashboard/1" class="list-group-item list-group-item-action d-flex align-items-center py-2 px-3">
-                                    <span class="status-dot status-green me-2"></span>
-                                    <span class="text-truncate">Обзор KPI</span>
+                            <div v-for="dashboard in chat.dashboards" class="list-group list-group-flush border-top">
+                                <router-link :to="`/chat/${chat.id}/${dashboard.id}`" class="list-group-item list-group-item-action d-flex align-items-center py-2 px-3">
+                                    <span class="status-dot status-primary me-2 "></span>
+                                    <span class="text-truncate">{{ dashboard.name }}</span>
                                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon ms-auto text-muted icon-xs"><path d="M9 6l6 6l-6 6" /></svg>
-                                </a>
-                                <a href="/dashboard/2" class="list-group-item list-group-item-action d-flex align-items-center py-2 px-3">
-                                    <span class="status-dot status-blue me-2"></span>
-                                    <span class="text-truncate">Динамика выручки</span>
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon ms-auto text-muted icon-xs"><path d="M9 6l6 6l-6 6" /></svg>
-                                </a>
-                                <a href="/dashboard/3" class="list-group-item list-group-item-action d-flex align-items-center py-2 px-3">
-                                    <span class="status-dot status-purple me-2"></span>
-                                    <span class="text-truncate">Топ продукты</span>
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon ms-auto text-muted icon-xs"><path d="M9 6l6 6l-6 6" /></svg>
-                                </a>
+                                </router-link>
                             </div>
                             <div class="card-footer bg-transparent py-2 px-3 border-top d-flex align-items-center justify-content-between">
                                 <small class="text-muted">Всего: 3</small>
@@ -134,39 +161,6 @@ import CreateForm from '../components/chat/CreateForm.vue';
                             </div>
                         </div>
                     </div>
-
-                    <!-- Проект 2 -->
-                    <div class="col-sm-6 col-lg-4 col-xl-3">
-                        <div class="card d-flex flex-column justify-content-between h-100">
-                            <div class="card-body pb-2">
-                                <div class="d-flex align-items-center justify-content-between mb-2">
-                                    <div class="subheader text-muted">18.02.2026</div>
-                                    <span class="badge bg-green-lt">XLSX</span>
-                                </div>
-                                <h3 class="card-title mb-3 text-truncate">
-                                    <a href="#" class="text-reset">Маркетинговые кампании</a>
-                                </h3>
-                                <div class="subheader text-secondary mb-2">Связанные дашборды</div>
-                            </div>
-                            <div class="list-group list-group-flush border-top">
-                                <a href="/dashboard/4" class="list-group-item list-group-item-action d-flex align-items-center py-2 px-3">
-                                    <span class="status-dot status-green me-2"></span>
-                                    <span class="text-truncate">ROI по каналам</span>
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon ms-auto text-muted icon-xs"><path d="M9 6l6 6l-6 6" /></svg>
-                                </a>
-                                <a href="/dashboard/5" class="list-group-item list-group-item-action d-flex align-items-center py-2 px-3">
-                                    <span class="status-dot status-yellow me-2"></span>
-                                    <span class="text-truncate">Конверсии</span>
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon ms-auto text-muted icon-xs"><path d="M9 6l6 6l-6 6" /></svg>
-                                </a>
-                            </div>
-                            <div class="card-footer bg-transparent py-2 px-3 border-top d-flex align-items-center justify-content-between">
-                                <small class="text-muted">Всего: 2</small>
-                                <button class="btn btn-sm btn-link p-0 text-primary fs-5" title="Создать еще один дашборд через чат">+ Добавить</button>
-                            </div>
-                        </div>
-                    </div>
-
 
                 </div>
 
@@ -241,3 +235,7 @@ import CreateForm from '../components/chat/CreateForm.vue';
 
 
 </template>
+
+<style>
+
+</style>

@@ -2,6 +2,10 @@
 import { ref, onMounted, nextTick, onUnmounted } from "vue"
 import { useRoute } from 'vue-router';
 import api from '../../api.js';
+import Echo from 'laravel-echo';
+import Pusher from 'pusher-js';
+
+window.Pusher = Pusher;
 
 const props = defineProps({
     open: {
@@ -28,6 +32,18 @@ const loading = ref(false);
 const chatMessagesEl = ref(null);
 const error = ref(null);
 
+// Инициализация Echo под Laravel Reverb
+const echo = new Echo({
+    broadcaster: 'reverb',
+    key: import.meta.env.VITE_REVERB_APP_KEY,
+    wsHost: import.meta.env.VITE_REVERB_HOST || '127.0.0.1',
+    wsPort: import.meta.env.VITE_REVERB_PORT || 8080,
+    wssPort: import.meta.env.VITE_REVERB_PORT || 8080,
+    forceTLS: false,
+    disableStats: true,
+    enabledTransports: ['ws'],
+});
+
 /* ── Resize сайдбара ── */
 const sidebarWidth = ref(parseInt(localStorage.getItem('aiChatWidth')) || 360);
 const isResizing = ref(false);
@@ -39,7 +55,6 @@ function closeChat() {
 }
 
 function startResize(e) {
-    // Resizing only makes sense on desktop layout
     if (window.innerWidth < 992) return;
     isResizing.value = true;
     document.body.style.userSelect = 'none';
@@ -65,18 +80,13 @@ function stopResize() {
     window.removeEventListener('mouseup', stopResize);
 }
 
-onUnmounted(() => {
-    window.removeEventListener('mousemove', onResize);
-    window.removeEventListener('mouseup', stopResize);
-});
-
 async function getChat() {
     await fetchMessages();
 }
 
 async function fetchMessages() {
     try {
-        const response = await api.get('/message', {
+        const response = await api.get('/messages', {
             params: { chat_id: chatId },
         });
         messages.value = response.data || [];
@@ -99,7 +109,7 @@ async function sendMessage() {
     if (!text || loading.value) return;
     loading.value = true;
     try {
-        const response = await api.post('/message', {
+        const response = await api.post('/messages', {
             chat_id: chatId,
             message: text,
         });
@@ -133,13 +143,34 @@ function quickAsk(text) {
     sendMessage();
 }
 
-function clearChat() {
-    messages.value = [];
-}
+onMounted(async () => {
+    // 1. Подгружаем историю сообщений из базы данных
+    await getChat();
 
-onMounted(getChat);
+    if (chatId) {
+        echo.channel(`tasks.${chatId}`)
+            .listen('.MessageTasksChanged', (e) => {
+                console.log('--- РЕАЛТАЙМ ИЗМЕНЕНИЕ ЗАДАЧ ПОЙМАНО! ---', e);
+
+                // Находим нужное сообщение в списке по переданному message_id
+                const msgIndex = messages.value.findIndex(m => m.id === e.message_id);
+
+                if (msgIndex !== -1) {
+                    // Перезаписываем таски, Vue автоматически перерендерит нужный степпер
+                    messages.value[msgIndex].tasks = e.tasks;
+                }
+            });
+    }
+});
+
+onUnmounted(() => {
+    window.removeEventListener('mousemove', onResize);
+    window.removeEventListener('mouseup', stopResize);
+    if (chatId) {
+        echo.leaveChannel(`tasks.${chatId}`);
+    }
+});
 </script>
-
 <template>
     <aside
         class="ai-chat-sidebar"
@@ -190,6 +221,17 @@ onMounted(getChat);
                         <div class="card card-body bg-light shadow-sm p-3 pb-0" style="max-width: 80%;">
                             <div class="small lh-base text-dark">{{ message.answer }}</div>
                             <div class="text-end text-muted small">AI</div>
+
+                            <ul v-if="message.tasks?.length" class="steps steps-vertical">
+                                <li
+                                    v-for="task in message.tasks"
+                                    :key="task.id"
+                                    class="step-item"
+                                >
+                                    <div class="h4 m-0">{{ task.task.name }}</div>
+                                    <div class="text-secondary">{{ task.status.name }}</div>
+                                </li>
+                            </ul>
                         </div>
                     </div>
                 </div>

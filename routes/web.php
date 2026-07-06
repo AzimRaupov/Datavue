@@ -1,25 +1,16 @@
 <?php
 
+use App\Models\Task;
 use Illuminate\Support\Facades\Route;
 
 
 Route::get('/test',function(){
+    $message= \App\Models\AiChatMessage::query()->where('chat_id',15)->with('tasks')->first();
+    event(new \App\Events\MessageTasksChanged($message));
 
-    $message=\App\Models\AiChatMessage::query()->where('chat_id',1)->first();
+    dd($message);
 
-    $messages=\App\Models\AiChatMessage::query()
-        ->where('id','!=',$message->id)->where('chat_id',1)
-        ->select('message','answer')->get();
 
-    dd(new \App\Helpers\Task\RouterTask($message->id,$message->chat_id));
-
-    $result = new \App\Helpers\Task\DefineTask($messages,"Груперуй продажы по категориям");
-    dd($result->defineTask());
-//
-//    $generateWidgets = (new AIService(responseFormat: 'text'))->ask("helo");
-//
-//   return $generateWidgets;
-//    dispatch(new GeneratorDashboardJob(62,50,1));
 
 });
 Route::view('/admin', 'admin');

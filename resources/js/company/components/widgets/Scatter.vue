@@ -1,6 +1,9 @@
 <template>
+    <div class="card">
+        <div class="card-body">
     <div ref="chartRef" class="position-relative"></div>
-
+        </div>
+    </div>
 </template>
 
 

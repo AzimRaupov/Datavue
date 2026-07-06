@@ -8,6 +8,14 @@ use Illuminate\Http\Request;
 
 class DashboardController extends Controller
 {
+
+    public function index(){
+        $user = auth()->user();
+
+        $dashboards = Dashboard::query()->where('company_id',$user->company->id)
+        ->get();
+        return response()->json($dashboards);
+    }
     public function show($id){
         $dashboard = Dashboard::with([
             'widgets' => function ($query) {

@@ -24,7 +24,7 @@ class StoreRequest extends FormRequest
     {
         return [
             'message' => 'required|string|min:1',
-            'data_file' => 'nullable|file|mimes:csv,txt'
+            'data_file' => 'nullable|file|mimes:csv,txt,xlx,xls,xlsx,pdf,doc,docx,sql',
         ];
     }
 }

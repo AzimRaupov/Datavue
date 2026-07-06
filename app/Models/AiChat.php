@@ -42,6 +42,10 @@ class AiChat extends Model
     {
         return $this->hasMany(Dashboard::class, 'chat_id');
     }
+    public function tasks(): HasMany
+    {
+        return $this->hasMany(AiChatTask::class, 'chat_id');
+    }
     /**
      * Get the user that owns the AI chat.
      */
