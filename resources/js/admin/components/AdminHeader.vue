@@ -1,10 +1,7 @@
-<script setup>
-import {RouterLink} from 'vue-router';
-</script>
 
 <template>
     <header class="navbar navbar-expand-md d-print-none">
-        <div class="container-xl">
+        <div class="container" >
             <!-- BEGIN NAVBAR TOGGLER -->
             <button
                 class="navbar-toggler"
@@ -21,19 +18,9 @@ import {RouterLink} from 'vue-router';
             <!-- BEGIN NAVBAR LOGO -->
             <div class="navbar-brand navbar-brand-autodark d-none-navbar-horizontal pe-0 pe-md-3">
                 <a href="." aria-label="Tabler"
-                ><svg xmlns="http://www.w3.org/2000/svg" width="110" height="32" viewBox="0 0 232 68" class="navbar-brand-image">
-                    <path
-                        d="M64.6 16.2C63 9.9 58.1 5 51.8 3.4 40 1.5 28 1.5 16.2 3.4 9.9 5 5 9.9 3.4 16.2 1.5 28 1.5 40 3.4 51.8 5 58.1 9.9 63 16.2 64.6c11.8 1.9 23.8 1.9 35.6 0C58.1 63 63 58.1 64.6 51.8c1.9-11.8 1.9-23.8 0-35.6zM33.3 36.3c-2.8 4.4-6.6 8.2-11.1 11-1.5.9-3.3.9-4.8.1s-2.4-2.3-2.5-4c0-1.7.9-3.3 2.4-4.1 2.3-1.4 4.4-3.2 6.1-5.3-1.8-2.1-3.8-3.8-6.1-5.3-2.3-1.3-3-4.2-1.7-6.4s4.3-2.9 6.5-1.6c4.5 2.8 8.2 6.5 11.1 10.9 1 1.4 1 3.3.1 4.7zM49.2 46H37.8c-2.1 0-3.8-1-3.8-3s1.7-3 3.8-3h11.4c2.1 0 3.8 1 3.8 3s-1.7 3-3.8 3z"
-                        fill="#066fd1"
-                        style="fill: var(--tblr-primary, #066fd1)"
-                    />
-                    <path
-                        d="M105.8 46.1c.4 0 .9.2 1.2.6s.6 1 .6 1.7c0 .9-.5 1.6-1.4 2.2s-2 .9-3.2.9c-2 0-3.7-.4-5-1.3s-2-2.6-2-5.4V31.6h-2.2c-.8 0-1.4-.3-1.9-.8s-.9-1.1-.9-1.9c0-.7.3-1.4.8-1.8s1.2-.7 1.9-.7h2.2v-3.1c0-.8.3-1.5.8-2.1s1.3-.8 2.1-.8 1.5.3 2 .8.8 1.3.8 2.1v3.1h3.4c.8 0 1.4.3 1.9.8s.8 1.2.8 1.9-.3 1.4-.8 1.8-1.2.7-1.9.7h-3.4v13c0 .7.2 1.2.5 1.5s.8.5 1.4.5c.3 0 .6-.1 1.1-.2.5-.2.8-.3 1.2-.3zm28-20.7c.8 0 1.5.3 2.1.8.5.5.8 1.2.8 2.1v20.3c0 .8-.3 1.5-.8 2.1-.5.6-1.2.8-2.1.8s-1.5-.3-2-.8-.8-1.2-.8-2.1c-.8.9-1.9 1.7-3.2 2.4-1.3.7-2.8 1-4.3 1-2.2 0-4.2-.6-6-1.7-1.8-1.1-3.2-2.7-4.2-4.7s-1.6-4.3-1.6-6.9c0-2.6.5-4.9 1.5-6.9s2.4-3.6 4.2-4.8c1.8-1.1 3.7-1.7 5.9-1.7 1.5 0 3 .3 4.3.8 1.3.6 2.5 1.3 3.4 2.1 0-.8.3-1.5.8-2.1.5-.5 1.2-.7 2-.7zm-9.7 21.3c2.1 0 3.8-.8 5.1-2.3s2-3.4 2-5.7-.7-4.2-2-5.8c-1.3-1.5-3-2.3-5.1-2.3-2 0-3.7.8-5 2.3-1.3 1.5-2 3.5-2 5.8s.6 4.2 1.9 5.7 3 2.3 5.1 2.3zm32.1-21.3c2.2 0 4.2.6 6 1.7 1.8 1.1 3.2 2.7 4.2 4.7s1.6 4.3 1.6 6.9-.5 4.9-1.5 6.9-2.4 3.6-4.2 4.8c-1.8 1.1-3.7 1.7-5.9 1.7-1.5 0-3-.3-4.3-.9s-2.5-1.4-3.4-2.3v.3c0 .8-.3 1.5-.8 2.1-.5.6-1.2.8-2.1.8s-1.5-.3-2.1-.8c-.5-.5-.8-1.2-.8-2.1V18.9c0-.8.3-1.5.8-2.1.5-.6 1.2-.8 2.1-.8s1.5.3 2.1.8c.5.6.8 1.3.8 2.1v10c.8-1 1.8-1.8 3.2-2.5 1.3-.7 2.8-1 4.3-1zm-.7 21.3c2 0 3.7-.8 5-2.3s2-3.5 2-5.8-.6-4.2-1.9-5.7-3-2.3-5.1-2.3-3.8.8-5.1 2.3-2 3.4-2 5.7.7 4.2 2 5.8c1.3 1.6 3 2.3 5.1 2.3zm23.6 1.9c0 .8-.3 1.5-.8 2.1s-1.3.8-2.1.8-1.5-.3-2-.8-.8-1.3-.8-2.1V18.9c0-.8.3-1.5.8-2.1s1.3-.8 2.1-.8 1.5.3 2 .8.8 1.3.8 2.1v29.7zm29.3-10.5c0 .8-.3 1.4-.9 1.9-.6.5-1.2.7-2 .7h-15.8c.4 1.9 1.3 3.4 2.6 4.4 1.4 1.1 2.9 1.6 4.7 1.6 1.3 0 2.3-.1 3.1-.4.7-.2 1.3-.5 1.8-.8.4-.3.7-.5.9-.6.6-.3 1.1-.4 1.6-.4.7 0 1.2.2 1.7.7s.7 1 .7 1.7c0 .9-.4 1.6-1.3 2.4-.9.7-2.1 1.4-3.6 1.9s-3 .8-4.6.8c-2.7 0-5-.6-7-1.7s-3.5-2.7-4.6-4.6-1.6-4.2-1.6-6.6c0-2.8.6-5.2 1.7-7.2s2.7-3.7 4.6-4.8 3.9-1.7 6-1.7 4.1.6 6 1.7 3.4 2.7 4.5 4.7c.9 1.9 1.5 4.1 1.5 6.3zm-12.2-7.5c-3.7 0-5.9 1.7-6.6 5.2h12.6v-.3c-.1-1.3-.8-2.5-2-3.5s-2.5-1.4-4-1.4zm30.3-5.2c1 0 1.8.3 2.4.8.7.5 1 1.2 1 1.9 0 1-.3 1.7-.8 2.2-.5.5-1.1.8-1.8.7-.5 0-1-.1-1.6-.3-.2-.1-.4-.1-.6-.2-.4-.1-.7-.1-1.1-.1-.8 0-1.6.3-2.4.8s-1.4 1.3-1.9 2.3-.7 2.3-.7 3.7v11.4c0 .8-.3 1.5-.8 2.1-.5.6-1.2.8-2.1.8s-1.5-.3-2.1-.8c-.5-.6-.8-1.3-.8-2.1V28.8c0-.8.3-1.5.8-2.1.5-.6 1.2-.8 2.1-.8s1.5.3 2.1.8c.5.6.8 1.3.8 2.1v.6c.7-1.3 1.8-2.3 3.2-3 1.3-.7 2.8-1 4.3-1z"
-                        fill-rule="evenodd"
-                        clip-rule="evenodd"
-                        fill="#4a4a4a"
-                    /></svg
-                ></a>
+                >
+                    <img :src="logo" width="110" />
+                </a>
             </div>
             <!-- END NAVBAR LOGO -->
             <div class="navbar-nav flex-row order-md-last">
@@ -322,479 +309,6 @@ import {RouterLink} from 'vue-router';
                             </svg>
                         </a>
                         <!-- BEGIN NAVBAR APPS -->
-                        <div class="dropdown-menu dropdown-menu-arrow dropdown-menu-end dropdown-menu-card">
-                            <div class="card">
-                                <div class="card-header">
-                                    <div class="card-title">My Apps</div>
-                                    <div class="card-actions btn-actions">
-                                        <a href="#" class="btn-action">
-                                            <!-- Download SVG icon from http://tabler.io/icons/icon/settings -->
-                                            <svg
-                                                xmlns="http://www.w3.org/2000/svg"
-                                                width="24"
-                                                height="24"
-                                                viewBox="0 0 24 24"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                stroke-width="2"
-                                                stroke-linecap="round"
-                                                stroke-linejoin="round"
-                                                aria-hidden="true"
-                                                focusable="false"
-                                                class="icon icon-1"
-                                            >
-                                                <path
-                                                    d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065"
-                                                />
-                                                <path d="M9 12a3 3 0 1 0 6 0a3 3 0 0 0 -6 0" />
-                                            </svg>
-                                        </a>
-                                    </div>
-                                </div>
-                                <div class="card-body scroll-y p-2" style="max-height: 50vh">
-                                    <div class="row g-0">
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/amazon.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Amazon</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/android.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Android</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/app-store.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Apple App Store</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/apple-podcast.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Apple Podcast</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/apple.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Apple</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/behance.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Behance</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/discord.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Discord</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/dribbble.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Dribbble</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/dropbox.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Dropbox</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/ever-green.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Ever Green</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/facebook.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Facebook</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/figma.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Figma</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/github.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">GitHub</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/gitlab.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">GitLab</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/google-ads.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Google Ads</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/google-adsense.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Google AdSense</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/google-analytics.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Google Analytics</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/google-cloud.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Google Cloud</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/google-drive.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Google Drive</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/google-fit.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Google Fit</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/google-home.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Google Home</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/google-maps.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Google Maps</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/google-meet.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Google Meet</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/google-photos.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Google Photos</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/google-play.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Google Play</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/google-shopping.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Google Shopping</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/google-teams.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Google Teams</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/google.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Google</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/instagram.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Instagram</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/klarna.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Klarna</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/linkedin.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">LinkedIn</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/mailchimp.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Mailchimp</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/medium.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Medium</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/messenger.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Messenger</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/meta.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Meta</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/monday.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Monday</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/netflix.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Netflix</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/notion.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Notion</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/office-365.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Office 365</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/opera.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Opera</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/paypal.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">PayPal</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/petreon.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Patreon</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/pinterest.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Pinterest</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/play-store.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Play Store</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/quora.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Quora</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/reddit.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Reddit</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/shopify.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Shopify</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/skype.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Skype</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/slack.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Slack</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/snapchat.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Snapchat</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/soundcloud.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">SoundCloud</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/spotify.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Spotify</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/stripe.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Stripe</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/telegram.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Telegram</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/tiktok.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">TikTok</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/tinder.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Tinder</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/trello.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Trello</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/truth.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Truth</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/tumblr.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Tumblr</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/twitch.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Twitch</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/twitter.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Twitter</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/vimeo.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Vimeo</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/vk.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">VK</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/watppad.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Wattpad</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/webflow.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Webflow</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/whatsapp.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">WhatsApp</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/wordpress.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">WordPress</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/xing.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Xing</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/yelp.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Yelp</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/youtube.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">YouTube</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/zapier.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Zapier</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/zendesk.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Zendesk</span>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="#" class="d-flex flex-column flex-center text-center text-secondary py-2 px-2 link-hoverable">
-                                                <img src="./static/brands/zoom.svg" class="w-6 h-6 mx-auto mb-2" width="24" height="24" alt="" />
-                                                <span class="h5">Zoom</span>
-                                            </a>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
                         <!-- END NAVBAR APPS -->
                     </div>
                     <!-- END APPS -->
@@ -809,31 +323,20 @@ import {RouterLink} from 'vue-router';
                             data-bs-auto-close="outside"
                             aria-expanded="false"
                         >
-                            EN
+                            ТҶ
                         </a>
                         <div class="dropdown-menu dropdown-menu-arrow dropdown-menu-end">
-                            <a class="dropdown-item" href="#" data-lang="cs"> Čeština </a>
-                            <a class="dropdown-item" href="#" data-lang="de"> Deutsch </a>
-                            <a class="dropdown-item" href="#" data-lang="el"> Ελληνικά </a>
-                            <a class="dropdown-item" href="#" data-lang="en"> English </a>
-                            <a class="dropdown-item" href="#" data-lang="es"> Español </a>
-                            <a class="dropdown-item" href="#" data-lang="fr"> Français </a>
-                            <a class="dropdown-item" href="#" data-lang="hi"> हिंदी </a>
-                            <a class="dropdown-item" href="#" data-lang="hu"> Magyar </a>
-                            <a class="dropdown-item" href="#" data-lang="id"> Bahasa Indonesia </a>
-                            <a class="dropdown-item" href="#" data-lang="it"> Italiano </a>
-                            <a class="dropdown-item" href="#" data-lang="ja"> 日本語 </a>
-                            <a class="dropdown-item" href="#" data-lang="ko"> 한국어 </a>
-                            <a class="dropdown-item" href="#" data-lang="nl"> Nederlands (Nederland) </a>
-                            <a class="dropdown-item" href="#" data-lang="pl"> Polski </a>
-                            <a class="dropdown-item" href="#" data-lang="pt"> Português </a>
-                            <a class="dropdown-item" href="#" data-lang="ro"> Română </a>
-                            <a class="dropdown-item" href="#" data-lang="ru"> Русский </a>
-                            <a class="dropdown-item" href="#" data-lang="th"> ภาษาไทย </a>
-                            <a class="dropdown-item" href="#" data-lang="tr"> Türkçe </a>
-                            <a class="dropdown-item" href="#" data-lang="uk"> Українською </a>
-                            <a class="dropdown-item" href="#" data-lang="vi"> Tiếng Việt </a>
-                            <a class="dropdown-item" href="#" data-lang="zh"> 中文 </a>
+                            <a class="dropdown-item" href="#" @click.prevent="changeLanguage('ru')">
+                                Русский
+                            </a>
+
+                            <a class="dropdown-item" href="#" @click.prevent="changeLanguage('tj')">
+                                Тоҷики
+                            </a>
+
+                            <a class="dropdown-item" href="#" @click.prevent="changeLanguage('en')">
+                                English
+                            </a>
                         </div>
                     </div>
                     <!-- END LANGUAGE SELECTOR -->
@@ -841,10 +344,16 @@ import {RouterLink} from 'vue-router';
                 <!-- BEGIN USER MENU -->
                 <div class="nav-item dropdown">
                     <a href="#" class="nav-link d-flex lh-1 p-0 px-2" data-bs-toggle="dropdown" aria-label="Open user menu">
-                        <span class="avatar avatar-sm" style="background-image: url(./static/avatars/000m.jpg)"> </span>
+                       <span class="avatar avatar-0">
+                      <!-- Download SVG icon from http://tabler.io/icons/icon/user -->
+                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" class="icon avatar-icon icon-2">
+                        <path d="M8 7a4 4 0 1 0 8 0a4 4 0 0 0 -8 0"></path>
+                        <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2"></path>
+                      </svg>
+                    </span>
                         <div class="d-none d-xl-block ps-2">
-                            <div>Paweł Kuna</div>
-                            <div class="mt-1 small text-secondary">UI Designer</div>
+                            <div>{{ user.name }}</div>
+                            <div class="mt-1 small text-secondary">{{ user.company.name }}</div>
                         </div>
                     </a>
                     <div class="dropdown-menu dropdown-menu-end dropdown-menu-arrow">
@@ -893,7 +402,7 @@ import {RouterLink} from 'vue-router';
                         <div class="dropdown-divider"></div>
                         <a class="dropdown-item" href="./settings.html">Settings &amp; Privacy</a>
                         <a class="dropdown-item" href="#">Help</a>
-                        <a class="dropdown-item" href="./sign-in.html">Sign out</a>
+                        <a class="dropdown-item" href="./sign-in.html">{{ t('header.logout') }}</a>
                     </div>
                 </div>
                 <!-- END USER MENU -->
@@ -901,4 +410,3 @@ import {RouterLink} from 'vue-router';
         </div>
     </header>
 </template>
-

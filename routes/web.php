@@ -1,10 +1,18 @@
 <?php
 
+use App\Models\Task;
 use Illuminate\Support\Facades\Route;
 
 
+Route::get('/test',function(){
+    $message= \App\Models\AiChatMessage::query()->where('chat_id',15)->with('tasks')->first();
+    event(new \App\Events\MessageTasksChanged($message));
+
+    dd($message);
 
 
+
+});
 Route::view('/admin', 'admin');
 Route::view('/admin/{any}', 'admin')->where('any', '.*');
 

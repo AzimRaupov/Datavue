@@ -19,6 +19,7 @@ return new class extends Migration
             $table->string('title');
             $table->integer('position')->default(0);
             $table->json('tables')->nullable();
+            $table->string('code_path',300)->nullable();
             $table->enum('status', ['draft', 'active', 'inactive', 'failed'])->default('draft');
             $table->timestamps();
         });

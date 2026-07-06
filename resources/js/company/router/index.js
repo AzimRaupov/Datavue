@@ -3,12 +3,18 @@ import NProgress from 'nprogress';
 import 'nprogress/nprogress.css';
 
 import DashboardPage from '../pages/DashboardPage.vue';
+import ChatPage from '../pages/ChatPage.vue';
 
 const routes = [
     {
         path: '/',
         name: 'company.dashboard',
         component: DashboardPage,
+    },
+    {
+        path: '/chat/:id/:dashboard?',
+        name: 'company.chat',
+        component: ChatPage,
     },
 ];
 

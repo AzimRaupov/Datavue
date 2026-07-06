@@ -85,7 +85,7 @@ async function login() {
         }
 
         console.log(response.data);
-        window.location.replace('/company');
+        // window.location.replace('/company');
 
     } catch (error) {
         console.log('REGISTER ERROR:', error.response?.data || error.message);
