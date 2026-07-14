@@ -108,7 +108,9 @@ class DashboardGenerator
             'task_id'=>$this->tasks['detect_schema_dashboard'],
             'status_id'=>$this->tasks_statuses['in_progress'],
         ]);
+        $task->load(['status', 'task']);
 
+        event(new \App\Events\MessageTasksChanged($this->message,$task));
 
         $text=$this->message->message;
         $widgetsList = $this->widgets->select(['name', 'description']);
@@ -215,6 +217,9 @@ TEXT;
         }
         $task->status_id = $this->tasks_statuses['completed'];
         $task->save();
+        $task->load('status');
+        event(new \App\Events\MessageTasksChanged($this->message,$task));
+
         event(new DashboardWidgetChanged($this->dashboard));
 
     }
@@ -232,6 +237,9 @@ TEXT;
             'task_id'=>$this->tasks['generate_widgets_dashboard'],
             'status_id'=>$this->tasks_statuses['in_progress'],
         ]);
+        $task->load(['status', 'task']);
+
+        event(new \App\Events\MessageTasksChanged($this->message,$task));
 
         foreach ($widgets_dash as $index => $widget) {
             $widget_tables = json_decode($widget->tables, true) ?? [];
@@ -243,6 +251,9 @@ TEXT;
         }
         $task->status_id = $this->tasks_statuses['completed'];
         $task->save();
+        $task->load('status');
+        event(new \App\Events\MessageTasksChanged($this->message,$task));
+
         return $results;
 
     }

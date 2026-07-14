@@ -19,7 +19,6 @@ class SqlDataHandler
 
     public $outputPath;
     public $sqlFilePath;
-    public $dbFilePath;
     public $isSuccess = false;
     public $errorMessage;
     public $stats = [];
@@ -113,13 +112,11 @@ class SqlDataHandler
         $content .= implode("\n\n", $insertStatements) . "\n";
 
         $this->sqlFilePath = $this->saveSqlFile($content);
-        $this->dbFilePath = $this->createDuckdbDatabase();
 
         $this->isSuccess = true;
 
         Log::info('SqlDataHandler: обработка завершена', [
             'sql_file' => $this->sqlFilePath,
-            'db_file' => $this->dbFilePath,
             'stats' => $this->stats,
         ]);
     }
@@ -230,25 +227,6 @@ class SqlDataHandler
         // Возвращаем абсолютный путь
         return $finalAbsoluteLogPath;
     }
-    private function createDuckdbDatabase()
-    {
-        $path = "/home/azim/projects/Datavue/app/Helpers/DataHandlers/sql_to_duck.py";
-
-        $this->dbFilePath = $this->outputPath . '/data.duckdb';
-
-
-        $runner = new PythonRunner(
-            $path,
-            [
-                '--sql'  => $this->sqlFilePath,
-                '--path' => $this->dbFilePath,
-            ]
-        );
-
-        $result = $runner->run();
-
-        return $this->dbFilePath;
-    }
 
 
     public function end(){
@@ -258,7 +236,7 @@ class SqlDataHandler
             'file_id'=>$this->uploadFile->id,
             'company_id'=>$this->chat->company_id,
             'chat_id'=>$this->chat->id,
-            'data_path'=>$this->dbFilePath,
+            'sql_path'=>$this->sqlFilePath,
         ];
 
     }

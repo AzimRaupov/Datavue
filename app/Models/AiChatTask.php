@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class AiChatTask extends Model
 {
-    protected $fillable = ['chat_id', 'message_id', 'task_id', 'status_id'];
+    protected $fillable = ['chat_id', 'message_id', 'task_id', 'status_id','title','description'];
 
 
 

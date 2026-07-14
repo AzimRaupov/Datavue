@@ -13,15 +13,18 @@ class MessageTasksChanged implements ShouldBroadcastNow // <-- ОБЯЗАТЕЛ�
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
     public $message;
-
+   public $task;
+   public $dashboardId=null;
     public function broadcastAs(): string
     {
         return 'MessageTasksChanged';
     }
     // Передаем саму модель сообщения, у которого изменились таски
-    public function __construct($message)
+    public function __construct($message, $task, $dashboardId = null)
     {
         $this->message = $message;
+        $this->task = $task;
+        $this->dashboardId = $dashboardId;
     }
 
     // Канал привязан к ID сообщения/чата. Публичный, как ты просил.
@@ -36,8 +39,9 @@ class MessageTasksChanged implements ShouldBroadcastNow // <-- ОБЯЗАТЕЛ�
     public function broadcastWith(): array
     {
         return [
-            'message_id' => $this->message->id,
-            'tasks'      => $this->message->tasks()->with('task', 'status')->get()->toArray(),
+            'message' => $this->message,
+            'task'      => $this->task,
+            'dashboard_id' => $this->dashboardId
         ];
     }
 }

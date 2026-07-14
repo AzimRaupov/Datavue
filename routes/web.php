@@ -1,16 +1,15 @@
 <?php
 
+use App\Jobs\RouterTaskJob;
 use App\Models\Task;
 use Illuminate\Support\Facades\Route;
 
 
 Route::get('/test',function(){
-    $message= \App\Models\AiChatMessage::query()->where('chat_id',15)->with('tasks')->first();
-    event(new \App\Events\MessageTasksChanged($message));
 
-    dd($message);
-
-
+    $d=new \App\Helpers\Dashboard\DashboardReGenerator(11,4);
+    $d->determineChanges(" 'виджет Количество продаж по категориям' чтобы был первым");
+    $d->applyChanges();
 
 });
 Route::view('/admin', 'admin');

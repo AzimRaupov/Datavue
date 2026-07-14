@@ -38,7 +38,7 @@ class AiChatMessage extends Model
 
     public function tasks(): HasMany
     {
-        return $this->hasMany(AiChatTask::class, 'chat_id');
+        return $this->hasMany(AiChatTask::class, 'message_id');
     }
     /**
      * Get the AI chat that owns the message.

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 import DonutWidget from "../components/widgets/DonutWidget.vue";
 import MultiSeriesTrend from "../components/widgets/MultiSeriesTrend.vue";
 import MiniCounters from "../components/widgets/MiniCounters.vue";
@@ -10,10 +10,7 @@ import WidgetContainer from "../components/WidgetContainer.vue";
 import Echo from 'laravel-echo';
 import Pusher from 'pusher-js';
 
-
-
 window.Pusher = Pusher;
-
 
 const echo = new Echo({
     broadcaster: 'reverb',
@@ -28,22 +25,21 @@ const echo = new Echo({
 
 const route = useRoute();
 const router = useRouter();
+
 const chatId = route.params.id;
-let dashboardId = route.params.dashboard ?? null;
+
 const chat = ref({});
 const dashboards = ref([]);
 const error = ref(null);
-const selectedDashboardId = ref(null);
+
+const selectedDashboardId = ref(route.params.dashboard ? Number(route.params.dashboard) : null);
+
 const currentDashboard = ref({});
-const widgets = ref([]); // исправлена опечатка "wedgets" -> "widgets"
+const widgets = ref([]);
 
-let currentChannelName = null; // чтобы можно было отписаться при смене дашборда
-let isRefreshing = false; // защита от параллельных перезагрузок
+let currentChannelName = null;
+let isRefreshing = false;
 
-// Составной ключ для v-for. widget.id один и тот же при UPDATE,
-// поэтому Vue не пересоздаёт компонент без изменения ключа.
-// Добавляем поля, которые реально меняются при генерации контента виджета:
-// status, code_path, updated_at (и position на всякий случай).
 function widgetKey(widget) {
     return [
         widget.id,
@@ -54,43 +50,39 @@ function widgetKey(widget) {
     ].join('-');
 }
 
+// Хелпер: приводим id дашборда к числу для надёжного сравнения
+// (бэкенд иногда отдаёт id как строку, из-за чего === не срабатывает).
+function toId(val) {
+    return val === null || val === undefined ? null : Number(val);
+}
+
 async function getCurrentDashboard() {
-    // если id дашборда не передан в роуте — берём выбранный (или первый из списка)
-    if (!dashboardId) {
-        dashboardId = selectedDashboardId.value ?? dashboards.value[0]?.id ?? null;
+    if (!selectedDashboardId.value) {
+        selectedDashboardId.value = toId(dashboards.value[0]?.id) ?? null;
     }
 
-    if (!dashboardId) {
+    if (!selectedDashboardId.value) {
         error.value = "Дашборд не найден";
         return;
     }
 
     try {
-        const { data } = await api.get(`/dashboards/${dashboardId}`);
-
+        const { data } = await api.get(`/dashboards/${selectedDashboardId.value}`);
         currentDashboard.value = data;
         widgets.value = data.widgets ?? [];
-
-        console.log(currentDashboard.value);
     } catch (err) {
         console.error(err);
         error.value = "Не удалось загрузить дашборд";
     }
 }
 
-// Отдельная функция именно для «мягкого» обновления виджетов по сокет-событию,
-// чтобы не перезатирать error/currentDashboard лишний раз и не мигать UI.
 async function refreshWidgets() {
     if (!currentDashboard.value?.id) return;
-    if (isRefreshing) return; // если уже идёт обновление — пропускаем повторный вызов
+    if (isRefreshing) return;
 
     isRefreshing = true;
     try {
         const { data } = await api.get(`/dashboards/${currentDashboard.value.id}`);
-        // Полная замена массива новыми объектами — важно, чтобы это были
-        // НОВЫЕ объекты (а не мутация старых), тогда composite key из
-        // widgetKey() посчитается заново и Vue пересоздаст изменившиеся
-        // WidgetContainer.
         widgets.value = data.widgets ?? [];
     } catch (err) {
         console.error("Не удалось обновить виджеты:", err);
@@ -104,10 +96,19 @@ async function getChat() {
         const { data } = await api.get(`/chats/${chatId}`);
 
         chat.value = data;
-        dashboards.value = data.dashboards ?? [];
+        // Нормализуем id дашбордов в списке к числу,
+        // чтобы <select> и все сравнения работали одинаково.
+        dashboards.value = (data.dashboards ?? []).map(d => ({
+            ...d,
+            id: toId(d.id),
+        }));
 
-        // если дашборды есть — выбираем первый
-        if (dashboards.value.length > 0) {
+        if (selectedDashboardId.value) {
+            const exists = dashboards.value.some(d => d.id === selectedDashboardId.value);
+            if (!exists) {
+                selectedDashboardId.value = dashboards.value[0]?.id ?? null;
+            }
+        } else if (dashboards.value.length > 0) {
             selectedDashboardId.value = dashboards.value[0].id;
         }
     } catch (err) {
@@ -116,10 +117,19 @@ async function getChat() {
     }
 }
 
-function onDashboardChange() {
+async function onDashboardChange() {
     if (!selectedDashboardId.value) return;
 
-    router.push(`/dashboard/${selectedDashboardId.value}`);
+    router.replace({
+        name: 'company.chat',
+        params: {
+            id: chatId,
+            dashboard: selectedDashboardId.value,
+        },
+    });
+
+    await getCurrentDashboard();
+    subscribeToDashboardChannel();
 }
 
 const chatOpen = ref(true);
@@ -133,7 +143,6 @@ function closeChat() {
 }
 
 function subscribeToDashboardChannel() {
-    // отписываемся от предыдущего канала, если он был
     if (currentChannelName) {
         echo.leave(currentChannelName);
         currentChannelName = null;
@@ -141,19 +150,38 @@ function subscribeToDashboardChannel() {
 
     if (!currentDashboard.value?.id) return;
 
-    // канал, который бродкастит событие на бекенде — `dashboard.{id}`
     currentChannelName = `dashboard.${currentDashboard.value.id}`;
 
-    // Подписываемся на публичный канал дашборда и слушаем событие, которое
-    // возвращает back-end через `broadcastAs()` — `DashboardWidgetChanged`.
     echo.channel(currentChannelName)
         .listen('.DashboardWidgetChanged', (e) => {
             console.log('--- РЕАЛТАЙМ ИЗМЕНЕНИЕ ДАШБОРДА ПОЙМАНО ---', e);
-
-            // при получении события — подтягиваем свежие данные виджетов
             refreshWidgets();
         });
 }
+
+// Следим за изменением dashboard-параметра в URL — срабатывает и когда
+// AiChatSidebar делает router.push после вебсокет-события.
+watch(
+    () => route.params.dashboard,
+    async (newVal) => {
+        if (!newVal) return;
+
+        const newId = toId(newVal);
+        if (newId === selectedDashboardId.value) return;
+
+        // Если пришедшего дашборда нет в текущем локальном списке —
+        // подтягиваем актуальный список дашбордов чата,
+        // иначе <select> не найдёт совпадающий <option> и будет пустым.
+        const exists = dashboards.value.some(d => d.id === newId);
+        if (!exists) {
+            await getChat();
+        }
+
+        selectedDashboardId.value = newId;
+        await getCurrentDashboard();
+        subscribeToDashboardChannel();
+    }
+);
 
 onMounted(async () => {
     document.body.classList.add("chat-page");
@@ -181,13 +209,12 @@ body.chat-page .page {
     flex-direction: column;
 }
 </style>
-<template>
 
+<template>
     <div class="dashboard-wrapper">
 
         <div class="dashboard-main p-1" id="dashboardMain">
 
-            <!-- ===================== ЗАГОЛОВОК + ВЫБОР ДАШБОРДА ===================== -->
             <div class="page-header d-print-none mb-3 mt-2">
                 <div class="container-xl">
                     <div class="row g-2 align-items-center">
@@ -253,37 +280,30 @@ body.chat-page .page {
                     <div class="col-12">
                         <h3 class="h3">{{ widget.title }}</h3>
 
-
                         <WidgetContainer
                             :widget="widget"
                             :chat-id="chatId"
                         />
-
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Backdrop, mobile only -->
         <div class="chat-backdrop" :class="{ 'd-none': !chatOpen }" @click="closeChat"></div>
 
-        <!-- ===================== ЧАТ (компонент) ===================== -->
         <AiChatSidebar
             :open="chatOpen"
             :chat-title="chat.title"
             :chat-id="chatId"
+            :dashboard-id="selectedDashboardId"
             @close="closeChat"
         />
 
-        <!-- Floating button to reopen chat on mobile -->
         <button v-if="!chatOpen" class="chat-fab" @click="toggleChat" aria-label="Открыть чат">
             <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8a4 4 0 0 1 4 4"/><path d="M12 4a8 8 0 0 1 8 8"/><path d="M12 20a8 8 0 0 1 -8 -8"/><circle cx="12" cy="12" r="1"/></svg>
         </button>
 
     </div>
-
-    <!-- ...settings offcanvas unchanged... -->
-
 </template>
 
 <style>

@@ -26,8 +26,13 @@ class ChatController extends Controller
 
         $user = auth()->user();
 
-        $chats = AiChat::query()->where('company_id',$user->company->id)
-            ->with('dashboards')->get();
+        $chats = AiChat::where('company_id', $user->company->id)
+            ->with([
+                'dashboards' => fn ($query) => $query
+                    ->latest()
+                    ->limit(3)
+            ])
+            ->get();
 
         return response()->json($chats);
     }
@@ -112,8 +117,10 @@ class ChatController extends Controller
                 new DataHandlerJob($chat->id, $upload->id, $user->id,$message->id,$dashboard->id),
             ])->dispatch();
 
-
-            $define_task = new \App\Helpers\Task\DefineTask([],$message->message);
+            $task_list = Task::query()->where('name','generate_dashboard')
+                ->select('name','description')
+                ->get();
+            $define_task = new \App\Helpers\Task\DefineTask([],$message->message,$task_list->toArray());
             $result=$define_task->defineTask();
 
             $chat->title = $result['content']['task_title'];
