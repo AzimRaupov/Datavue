@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Helpers\DataHandlers\SqlDataHandler;
 use App\Helpers\DataHandlers\TableDataHandler;
+use App\Helpers\PythonRunner;
 use App\Models\AiChat;
 use App\Models\AiChatTask;
 use App\Models\ExtractedData;
@@ -35,6 +36,8 @@ class DataHandlerJob implements ShouldQueue
 
     public $dashboard_id;
     public $message_id;
+    public $outputPath;
+    public $dbFilePath;
     /**
      * Create a new job instance.
      */
@@ -47,18 +50,20 @@ class DataHandlerJob implements ShouldQueue
         $this->chat=AiChat::query()->find($chat_id);
         $this->uploadFile=UploadedFile::query()->find($upload_file_id);
         $this->storage = storage_path('app/company/' . $this->user->company->id . '/chats/' . $this->chat->id);
+        $this->outputPath = $this->storage . '/extracted_data';
+        $this->dbFilePath = $this->outputPath . '/data.duckdb';
 
         $this->tasks_status = TaskStatus::query()
             ->pluck('id', 'name')
             ->toArray();
-        $tasks = Task::query()
+        $this->tasks = Task::query()
             ->pluck('id', 'name')
             ->toArray();
 
         $this->chat_task=AiChatTask::create([
-            'chat_id'   => $chat_id,
-            'message_id' => $message_id,
-            'task_id'   => $tasks['data_processing'],
+            'chat_id'   => $this->chat->id,
+            'message_id' => $this->message_id,
+            'task_id'   => $this->tasks['data_processing'],
             'status_id' => $this->tasks_status['start'],
         ]);
 
@@ -70,6 +75,9 @@ class DataHandlerJob implements ShouldQueue
     public function handle(): void
     {
         try {
+
+            $this->chat_task->status_id = $this->tasks_status['in_progress'];
+            $this->chat_task->save();
 
             if ($this->uploadFile->file_type == 'sql') {
                 $save_handler = new SqlDataHandler(
@@ -88,11 +96,19 @@ class DataHandlerJob implements ShouldQueue
 
             $resultExtract = $save_handler->end();
 
+            $resultCreateDb = $this->createDuckdbDatabase($this->dbFilePath,$resultExtract['sql_path']);
+
+            $lines = $resultCreateDb['output'] ?? [];
+            $lastLine = trim((string) end($lines));
+
+            if ($resultCreateDb['exit_code'] !== 0 || $lastLine !== 'ok') {
+                throw new \Exception("Ошибка создания базы данных DuckDB. Ответ: " . json_encode($resultCreateDb));
+            }
             ExtractedData::create([
                 'file_id'    => $this->uploadFile->id,
                 'company_id' => $this->chat->company->id,
                 'chat_id'    => $this->chat->id,
-                'data_path'  => $resultExtract['data_path'],
+                'data_path'  => $this->dbFilePath,
             ]);
 
             $this->chat_task->status_id = $this->tasks_status['completed'];
@@ -108,4 +124,23 @@ class DataHandlerJob implements ShouldQueue
             throw $e;
         }
     }
+
+    private function createDuckdbDatabase($dbFilePath,$sqlFilePath)
+    {
+        $path = "/home/azim/projects/Datavue/app/Helpers/DataHandlers/sql_to_duck.py";
+
+
+        $runner = new PythonRunner(
+            $path,
+            [
+                '--sql'  => $sqlFilePath,
+                '--path' => $dbFilePath,
+            ]
+        );
+
+        $result = $runner->run();
+
+        return $result;
+    }
+
 }

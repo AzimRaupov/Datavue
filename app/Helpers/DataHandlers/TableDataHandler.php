@@ -19,7 +19,6 @@ class TableDataHandler
 
     public $outputPath;
     public $sqlFilePath;
-    public $dbFilePath;
     public $isSuccess = false;
     public $errorMessage;
     public $stats = [];
@@ -127,13 +126,11 @@ class TableDataHandler
         $this->sqlFilePath = $this->saveSqlFile($content);
 
         // 5. Вызываем ТОТ ЖЕ sql_to_duck.py, что и SqlDataHandler
-        $this->dbFilePath = $this->createDuckdbDatabase();
 
         $this->isSuccess = true;
 
         Log::info('ExcelCsvDataHandler: обработка завершена', [
             'sql_file' => $this->sqlFilePath,
-            'db_file' => $this->dbFilePath,
             'stats' => $this->stats,
         ]);
     }
@@ -174,12 +171,34 @@ class TableDataHandler
         $result = [];
 
         foreach ($spreadsheet->getAllSheets() as $sheet) {
-            $rows = $sheet->toArray(null, true, true, false);
+            // Важно: getHighestColumn()/getHighestRow() (которые использует toArray()
+            // по умолчанию) учитывают ячейки, к которым просто применено форматирование
+            // (стиль, заливка, границы), даже если в них нет значения. Excel часто
+            // "раздувает" диапазон листа именно так — отсюда лишние col_9, col_10...
+            // getHighestDataColumn()/getHighestDataRow() смотрят только на ячейки
+            // с реальными данными.
+            $highestDataColumn = $sheet->getHighestDataColumn();
+            $highestDataRow = $sheet->getHighestDataRow();
 
-            // Убираем полностью пустые строки в конце
+            if ($highestDataRow < 1) {
+                continue;
+            }
+
+            $range = "A1:{$highestDataColumn}{$highestDataRow}";
+            $rows = $sheet->rangeToArray($range, null, true, true, false);
+
+            // Убираем полностью пустые строки в конце (на случай "рваных" данных)
             while (!empty($rows) && $this->isRowEmpty(end($rows))) {
                 array_pop($rows);
             }
+
+            if (empty($rows)) {
+                continue;
+            }
+
+            // Доп. страховка: убираем полностью пустые столбцы в конце,
+            // если они всё же просочились
+            $rows = $this->trimEmptyTrailingColumns($rows);
 
             if (empty($rows)) {
                 continue;
@@ -191,6 +210,29 @@ class TableDataHandler
         return $result;
     }
 
+    private function trimEmptyTrailingColumns(array $rows): array
+    {
+        $maxCols = 0;
+
+        foreach ($rows as $row) {
+            foreach ($row as $i => $cell) {
+                if ($cell !== null && trim((string) $cell) !== '') {
+                    $maxCols = max($maxCols, $i + 1);
+                }
+            }
+        }
+
+        if ($maxCols === 0) {
+            return [];
+        }
+
+        foreach ($rows as &$row) {
+            $row = array_slice($row, 0, $maxCols);
+        }
+        unset($row);
+
+        return $rows;
+    }
     private function isRowEmpty(array $row): bool
     {
         foreach ($row as $cell) {
@@ -368,25 +410,6 @@ class TableDataHandler
         return $finalAbsoluteLogPath;
     }
 
-    private function createDuckdbDatabase()
-    {
-        // ВАЖНО: тот же самый скрипт, что и в SqlDataHandler
-        $path = "/home/azim/projects/Datavue/app/Helpers/DataHandlers/sql_to_duck.py";
-
-        $this->dbFilePath = $this->outputPath . '/data.duckdb';
-
-        $runner = new PythonRunner(
-            $path,
-            [
-                '--sql'  => $this->sqlFilePath,
-                '--path' => $this->dbFilePath,
-            ]
-        );
-
-        $result = $runner->run();
-
-        return $this->dbFilePath;
-    }
 
     public function end(): array
     {
@@ -394,7 +417,7 @@ class TableDataHandler
             'file_id'    => $this->uploadFile->id,
             'company_id' => $this->chat->company_id,
             'chat_id'    => $this->chat->id,
-            'data_path'  => $this->dbFilePath,
+            'sql_path' => $this->sqlFilePath,
         ];
     }
 
