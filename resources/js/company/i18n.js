@@ -40,7 +40,6 @@ const messages = {
             logout: 'Logout'
         }
     },
-
     tj: {
         tasks: {
             determine_changes: 'Муайян кардани тағйирот',
