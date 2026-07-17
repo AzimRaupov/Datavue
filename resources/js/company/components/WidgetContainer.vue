@@ -7,7 +7,7 @@ import Table from "./widgets/Table.vue";
 import Pie from "./widgets/Pie.vue";
 import MultiSeriesTrend from "./widgets/MultiSeriesTrend.vue";
 import Scatter from "./widgets/Scatter.vue";
-
+import Bar from './widgets/Bar.vue'
 const props = defineProps({
     widget: {
         type: Object,
@@ -42,6 +42,10 @@ onMounted(async () => {
 </script>
 
 <template>
+
+
+
+
     <!-- DONUT CHART -->
     <div v-if="widget && widget.widget.name === 'donut-chart'">
         <DonutWidget
@@ -58,6 +62,19 @@ onMounted(async () => {
                         <span class="placeholder bg-secondary" style="width: 60px; height: 8px;"></span>
                     </span>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <div v-else-if="widget && widget.widget.name === 'bar'">
+        <Bar
+            v-if="contentWidget && contentWidget.series && contentWidget.series.length"
+            :categories="contentWidget.categories"
+            :series="contentWidget.series"
+        />
+        <div v-else class="border rounded-3 p-3">
+            <div class="chart-frame">
+               load
             </div>
         </div>
     </div>

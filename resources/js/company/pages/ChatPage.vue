@@ -277,7 +277,7 @@ body.chat-page .page {
                     :key="widgetKey(widget)"
                     class="row row-cards widgets-content"
                 >
-                    <div class="col-12">
+                    <div class="col-12 mt-4">
                         <h3 class="h3">{{ widget.title }}</h3>
 
                         <WidgetContainer

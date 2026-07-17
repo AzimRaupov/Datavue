@@ -120,10 +120,6 @@ class SqlDataHandler
             'stats' => $this->stats,
         ]);
     }
-
-    /**
-     * Сортирует CREATE TABLE инструкции по зависимостям (FOREIGN KEY)
-     */
     private function sortTablesByDependencies(array $createStatements): array
     {
         $tables = [];
@@ -207,17 +203,14 @@ class SqlDataHandler
 
     private function saveSqlFile(string $content): string
     {
-        // 1. Проверяем, существует ли папка по абсолютному пути, если нет — создаем
         if (!is_dir($this->outputPath)) {
             if (!mkdir($this->outputPath, 0755, true) && !is_dir($this->outputPath)) {
                 throw new \RuntimeException("Не удалось создать директорию: {$this->outputPath}");
             }
         }
 
-        // 2. Формируем полный абсолютный путь к целевому файлу
         $finalAbsoluteLogPath = $this->outputPath . '/duckdb_ready.sql';
 
-        // 3. Записываем контент напрямую по абсолютному пути
         $result = file_put_contents($finalAbsoluteLogPath, $content);
 
         if ($result === false) {
@@ -242,14 +235,18 @@ class SqlDataHandler
     }
 
 
-
     public function getOutputFiles(): array
     {
         return Storage::disk($this->outputDisk)->files($this->outputPath);
     }
 
 
-
+    /**
+     * Разбивает SQL-текст на отдельные statements по символу ';'.
+     * Учитывает одинарные/двойные кавычки, обратные апострофы,
+     * экранирование backslash'ем внутри строк (MySQL-стиль) и комментарии
+     * (комментарии игнорируются только вне строковых литералов).
+     */
     private function splitSqlStatements(string $sqlText): array
     {
         $statements = [];
@@ -259,6 +256,7 @@ class SqlDataHandler
         $inBacktick = false;
         $inLineComment = false;
         $inBlockComment = false;
+        $escaped = false;
 
         $length = strlen($sqlText);
         for ($i = 0; $i < $length; $i++) {
@@ -276,15 +274,33 @@ class SqlDataHandler
                 }
                 continue;
             }
-            if ($char === '-' && $next === '-') {
-                $inLineComment = true;
-                $i++;
+
+            // Если находимся внутри строки и предыдущий символ был '\', то
+            // текущий символ считается экранированным и не влияет на состояние кавычек
+            if ($escaped) {
+                $current[] = $char;
+                $escaped = false;
                 continue;
             }
-            if ($char === '/' && $next === '*') {
-                $inBlockComment = true;
-                $i++;
+
+            if (($inSingleQuote || $inDoubleQuote) && $char === '\\') {
+                $current[] = $char;
+                $escaped = true;
                 continue;
+            }
+
+            // Комментарии распознаём только вне строковых литералов
+            if (!$inSingleQuote && !$inDoubleQuote && !$inBacktick) {
+                if ($char === '-' && $next === '-') {
+                    $inLineComment = true;
+                    $i++;
+                    continue;
+                }
+                if ($char === '/' && $next === '*') {
+                    $inBlockComment = true;
+                    $i++;
+                    continue;
+                }
             }
 
             if ($char === "'" && !$inDoubleQuote && !$inBacktick) {
@@ -361,6 +377,15 @@ class SqlDataHandler
         $sql = $this->replaceOutsideStrings($sql, '/\bTINYTEXT\b/i', 'VARCHAR');
         $sql = $this->replaceOutsideStrings($sql, '/\bTEXT\b/i', 'VARCHAR');
 
+        // 6.1 Бинарные типы (BLOB) — до этого не обрабатывались вовсе,
+        // из-за чего DuckDB падал с "Type with name mediumblob does not exist!"
+        $sql = $this->replaceOutsideStrings($sql, '/\bLONGBLOB\b/i', 'BLOB');
+        $sql = $this->replaceOutsideStrings($sql, '/\bMEDIUMBLOB\b/i', 'BLOB');
+        $sql = $this->replaceOutsideStrings($sql, '/\bTINYBLOB\b/i', 'BLOB');
+        $sql = $this->replaceOutsideStrings($sql, '/\bBINARY\(\d+\)/i', 'BLOB');
+        $sql = $this->replaceOutsideStrings($sql, '/\bVARBINARY\(\d+\)/i', 'BLOB');
+        // "BLOB" без суффикса уже валиден для DuckDB, отдельно заменять не нужно
+
         // 7. ENUM
         $sql = preg_replace('/\bENUM\s*\(\s*(?:\'[^\']*\'(?:\s*,\s*)?)+\)/i', 'VARCHAR', $sql);
 
@@ -395,11 +420,98 @@ class SqlDataHandler
             $sql = "DROP TABLE IF EXISTS {$tableName};\n" . $sql;
         }
 
+        // 12.1 Конвертация MySQL backslash-escaping в стандартный SQL (doubled quote).
+        // Выполняется ПОСЛЕ всех replaceOutsideStrings-преобразований, так как
+        // они рассчитаны на backslash-escaped строки. После этого шага строки
+        // приведены к диалекту, который понимает DuckDB.
+        // Без этого шага строки вида 'D\'abondance, Co.' обрывались после
+        // backslash-экранированной кавычки и DuckDB падал с
+        // "Parser Error: syntax error at or near ..."
+        $sql = $this->convertMysqlEscapesToStandard($sql);
+
         // 13. Очистка
         $sql = preg_replace('/,\s*\)/', ')', $sql);
         $sql = preg_replace('/\s+/', ' ', $sql);
 
+
         return trim($sql);
+    }
+
+    /**
+     * Преобразует MySQL backslash-escaping внутри одинарных кавычек
+     * в стандартный SQL escaping (удвоение кавычки), понятный DuckDB.
+     * \'  -> ''
+     * \\  -> \
+     * \n, \r, \t, \0, \Z, \" -> соответствующий символ
+     * \%  \_ -> оставляем как есть (используются в LIKE-паттернах)
+     * неизвестные escape-последовательности оставляем без изменений
+     */
+    private function convertMysqlEscapesToStandard(string $sql): string
+    {
+        $result = '';
+        $length = strlen($sql);
+        $inSingleQuote = false;
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $sql[$i];
+
+            if ($inSingleQuote && $char === '\\' && $i + 1 < $length) {
+                $next = $sql[$i + 1];
+                switch ($next) {
+                    case "'":
+                        $result .= "''";
+                        $i++;
+                        break;
+                    case '\\':
+                        $result .= '\\';
+                        $i++;
+                        break;
+                    case 'n':
+                        $result .= "\n";
+                        $i++;
+                        break;
+                    case 'r':
+                        $result .= "\r";
+                        $i++;
+                        break;
+                    case 't':
+                        $result .= "\t";
+                        $i++;
+                        break;
+                    case '0':
+                        $result .= "\0";
+                        $i++;
+                        break;
+                    case '"':
+                        $result .= '"';
+                        $i++;
+                        break;
+                    case 'Z':
+                        $result .= "\x1a";
+                        $i++;
+                        break;
+                    case '%':
+                    case '_':
+                        // Оставляем как есть — используется в LIKE
+                        $result .= '\\' . $next;
+                        $i++;
+                        break;
+                    default:
+                        // Неизвестная escape-последовательность — оставляем без изменений
+                        $result .= $char;
+                        break;
+                }
+                continue;
+            }
+
+            if ($char === "'") {
+                $inSingleQuote = !$inSingleQuote;
+            }
+
+            $result .= $char;
+        }
+
+        return $result;
     }
 
     private function replaceOutsideStrings(string $sql, string $pattern, string $replacement): string
