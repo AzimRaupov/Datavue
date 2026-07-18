@@ -1,15 +1,18 @@
 <?php
 
+use App\Helpers\Task\RouterTask;
 use App\Jobs\RouterTaskJob;
 use App\Models\Task;
 use Illuminate\Support\Facades\Route;
 
 
 Route::get('/test',function(){
-
-    $d=new \App\Helpers\Dashboard\DashboardReGenerator(11,4);
-    $d->determineChanges(" 'виджет Количество продаж по категориям' чтобы был первым");
-    $d->applyChanges();
+    $task_list = Task::query()->where('name', 'generate_dashboard')
+        ->orWhere('name', 'response_in_chat')
+        ->select('name', 'description')
+        ->get();
+    $router= new RouterTask(3,25,$task_list,null,1);
+    dd($router->define());
 
 });
 Route::view('/admin', 'admin');

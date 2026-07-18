@@ -15,16 +15,18 @@ class RouterTaskJob implements ShouldQueue
     public $chatId;
     public $task_list;
     public $dashboardId;
+    public $userId;
 
     /**
      * Create a new job instance.
      */
-    public function __construct($currentMessageId,$chatId,$task_list,$dashboardId)
+    public function __construct($currentMessageId,$chatId,$task_list,$dashboardId,$userId)
     {
         $this->currentMessageId = $currentMessageId;
         $this->chatId = $chatId;
         $this->task_list = $task_list;
         $this->dashboardId = $dashboardId;
+        $this->userId = $userId;
     }
 
     /**
@@ -34,7 +36,7 @@ class RouterTaskJob implements ShouldQueue
     {
 
 
-        $router= new RouterTask($this->currentMessageId,$this->chatId,$this->task_list,$this->dashboardId);
+        $router= new RouterTask($this->currentMessageId,$this->chatId,$this->task_list,$this->dashboardId,$this->userId);
         $router->define();
     }
 }

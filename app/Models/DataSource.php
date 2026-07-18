@@ -10,6 +10,8 @@ class DataSource extends Model
         'company_id',
         'chat_id',
         'type_id',
+        'extracted_data_id',
+        'connection_type',
         'name',
         'host',
         'port',

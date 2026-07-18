@@ -1,6 +1,12 @@
 <script setup>
-import Header from "./Header.vue";
+import { ref, provide } from 'vue';
 
+import Header from "./Header.vue";
+import Toast from './Toast.vue';
+
+
+const toastRef = ref(null);
+provide('toast', toastRef);
 document.addEventListener("DOMContentLoaded", function () {
     var themeConfig = {
         theme: "light",
@@ -61,6 +67,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
 
     </div>
+    <Toast ref="toastRef" />
 
     <div class="settings">
         <a

@@ -20,11 +20,35 @@ class StoreRequest extends FormRequest
      *
      * @return array<string, ValidationRule|array<mixed>|string>
      */
-    public function rules(): array
-    {
-        return [
-            'message' => 'required|string|min:1',
-            'data_file' => 'nullable|file|mimes:csv,txt,xlx,xls,xlsx,pdf,doc,docx,sql',
+public function rules(): array
+{
+    $rules = [
+        'connection_type' => 'required|in:local,remote',
+        'version' => 'nullable|string',
+    ];
+
+    if ($this->connection_type === 'remote') {
+        $rules += [
+            'type_id' => 'required|integer|exists:data_source_types,id',
+            'host' => 'required|string',
+            'port' => 'required|integer',
+            'database' => 'required|string',
+            'username' => 'required|string',
+            'password' => 'nullable|string',
         ];
+    } else {
+        $rules += [
+            'data_file' => 'required|file|mimes:csv,txt,xlx,xls,xlsx,pdf,doc,docx,sql',
+        ];
+
+        if ($this->file('data_file')?->getClientOriginalExtension() === 'sql') {
+            $rules += [
+                'type_id' => 'required|integer|exists:data_source_types,id',
+            ];
+        }
     }
+
+    return $rules;
+}
+
 }

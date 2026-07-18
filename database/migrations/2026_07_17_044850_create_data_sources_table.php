@@ -17,19 +17,16 @@ return new class extends Migration
             $table->foreignId('company_id')->constrained()->cascadeOnDelete();
             $table->foreignId('chat_id')->constrained('ai_chats')->cascadeOnDelete();
             $table->foreignId('type_id')->constrained('data_source_types');
-
-            $table->string('name');
-
+            $table->foreignId('extracted_data_id')->nullable()->constrained('extracted_data');
+            $table->enum('connection_type',['local','remote'])->default('local');
+            $table->string('name')->nullable();
             $table->string('host')->nullable();
             $table->unsignedSmallInteger('port')->nullable();
-
             $table->string('database')->nullable();
             $table->string('username')->nullable();
             $table->text('password')->nullable();
-
             $table->text('path')->nullable();
-
-            $table->string('version', 20);
+            $table->string('version', 20)->nullable();
             $table->json('options')->nullable();
 
             $table->timestamps();

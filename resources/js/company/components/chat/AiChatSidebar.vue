@@ -151,10 +151,7 @@ async function sendMessage() {
 
     if (!text || loading.value) return;
 
-    if (!dashboardId) {
-        error.value = 'Дашборд ещё не загружен, подождите секунду и попробуйте снова';
-        return;
-    }
+
 
     loading.value = true;
     error.value = null;

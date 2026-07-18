@@ -6,5 +6,5 @@ use Illuminate\Database\Eloquent\Model;
 
 class DataSourceType extends Model
 {
-    protected $fillable =['name','description','group'];
+    protected $fillable =['name','description'];
 }

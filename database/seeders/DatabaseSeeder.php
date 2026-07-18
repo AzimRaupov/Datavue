@@ -34,7 +34,8 @@ class DatabaseSeeder extends Seeder
             DonutChartSeeder::class,
             TaskSeeder::class,
             TaskStatusSeeder::class,
-            BarChartSeeder::class
+            BarChartSeeder::class,
+            DataSourceTypesSeeder::class,
         ]);
 
     }

@@ -32,7 +32,7 @@ class AIService
     {
         $open_ai = new OpenAi($this->apiKey);
 
-        $systemPrompt ??= 'Ты — Senior Data Analyst и эксперт.';
+        $systemPrompt ??= 'Ты — Senior DataSource Analyst и эксперт.';
         $response = $open_ai->chat([
             'model'             => $this->model,
             'messages'          => [

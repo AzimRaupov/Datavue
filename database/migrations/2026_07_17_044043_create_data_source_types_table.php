@@ -14,8 +14,7 @@ return new class extends Migration
         Schema::create('data_source_types', function (Blueprint $table) {
             $table->id();
             $table->string('name');
-            $table->enum('group',['local','remote_database'])->default('local');
-            $table->text('description');
+            $table->text('description')->nullable();
             $table->timestamps();
         });
     }

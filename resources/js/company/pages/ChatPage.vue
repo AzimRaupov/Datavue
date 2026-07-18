@@ -22,6 +22,7 @@ const echo = new Echo({
     disableStats: true,
     enabledTransports: ['ws'],
 });
+const logo = '/static/illustrations/light/boy-and-laptop.png';
 
 const route = useRoute();
 const router = useRouter();
@@ -40,6 +41,10 @@ const widgets = ref([]);
 let currentChannelName = null;
 let isRefreshing = false;
 
+// Есть ли у чата хотя бы один дашборд.
+// Используется, чтобы скрыть select и показать заглушку по центру блока.
+const hasDashboards = computed(() => dashboards.value.length > 0);
+
 function widgetKey(widget) {
     return [
         widget.id,
@@ -57,6 +62,15 @@ function toId(val) {
 }
 
 async function getCurrentDashboard() {
+    if (!hasDashboards.value) {
+        // Дашбордов нет вообще — просто выходим,
+        // блок с заглушкой отрисуется в шаблоне.
+        selectedDashboardId.value = null;
+        currentDashboard.value = {};
+        widgets.value = [];
+        return;
+    }
+
     if (!selectedDashboardId.value) {
         selectedDashboardId.value = toId(dashboards.value[0]?.id) ?? null;
     }
@@ -219,12 +233,13 @@ body.chat-page .page {
                 <div class="container-xl">
                     <div class="row g-2 align-items-center">
                         <div class="col">
-                            <h1 class="page-title">{{ currentDashboard?.name }}</h1>
+                            <h1 v-if="hasDashboards" class="page-title">{{ currentDashboard?.name }}</h1>
                         </div>
 
                         <div class="col-auto ms-auto d-print-none">
                             <div class="d-flex align-items-center gap-2 flex-wrap">
                                 <select
+                                    v-if="hasDashboards"
                                     class="form-select"
                                     style="width: 220px; max-width: 100%;"
                                     v-model="selectedDashboardId"
@@ -273,19 +288,40 @@ body.chat-page .page {
 
             <div class="container-xl">
                 <div
-                    v-for="widget in widgets"
-                    :key="widgetKey(widget)"
-                    class="row row-cards widgets-content"
+                    v-if="!hasDashboards"
+                    class="d-flex align-items-center justify-content-center"
+                    style="min-height: 60vh;"
                 >
-                    <div class="col-12 mt-4">
-                        <h3 class="h3">{{ widget.title }}</h3>
-
-                        <WidgetContainer
-                            :widget="widget"
-                            :chat-id="chatId"
-                        />
+                    <div class="text-center">
+                        <img
+                            :src="logo"
+                            alt="boy-and-laptop"
+                            class="img-fluid d-block mx-auto mb-4"
+                            style="max-width: 260px; width: 100%;"
+                        >
+                        <h3 class="mb-2">Дашбордов пока нет</h3>
+                        <p class="text-muted mb-0">
+                            Как только для этого чата будет создан дашборд, он появится здесь
+                        </p>
                     </div>
                 </div>
+
+                <template v-else>
+                    <div
+                        v-for="widget in widgets"
+                        :key="widgetKey(widget)"
+                        class="row row-cards widgets-content"
+                    >
+                        <div class="col-12 mt-4">
+                            <h3 class="h3">{{ widget.title }}</h3>
+
+                            <WidgetContainer
+                                :widget="widget"
+                                :chat-id="chatId"
+                            />
+                        </div>
+                    </div>
+                </template>
             </div>
         </div>
 

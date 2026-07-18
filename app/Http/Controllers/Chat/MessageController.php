@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Jobs\RouterTaskJob;
 use App\Models\AiChat;
 use App\Models\AiChatMessage;
+use App\Models\Dashboard;
 use App\Models\Task;
 use Illuminate\Http\Request;
 
@@ -38,7 +39,7 @@ class MessageController extends Controller
         $request->validate([
             'chat_id' => 'required|integer|exists:ai_chats,id',
             'message' => 'required|string|min:1',
-            'dashboard_id' =>'required|integer|exists:dashboards,id',
+            'dashboard_id' =>'nullable|integer|exists:dashboards,id',
         ]);
 
         $user = auth()->user();
@@ -52,13 +53,22 @@ class MessageController extends Controller
             'chat_id' => $chat->id,
             'message' => $request->message,
         ]);
-        $task_list = Task::query()->where('name','re_generate_dashboard')
-            ->orWhere('name','response_in_chat')
-            ->select('name','description')
-            ->get();
+        $dashboard_count = Dashboard::query()->where('chat_id',$chat->id)->count();
+        if($dashboard_count>0) {
+            $task_list = Task::query()->where('name', 're_generate_dashboard')
+                ->orWhere('name', 'response_in_chat')
+                ->select('name', 'description')
+                ->get();
+        }
+        else{
+            $task_list = Task::query()->where('name', 'generate_dashboard')
+                ->orWhere('name', 'response_in_chat')
+                ->select('name', 'description')
+                ->get();
+        }
 
 
-        dispatch(new RouterTaskJob($message->id,$chat->id,$task_list->toArray(),$request->dashboard_id));
+        dispatch(new RouterTaskJob($message->id,$chat->id,$task_list->toArray(),$request->dashboard_id,$user->id));
         return response()->json($message, 201);
     }
 

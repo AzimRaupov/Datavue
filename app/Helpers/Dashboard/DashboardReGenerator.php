@@ -3,6 +3,7 @@
 namespace App\Helpers\Dashboard;
 
 use App\Helpers\Ai\AIService;
+use App\Helpers\Ai\Dashboard\DashboardReGeneratorAi;
 use App\Models\AiChat;
 use App\Models\AiChatMessage;
 use App\Models\AiChatTask;
@@ -26,17 +27,17 @@ class DashboardReGenerator
     public $widgets;
 
     private string $availableWidgetsJson;
-
     public $duckdb;
     public $tables;
 
     public array $operations = [];
     public ?Dashboard $newDashboard = null;
-
     public $tasks_statuses;
     public $tasks;
     public $message;
     public array $finalWidgets = [];
+    private DashboardReGeneratorAi $dashboardReGeneratorAi;
+
 
     public function __construct(
         int $dashboardId,
@@ -70,6 +71,8 @@ class DashboardReGenerator
         $this->tasks = Task::query()
             ->pluck('id', 'name')
             ->toArray();
+
+        $this->dashboardReGeneratorAi = new DashboardReGeneratorAi();
     }
 
     public function determineChanges(string $instruction): void
@@ -103,102 +106,14 @@ class DashboardReGenerator
 
         $tablesJson = json_encode($this->tables, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
 
-        $system = "Ты AI агент аналитической платформы DataVue. Твоя задача — по запросу пользователя точно определить минимальный набор операций над дашбордом (add/update/move/delete), не создавая дублей и не теряя существующие виджеты, которые пользователь не просил менять.";
+        $resultDefine = $this->dashboardReGeneratorAi->defineChanges($widgetsJson,$tablesJson,$this->availableWidgetsJson,$this->instruction);
 
-        $prompt = <<<PROMPT
-Ты анализируешь запрос пользователя к дашборду DataVue.
-
-Твоя задача — определить, какие изменения необходимо выполнить над существующим дашбордом, чтобы итоговый набор и порядок виджетов точно соответствовал запросу.
-
-=== Текущие виджеты дашборда (в текущем порядке, поле position — их текущая позиция, нумерация с 0) ===
-{$widgetsJson}
-
-=== Все таблицы, доступные в базе данных ===
-{$tablesJson}
-
-=== Список доступных типов виджетов (используются в поле "widget_name") ===
-{$this->availableWidgetsJson}
-
-=== Запрос пользователя ===
-"{$this->instruction}"
-
-=== Допустимые типы операции ===
-- add — создать новый виджет, которого сейчас нет на дашборде.
-- update — изменить содержание/визуализацию/данные существующего виджета (виджет остаётся тем же по смыслу, но пересчитывается заново).
-- move — переместить существующий виджет на новую позицию БЕЗ изменения его содержимого. Используй эту операцию, когда пользователь просит изменить только порядок/расположение/место виджетов на дашборде, ничего не меняя в их данных или визуализации.
-- delete — удалить существующий виджет с дашборда.
-
-=== Правила определения типа операции ===
-1. Если пользователь просит изменить только порядок или расположение уже существующих виджетов (например "передвинь", "поставь первым", "поменяй местами", "должны быть в начале/в конце") — используй ТОЛЬКО "move" для этих виджетов. Никогда не используй "add" для перемещения — это создаст дубликат существующего виджета. Никогда не используй "update" для перемещения — это впустую пересоздаст контент виджета.
-2. Используй "add" только тогда, когда на дашборде нет виджета, который бы уже показывал то, что просит пользователь.
-3. Используй "update", когда существующий виджет нужно оставить (тот же смысл/место в дашборде), но изменить его данные, метрику, тип визуализации или формулировку.
-4. Верни только те операции, которые реально требуются по запросу. Все остальные виджеты не упоминай вообще — они автоматически останутся на дашборде без изменений.
-
-=== Правила по полям ===
-5. Для "update", "move" и "delete" обязательно используй существующий id виджета из списка выше в поле widget_id.
-6. Для "add" всегда указывай "widget_id": null.
-7. Никогда не придумывай несуществующие widget_id — используй только те, что реально есть в списке текущих виджетов.
-8. "widget_name" обязателен для "add" и должен быть строго одним из значений поля "name" в списке доступных типов виджетов. Для "update" указывай новый widget_name только если тип визуализации должен смениться, иначе оставь прежний. Для "delete" и "move" widget_name не нужен (null).
-9. Каждый id существующего виджета должен участвовать не более чем в одной операции.
-10. "instruction" заполняется только для "add" и "update" и должно описывать, как именно должен выглядеть виджет и что именно он показывает (без выдуманных полей схемы, без упоминания номера/позиции). Для "delete" и "move" instruction = null.
-11. "title" обязателен для "add" и "update" — короткий, точный, человекочитаемый заголовок, который отражает реальное содержание виджета (конкретную метрику/срез данных), а не общие фразы вроде "Новый виджет" или "Виджет 1". Для "delete" и "move" title = null.
-12. "tables" — только реально существующие и релевантные таблицы из схемы, нужен для "add" и "update". Для "delete" и "move" — пустой массив [].
-13. "position" — целевая позиция виджета в ИТОГОВОМ дашборде после применения всех операций (нумерация с 0, учитывай как изменяемые/новые, так и все нетронутые виджеты вместе). Указывай "position" для "add", "update" и "move" всегда, исходя из смысла запроса (если порядок не важен — ставь позицию в конец списка). Для "delete" position = null.
-14. Если ни один виджет не требует изменений — верни пустой массив [].
-
-=== Формат ответа ===
-Верни ТОЛЬКО валидный JSON-массив объектов, без текста и markdown до или после JSON.
-
-[
-  {
-    "widget_id": 5,
-    "operation_type": "update",
-    "widget_name": "",
-    "title": "Продажи по месяцам",
-    "position": 2,
-    "instruction": "Столбчатая диаграмма, сравнивающая объём продаж по месяцам",
-    "tables": ["orders"]
-  },
-  {
-    "widget_id": null,
-    "operation_type": "add",
-    "widget_name": "",
-    "title": "Количество продаж по категориям",
-    "position": 0,
-    "instruction": "Карточки с количеством продаж в разрезе категорий товаров",
-    "tables": ["orders", "products"]
-  },
-  {
-    "widget_id": 3,
-    "operation_type": "move",
-    "widget_name": null,
-    "title": null,
-    "position": 1,
-    "instruction": null,
-    "tables": []
-  },
-  {
-    "widget_id": 9,
-    "operation_type": "delete",
-    "widget_name": null,
-    "title": null,
-    "position": null,
-    "instruction": null,
-    "tables": []
-  }
-]
-PROMPT;
-        $response = (new AIService(
-            responseFormat: 'json',
-            tokens: 5000
-        ))->ask($prompt, $system);
-
-        $operations = $response['content'] ?? null;
+        $operations = $resultDefine['content'] ?? null;
 
         if (!is_array($operations)) {
             Log::error('DashboardGenerator: invalid AI response for determineChanges', [
                 'dashboard_id' => $this->dashboard->id ?? null,
-                'response' => $response,
+                'response' => $resultDefine,
             ]);
             $operations = [];
         }
@@ -441,47 +356,7 @@ PROMPT;
 
         $widgetSchemaJson = json_encode($widget, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
 
-        $system = <<<'TEXT'
-Ты — специализированный генератор автономных Python-скриптов для аналитики данных платформы DataVue.
-Твоя задача — переписать Python-код существующего виджета под новые требования: чистый, эффективный, рабочий код на основе DuckDB и Pandas.
-TEXT;
-
-        $prompt = <<<PROMPT
-Целевая схема виджета (тип, формат вывода):
-{$widgetSchemaJson}
-
-Схема доступных таблиц DuckDB, релевантных виджету:
-{$tablesSchemeJson}
-
-Текущий виджет дашборда (для контекста, что было раньше):
-{$currentWidgetJson}
-
-Что нужно изменить (инструкция):
-{$operation['instruction']}
-
-ОБЯЗАТЕЛЬНАЯ СТРУКТУРА СКРИПТА:
-1. Импорт модулей: `duckdb`, `pandas as pd`, `json`, `sys`, `argparse`.
-2. Парсинг единственного аргумента `--path` (через sys.argv или argparse). Других аргументов быть не должно.
-3. Подключение к базе данных через `duckdb.connect()`.
-4. Получение DataFrame через `.df()`, финальная подгонка под JSON-структуру.
-5. Вывод итогового JSON в stdout через `print(json.dumps(..., ensure_ascii=False))`.
-
-ВАЖНО:
-- Используй только реально существующие таблицы и поля из приведённой схемы. Не выдумывай поля.
-- Если нужных данных нет — сформируй пустой результат, соответствующий целевой схеме.
-- Можно использовать любые стандартные библиотеки Python и pandas.
-- Никаких комментариев в коде.
-- Никакого markdown (без ```).
-- Итоговый вывод скрипта должен строго соответствовать целевой схеме виджета "$widget->name".
-
-Ответ строго валидный JSON-объект, без пояснений и markdown:
-{"python_code": ""}
-PROMPT;
-
-        $response = (new AIService(
-            responseFormat: 'json',
-            tokens: 8000,
-        ))->ask($prompt, $system);
+        $response = $this->dashboardReGeneratorAi->reGenerateWidget($widgetSchemaJson,$tablesSchemeJson,$currentWidgetJson,$operation['instruction'],$widget->name);
 
         $result = $response['content'] ?? null;
         if (!is_array($result) || empty($result['python_code'])) {

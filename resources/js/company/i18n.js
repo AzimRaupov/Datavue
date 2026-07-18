@@ -28,7 +28,7 @@ const messages = {
             detect_schema_dashboard: 'Creating dashboard schema',
             define_task: 'Defining task',
             generate_widgets_dashboard: 'Generating dashboard widgets',
-            data_processing: 'Data processing',
+            data_processing: 'DataSource processing',
 
         },
         chatPage: {
