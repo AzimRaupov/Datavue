@@ -71,8 +71,8 @@ onMounted(async () => {
                                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon text-blue"><path d="M4 4h16v4h-16z" /><path d="M4 12h16v8h-16z" /><path d="M4 12v-4" /></svg>
                                 </div>
                                 <div>
-                                    <div class="text-secondary fs-6">Всего проектов</div>
-                                    <div class="h2 mb-0">7</div>
+                                    <div class="subheader">Всего проектов</div>
+                                    <div class="h3 mb-0">7</div>
                                 </div>
                             </div>
                         </div>
@@ -84,8 +84,8 @@ onMounted(async () => {
                                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon text-purple"><path d="M4 20l4 -9l4 5l3 -4l5 8" /></svg>
                                 </div>
                                 <div>
-                                    <div class="text-secondary fs-6">Всего дашбордов</div>
-                                    <div class="h2 mb-0">19</div>
+                                    <div class="subheader">Всего дашбордов</div>
+                                    <div class="h3 mb-0">19</div>
                                 </div>
                             </div>
                         </div>
@@ -97,8 +97,8 @@ onMounted(async () => {
                                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon text-green"><path d="M14 3v4a1 1 0 0 0 1 1h4" /><path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2z" /></svg>
                                 </div>
                                 <div>
-                                    <div class="text-secondary fs-6">Загружено файлов</div>
-                                    <div class="h2 mb-0">24</div>
+                                    <div class="subheader">Загружено файлов</div>
+                                    <div class="h3 mb-0">24</div>
                                 </div>
                             </div>
                         </div>
@@ -110,8 +110,8 @@ onMounted(async () => {
                                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon text-orange"><path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0 -18 0" /><path d="M12 7v5l3 3" /></svg>
                                 </div>
                                 <div>
-                                    <div class="text-secondary fs-6">Активность за неделю</div>
-                                    <div class="h2 mb-0">+12%</div>
+                                    <div class="subheader">Активность за неделю</div>
+                                    <div class="h3 mb-0">+12%</div>
                                 </div>
                             </div>
                         </div>
@@ -136,9 +136,9 @@ onMounted(async () => {
                             <div class="card-body pb-2">
                                 <div class="d-flex align-items-center justify-content-between mb-2">
                                     <div class="subheader text-muted">22.02.2026</div>
-                                    <span class="badge bg-blue-lt">CSV</span>
+                                    <span class="badge bg-primary-lt">CSV</span>
                                 </div>
-                                <h3 class="card-title mb-3 text-truncate">
+                                <h3 class="card-title">
                                     <router-link
                                         :to="`/chat/${chat.id}`"
                                         class="text-reset"
@@ -146,11 +146,13 @@ onMounted(async () => {
                                         {{ chat.title }}
                                     </router-link>
                                 </h3>
-                                <div class="subheader text-secondary mb-2">Связанные дашборды</div>
+                                <div class="text-secondary mt-2">Связанные дашборды</div>
                             </div>
                             <div v-for="dashboard in chat.dashboards" class="list-group list-group-flush border-top">
                                 <router-link :to="`/chat/${chat.id}/${dashboard.id}`" class="list-group-item list-group-item-action d-flex align-items-center py-2 px-3">
-                                    <span class="status-dot status-primary me-2 "></span>
+                                    <div class="col-auto align-self-center" >
+                                        <div class="badge bg-primary" style="border-radius: 2.2px;"></div>
+                                    </div>
                                     <span class="text-truncate">{{ dashboard.name }}</span>
                                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon ms-auto text-muted icon-xs"><path d="M9 6l6 6l-6 6" /></svg>
                                 </router-link>
@@ -192,7 +194,7 @@ onMounted(async () => {
                             <div class="card-body">
                                 <div class="d-flex align-items-center justify-content-between mb-2">
                                     <div class="d-flex align-items-center">
-                                        <span class="status-dot status-blue me-2"></span>
+                                        <span class="status-dot status-primary me-2"></span>
                                         <span class="subheader text-muted">21.02.2026</span>
                                     </div>
                                     <div class="dropdown">

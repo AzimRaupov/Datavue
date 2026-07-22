@@ -4,7 +4,7 @@ namespace App\Helpers\DataSource\Handlers;
 
 use App\Helpers\PythonRunner;
 use App\Models\AiChatMessage;
-use App\Models\ExtractedData;
+use App\Models\DataSourceExtraction;
 use App\Models\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;

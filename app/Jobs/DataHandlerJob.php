@@ -7,7 +7,7 @@ use App\Helpers\DataSource\Handlers\TableDataHandler;
 use App\Helpers\PythonRunner;
 use App\Models\AiChat;
 use App\Models\AiChatTask;
-use App\Models\ExtractedData;
+use App\Models\DataSourceExtraction;
 use App\Models\Task;
 use App\Models\TaskStatus;
 use App\Models\UploadedFile;
@@ -99,7 +99,7 @@ class DataHandlerJob implements ShouldQueue
             if ($resultCreateDb['exit_code'] !== 0 || $lastLine !== 'ok') {
                 throw new \Exception("Ошибка создания базы данных DuckDB. Ответ: " . json_encode($resultCreateDb));
             }
-            ExtractedData::create([
+            DataSourceExtraction::create([
                 'file_id'    => $this->uploadFile->id,
                 'company_id' => $this->chat->company->id,
                 'chat_id'    => $this->chat->id,

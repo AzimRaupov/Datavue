@@ -3,12 +3,15 @@
 namespace App\Helpers\Dashboard;
 
 use App\Helpers\Ai\AIService;
-use App\Helpers\Ai\Dashboard\DashboardReGeneratorAi;
+use App\Helpers\Ai\DashboardAi;
+use App\Helpers\DataSource\CodeTemplater;
+use App\Helpers\DataSource\ConnectionProviderRouter;
 use App\Models\AiChat;
 use App\Models\AiChatMessage;
 use App\Models\AiChatTask;
 use App\Models\Dashboard;
 use App\Models\DashboardWidget;
+use App\Models\DataSource;
 use App\Models\Task;
 use App\Models\TaskStatus;
 use App\Models\Widget;
@@ -27,7 +30,7 @@ class DashboardReGenerator
     public $widgets;
 
     private string $availableWidgetsJson;
-    public $duckdb;
+    public $connectionProviderRouter;
     public $tables;
 
     public array $operations = [];
@@ -36,9 +39,11 @@ class DashboardReGenerator
     public $tasks;
     public $message;
     public array $finalWidgets = [];
-    private DashboardReGeneratorAi $dashboardReGeneratorAi;
+    private DashboardAi $dashboardReGeneratorAi;
+    public $dataSource;
+   public $dbSchema;
 
-
+   public $codeTemplate;
     public function __construct(
         int $dashboardId,
         int $chatId,
@@ -47,14 +52,14 @@ class DashboardReGenerator
         $this->dashboard = Dashboard::findOrFail($dashboardId);
         $this->chat = AiChat::with('extractedData')->findOrFail($chatId);
         $this->message = AiChatMessage::find($messageId);
+        $this->dataSource = DataSource::query()->where('chat_id', $chatId)->with('type', 'extracted')->first();
+
         $this->dashboardWidgets = DashboardWidget::query()
             ->where('dashboard_id', $dashboardId)
             ->orderBy('position')
             ->get();
 
         $this->widgets = Widget::all();
-        $this->duckdb = new DuckDB($this->chat->extractedData->data_path);
-        $this->tables = $this->duckdb->run("SHOW TABLES;");
         $this->availableWidgetsJson = json_encode(
             $this->widgets
                 ->map(fn($widget) => [
@@ -71,10 +76,43 @@ class DashboardReGenerator
         $this->tasks = Task::query()
             ->pluck('id', 'name')
             ->toArray();
-
-        $this->dashboardReGeneratorAi = new DashboardReGeneratorAi();
+        $this->connectionProviderRouter = new ConnectionProviderRouter($this->dataSource->id);
+        $this->tables=$this->connectionProviderRouter->showTables();
+        $this->dashboardReGeneratorAi = new DashboardAi();
+        $this->codeTemplate = new CodeTemplater($this->dataSource->id);
     }
+    public function fetchSchemaDb(?array $tables = null)
+    {
+        // Если таблицы не переданы — получаем все таблицы
+        $tables = $tables ?? $this->connectionProviderRouter->showTables();
 
+        $dbSchema = [];
+
+        foreach ($tables as $tableName) {
+            $columns = $this->connectionProviderRouter->showColumns($tableName);
+
+            $tableColumns = [];
+
+            foreach ($columns as $column) {
+                $columnName = $column['column_name'] ?? null;
+
+                if (!$columnName) {
+                    continue;
+                }
+
+                $tableColumns[$columnName] = [
+                    'type' => $column['type'] ?? 'unknown',
+                    'nullable' => $column['nullable'] ?? 'YES',
+                    'key' => $column['key'] ?? '',
+                    'default' => $column['default'] ?? null,
+                ];
+            }
+
+            $dbSchema[$tableName] = $tableColumns;
+        }
+
+        return $dbSchema;
+    }
     public function determineChanges(string $instruction): void
     {
         $task = AiChatTask::query()->create([
@@ -107,7 +145,6 @@ class DashboardReGenerator
         $tablesJson = json_encode($this->tables, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
 
         $resultDefine = $this->dashboardReGeneratorAi->defineChanges($widgetsJson,$tablesJson,$this->availableWidgetsJson,$this->instruction);
-
         $operations = $resultDefine['content'] ?? null;
 
         if (!is_array($operations)) {
@@ -346,17 +383,20 @@ class DashboardReGenerator
         if ($dashboardWidget->code_path && file_exists($dashboardWidget->code_path)) {
             $currentWidget['python_code'] = file_get_contents($dashboardWidget->code_path);
         }
-
+        $fullCode = $this->codeTemplate->getLibraries()."\n";
+        $fullCode.= $this->codeTemplate->getQueryTemplate()."\n";
+        $fullCode.= file_get_contents($dashboardWidget->code_path)."\n";
+        $fullCode.= $this->codeTemplate->getFooter();
         $currentWidgetJson = json_encode($currentWidget, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
 
         $targetTables = !empty($operation['tables']) ? $operation['tables'] : $currentTables;
 
-        $tablesScheme = $this->duckdb->getSchema($targetTables);
+        $tablesScheme = $this->fetchSchemaDb($targetTables);
         $tablesSchemeJson = json_encode($tablesScheme, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
 
         $widgetSchemaJson = json_encode($widget, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
 
-        $response = $this->dashboardReGeneratorAi->reGenerateWidget($widgetSchemaJson,$tablesSchemeJson,$currentWidgetJson,$operation['instruction'],$widget->name);
+        $response = $this->dashboardReGeneratorAi->reGenerateWidget($widgetSchemaJson,$tablesSchemeJson,$currentWidgetJson,$operation['instruction'],$widget->name,$fullCode);
 
         $result = $response['content'] ?? null;
         if (!is_array($result) || empty($result['python_code'])) {
@@ -383,7 +423,7 @@ class DashboardReGenerator
 
     public function addWidget($operation): ?array
     {
-        $tablesScheme = $this->duckdb->getSchema($operation['tables'] ?? []);
+        $tablesScheme = $this->fetchSchemaDb($operation['tables'] ?? []);
         $tablesJson = json_encode($tablesScheme, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
 
         $widget = Widget::query()

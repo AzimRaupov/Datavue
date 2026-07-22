@@ -4,7 +4,7 @@ namespace App\Helpers\DataSource\Handlers;
 
 use App\Helpers\PythonRunner;
 use App\Models\AiChatMessage;
-use App\Models\ExtractedData;
+use App\Models\DataSourceExtraction;
 use App\Models\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
@@ -28,33 +28,30 @@ class MySqlDataHandler
     {
         ini_set('memory_limit', '2G'); // Выделяем 2 Гигабайта под скрипт
         set_time_limit(300);
-        try {
-            $this->chat = $chat;
-            $this->uploadFile = $uploadFile;
-            $this->storage = $storage;
 
-            $this->pathData = $this->uploadFile->file_path;
+        $this->chat = $chat;
+        $this->uploadFile = $uploadFile;
+        $this->storage = $storage;
 
+        $this->pathData = $this->uploadFile->file_path;
+        $this->outputPath = $storage . '/extracted_data';
 
-            $this->outputPath = $storage . '/extracted_data';
-            Log::info('MySqlDataHandler: начало обработки', [
-                'chat_id' => $chat->id,
-                'upload_id' => $uploadFile->id,
-                'source' => $this->pathData,
-                'output_path' => $this->outputPath,
-            ]);
+        Log::info('MySqlDataHandler: начало обработки', [
+            'chat_id' => $chat->id,
+            'upload_id' => $uploadFile->id,
+            'source' => $this->pathData,
+            'output_path' => $this->outputPath,
+        ]);
 
-            $this->process();
-
-        } catch (\Throwable $e) {
-            $this->isSuccess = false;
-            $this->errorMessage = $e->getMessage();
-
-            Log::error('MySqlDataHandler: ошибка инициализации', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-        }
+        // ВАЖНО: try/catch убран намеренно.
+        // Раньше исключение здесь гасилось (isSuccess=false, errorMessage),
+        // а объект всё равно считался "валидным" и использовался дальше
+        // (->end() возвращал sql_path=null), из-за чего настоящая ошибка
+        // терялась и в контроллере вылезал фатал "Attempt to read property
+        // id on null". Теперь исключение пробрасывается наверх, в
+        // DataSourceRouter::handle(), где оно уже логируется и должно
+        // пробрасываться дальше (см. правку в DataSourceRouter).
+        $this->process();
     }
 
     private function process(): void
@@ -336,6 +333,20 @@ class MySqlDataHandler
         // 1. Идентификаторы
         $sql = str_replace('`', '"', $sql);
 
+        // 1.1 Удаляем COMMENT 'текст' (колоночный и табличный).
+        // ВАЖНО: делаем это ДО замены типов (TEXT->VARCHAR и т.д.), иначе
+        // регэкспы типов могут задеть слова внутри самого текста комментария.
+        // Без этого шага DuckDB падал с "Parser Error: syntax error at or
+        // near COMMENT", потому что MySQL-комментарии к столбцам/таблицам
+        // не входят в синтаксис DuckDB.
+        $sql = preg_replace("/\s*COMMENT\s*=?\s*'(?:[^'\\\\]|\\\\.)*'/is", '', $sql);
+
+        // 1.2 Нулевые MySQL-даты невалидны в DuckDB — превращаем в NULL.
+        // Без этого DuckDB падал с "Conversion Error: date field value out
+        // of range: 0000-00-00".
+        $sql = preg_replace("/'0000-00-00 00:00:00'/", 'NULL', $sql);
+        $sql = preg_replace("/'0000-00-00'/", 'NULL', $sql);
+
         // 2. Удаление MySQL-опций
         $sql = $this->replaceOutsideStrings($sql, '/\s*ENGINE\s*=\s*\w+/i', '');
         $sql = $this->replaceOutsideStrings($sql, '/\s*DEFAULT\s+CHARSET\s*=\s*\w+/i', '');
@@ -514,9 +525,29 @@ class MySqlDataHandler
         return $result;
     }
 
+    /**
+     * Применяет regex-замену только к частям SQL, которые находятся ВНЕ
+     * строковых литералов. Разбивает строку и по одинарным, и по двойным
+     * кавычкам, чтобы не задевать содержимое ИМЕНИ КОЛОНКИ/ТАБЛИЦЫ в
+     * двойных кавычках.
+     *
+     * ИСПРАВЛЕНИЕ: раньше splitter учитывал только одинарные кавычки.
+     * Из-за этого, например, столбец `` `text` `` (после замены backtick
+     * на двойные кавычки превращавшийся в "text") ошибочно попадал под
+     * замену /\bTEXT\b/i -> VARCHAR, потому что regex не видел разницы
+     * между типом TEXT и квотированным идентификатором "text". В итоге
+     * столбец в CREATE TABLE переименовывался, а INSERT продолжал
+     * ссылаться на старое имя -> "Binder Error: does not have a column
+     * with name text".
+     */
     private function replaceOutsideStrings(string $sql, string $pattern, string $replacement): string
     {
-        $parts = preg_split("/('(?:[^'\\\\]|\\\\.)*')/", $sql, -1, PREG_SPLIT_DELIM_CAPTURE);
+        $parts = preg_split(
+            '/(\'(?:[^\'\\\\]|\\\\.)*\'|"(?:[^"\\\\]|\\\\.)*")/',
+            $sql,
+            -1,
+            PREG_SPLIT_DELIM_CAPTURE
+        );
         if ($parts === false) {
             return $sql;
         }

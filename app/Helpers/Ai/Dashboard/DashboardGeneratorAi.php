@@ -3,9 +3,39 @@
 namespace App\Helpers\Ai\Dashboard;
 
 use App\Helpers\Ai\AIService;
+use App\Models\DataSource;
 
 class DashboardGeneratorAi
 {
+    public $codeTemplate;
+     public $codeComponents;
+     public $dataSource;
+    public function __construct($dataSource){
+        $this->dataSource = $dataSource;
+
+        if($dataSource->connection_type){
+
+        }
+        $this->codeComponents=[
+            ['mysql'=>`
+              engine = create_engine(
+    "mysql+pymysql://root:password@localhost/test_db"
+)
+
+
+def query(sql, params=None):
+    with engine.connect() as connection:
+        result = connection.execute(
+            text(sql),
+            params or {}
+        )
+
+        return result
+`,
+                ]
+        ];
+    }
+
     public function generateWidgets($tables, $widgets, $text)
     {
         $prompt = <<<TEXT
@@ -71,26 +101,29 @@ $widgets
 
 ## 📦 ТРЕБОВАНИЯ К JSON:
 
-1. Выводи ТОЛЬКО валидный JSON массив
+1. Выводи ТОЛЬКО валидный JSON объект (НЕ массив, именно объект с ключами "dashboard_name" и "widgets")
 2. Никакого markdown, текста или пояснений
-3. Ключи строго: "name", "title", "instruction", "tables"
+3. Ключи виджета строго: "name", "title", "instruction", "tables"
 4. "name" — только из списка виджетов
 5. "tables" — только реально используемые таблицы из схемы
 6. "title" — короткий человекочитаемый заголовок
 7. "instruction" — строго визуальное описание без выдуманных полей
+8. "dashboard_name" — короткое человекочитаемое название дашборда (обязательный ключ верхнего уровня)
 
 ---
 
-## 📐 ЭТАЛОННЫЙ ФОРМАТ:
-[
-  {
-    "name": "название_виджета_из_списка",
-    "title": "Уникальный заголовок",
-    "instruction": "Описание того, как визуально должен выглядеть график, какие данные группируются и как отображаются (без выдуманных полей)",
-    "tables": []
-  }
-]
-
+## 📐 ЭТАЛОННЫЙ ФОРМАТ (СТРОГО ТАКОЙ, БЕЗ ИСКЛЮЧЕНИЙ — ОБЪЕКТ, НЕ МАССИВ):
+{
+  "dashboard_name": "Название дашборда",
+  "widgets": [
+    {
+      "name": "название_виджета_из_списка",
+      "title": "Уникальный заголовок",
+      "instruction": "Описание визуализации без выдуманных полей",
+      "tables": []
+    }
+  ]
+}
 TEXT;
 
         return (new AIService(responseFormat: 'json'))->ask($prompt);

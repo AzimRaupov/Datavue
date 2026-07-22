@@ -60,6 +60,6 @@ class UploadedFile extends Model
      */
     public function extractedData(): HasMany
     {
-        return $this->hasMany(ExtractedData::class, 'file_id');
+        return $this->hasMany(DataSourceExtraction::class, 'file_id');
     }
 }

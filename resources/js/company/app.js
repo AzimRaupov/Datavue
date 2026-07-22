@@ -10,10 +10,8 @@ import '@tabler/core/dist/css/tabler-vendors.css';
 import '@tabler/core/dist/css/tabler-vendors.rtl.css';
 
 
-import '@tabler/core/dist/js/tabler.js';
-import '@tabler/core/dist/js/tabler-theme.js';
-import '@tabler/core/dist/js/tabler-theme.esm.js';
-import '@tabler/core/dist/js/tabler.esm.js';
+import '@tabler/core/js/tabler.js';
+import '@tabler/core/js/tabler-theme.js';
 
 
 const app = createApp(App);

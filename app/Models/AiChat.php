@@ -32,7 +32,7 @@ class AiChat extends Model
     }
     public function extractedData(): HasOne
     {
-        return $this->hasOne(ExtractedData::class, 'chat_id');
+        return $this->hasOne(DataSourceExtraction::class, 'chat_id');
     }
     public function dashboard(): HasOne
     {

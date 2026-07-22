@@ -287,7 +287,7 @@ const portPlaceholder = computed(() => {
 
 async function getDataSourceTypes() {
     try {
-        const response = await api.get('/data_source_types');
+        const response = await api.get('/data_source/types');
         dataSourceTypes.value = response.data;
     } catch (error) {
         toast?.value?.error('Не удалось загрузить список источников данных');

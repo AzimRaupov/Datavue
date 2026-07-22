@@ -57,6 +57,6 @@ class AiChatMessage extends Model
      */
     public function extractedData(): HasOne
     {
-        return $this->hasOne(ExtractedData::class, 'message_id');
+        return $this->hasOne(DataSourceExtraction::class, 'message_id');
     }
 }

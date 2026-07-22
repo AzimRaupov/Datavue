@@ -22,7 +22,9 @@ const echo = new Echo({
     disableStats: true,
     enabledTransports: ['ws'],
 });
-const logo = '/static/illustrations/light/boy-and-laptop.png';
+const empty_img = '/static/illustrations/light/chart-circle.png';
+
+const generate_img = '/static/illustrations/light/boy-and-laptop.png';
 
 const route = useRoute();
 const router = useRouter();
@@ -44,6 +46,12 @@ let isRefreshing = false;
 // Есть ли у чата хотя бы один дашборд.
 // Используется, чтобы скрыть select и показать заглушку по центру блока.
 const hasDashboards = computed(() => dashboards.value.length > 0);
+
+// Показывать select только когда дашборды есть
+// и текущий дашборд не находится в процессе генерации.
+const showDashboardSelect = computed(() =>
+    hasDashboards.value && currentDashboard.value?.status !== 'generating_scheme'
+);
 
 function widgetKey(widget) {
     return [
@@ -95,9 +103,23 @@ async function refreshWidgets() {
     if (isRefreshing) return;
 
     isRefreshing = true;
+
     try {
         const { data } = await api.get(`/dashboards/${currentDashboard.value.id}`);
         widgets.value = data.widgets ?? [];
+        currentDashboard.value = data;
+
+        // Синхронизируем запись в списке дашбордов (имя/статус),
+        // иначе select в шапке будет показывать устаревшие данные
+        // после того как генерация дашборда завершится.
+        const idx = dashboards.value.findIndex(d => d.id === toId(data.id));
+        if (idx !== -1) {
+            dashboards.value[idx] = {
+                ...dashboards.value[idx],
+                name: data.name,
+                status: data.status,
+            };
+        }
     } catch (err) {
         console.error("Не удалось обновить виджеты:", err);
     } finally {
@@ -239,7 +261,7 @@ body.chat-page .page {
                         <div class="col-auto ms-auto d-print-none">
                             <div class="d-flex align-items-center gap-2 flex-wrap">
                                 <select
-                                    v-if="hasDashboards"
+                                    v-if="showDashboardSelect"
                                     class="form-select"
                                     style="width: 220px; max-width: 100%;"
                                     v-model="selectedDashboardId"
@@ -294,15 +316,33 @@ body.chat-page .page {
                 >
                     <div class="text-center">
                         <img
-                            :src="logo"
+                            :src="empty_img"
                             alt="boy-and-laptop"
                             class="img-fluid d-block mx-auto mb-4"
-                            style="max-width: 260px; width: 100%;"
+                            style="max-width: 270px; width: 100%;"
                         >
                         <h3 class="mb-2">Дашбордов пока нет</h3>
                         <p class="text-muted mb-0">
                             Как только для этого чата будет создан дашборд, он появится здесь
                         </p>
+                    </div>
+                </div>
+                <div
+                    v-if="currentDashboard.status=='generating_scheme'"
+                    class="d-flex align-items-center justify-content-center"
+                    style="min-height: 60vh;"
+                >
+                    <div class="text-center">
+                        <img
+                            :src="generate_img"
+                            alt="boy-and-laptop"
+                            class="img-fluid d-block mx-auto mb-4"
+                            style="max-width: 270px; width: 100%;"
+                        >
+                        <div class="text-secondary mb-3">Генератсия дашборда...</div>
+                        <div class="progress progress-sm">
+                            <div class="progress-bar progress-bar-indeterminate"></div>
+                        </div>
                     </div>
                 </div>
 

@@ -17,7 +17,7 @@ return new class extends Migration
             $table->foreignId('chat_id')->nullable()->constrained('ai_chats')->nullOnDelete();
             $table->string('name')->nullable();
             $table->text('description')->nullable();
-            $table->enum('status', ['generating', 'updating', 'success'])->default('generating');
+            $table->enum('status', ['generating_scheme', 'generating_widgets', 'completed','empty'])->default('empty');
             $table->unsignedInteger('version')->default(1);
             $table->timestamps();
         });

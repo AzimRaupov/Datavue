@@ -8,7 +8,7 @@ use App\Helpers\PythonRunner;
 use App\Models\AiChat;
 use App\Models\AiChatTask;
 use App\Models\DataSourceType;
-use App\Models\ExtractedData;
+use App\Models\DataSourceExtraction;
 use App\Models\Task;
 use App\Models\TaskStatus;
 use App\Models\UploadedFile;
@@ -75,6 +75,8 @@ class DataSourceRouter
             $this->chat_task->status_id = $this->tasks_status['in_progress'];
             $this->chat_task->save();
 
+            $save_handler = null;
+
             if ($this->uploadFile->file_type == 'sql') {
                 if($this->dataSourceType->name == "mysql") {
                     $save_handler = new MySqlDataHandler(
@@ -92,6 +94,19 @@ class DataSourceRouter
                 );
             }
 
+            // ИСПРАВЛЕНИЕ: раньше, если ни одно из условий выше не срабатывало
+            // (например file_type == 'sql', но dataSourceType->name != 'mysql'),
+            // $save_handler оставался неопределённым, и следующая строка
+            // ($save_handler->end()) падала с "Call to a member function end()
+            // on null" — эта ошибка тихо гасилась в catch ниже и наружу
+            // вылезал только фатал на ->id в контроллере.
+            if ($save_handler === null) {
+                throw new \RuntimeException(
+                    "Не удалось определить обработчик для файла типа '{$this->uploadFile->file_type}'"
+                    . ($this->dataSourceType ? " (source type: {$this->dataSourceType->name})" : '')
+                );
+            }
+
             $resultExtract = $save_handler->end();
 
             $resultCreateDb = $this->createDuckdbDatabase($this->dbFilePath,$resultExtract['sql_path']);
@@ -102,7 +117,7 @@ class DataSourceRouter
             if ($resultCreateDb['exit_code'] !== 0 || $lastLine !== 'ok') {
                 throw new \Exception("Ошибка создания базы данных DuckDB. Ответ: " . json_encode($resultCreateDb));
             }
-            $resultExtract = ExtractedData::create([
+            $resultExtract = DataSourceExtraction::create([
                 'file_id'    => $this->uploadFile->id,
                 'company_id' => $this->chat->company->id,
                 'chat_id'    => $this->chat->id,
@@ -111,7 +126,7 @@ class DataSourceRouter
             ]);
 
 
-             return $resultExtract;
+            return $resultExtract;
 
         } catch (\Throwable $e) {
 
@@ -126,6 +141,15 @@ class DataSourceRouter
                 'line' => $e->getLine(),
                 'trace' => $e->getTraceAsString(),
             ]);
+
+            // ИСПРАВЛЕНИЕ: раньше здесь ничего не возвращалось и не
+            // пробрасывалось — handle() молча завершался с null.
+            // Вызывающий код (контроллер) получал $resultHandler = null
+            // и падал на $resultHandler->id с невнятной ошибкой.
+            // Теперь исключение летит дальше — контроллер должен поймать
+            // его сам и вернуть пользователю понятное сообщение
+            // (см. правку ChatController ниже).
+            throw $e;
         }
     }
 

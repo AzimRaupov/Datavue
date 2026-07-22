@@ -101,7 +101,7 @@ class ChatController extends Controller
                    'company_id'=>$chat->company_id,
                    'chat_id' => $chat->id,
                    'type_id' => 1,
-                   'extracted_data_id'=>$resultHandler->id,
+                   'extracted_id'=>$resultHandler->id,
                    'name'=>'test',
                    'connection_type'=>$request->input('connection_type'),
                    'version'=>$request->input('version'),
