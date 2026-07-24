@@ -57,9 +57,9 @@ class ConnectionProviderRouter
         return $this->selectedProvider->showTables();
 
     }
-    public function getSchema()
+    public function getSchema(array $tables = [], array $options = [])
     {
-        return $this->selectedProvider->getSchema();
+        return $this->selectedProvider->getSchema($tables, $options);
     }
     public function showColumns($tableName)
     {

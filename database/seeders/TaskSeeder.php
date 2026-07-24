@@ -15,6 +15,10 @@ class TaskSeeder extends Seeder
     {
         $tasks = [
             [
+             'name'=>'dashboard_creating_plan',
+             'description'=>'dashboard_creating_plan',
+            ],
+            [
                 'name' => 'determine_changes',
                 'description' => 'Определяет, какие виджеты необходимо создать, обновить или удалить на основе инструкции пользователя.',
             ],

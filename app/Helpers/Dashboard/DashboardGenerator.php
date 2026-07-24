@@ -17,6 +17,7 @@ use App\Models\TaskStatus;
 use App\Models\Widget;
 use Illuminate\Support\Facades\File;
 use RuntimeException;
+use function Pest\Laravel\options;
 
 class DashboardGenerator
 {
@@ -37,6 +38,7 @@ class DashboardGenerator
     public $tasks_statuses;
     public $dataSource;
     public $connectionProviderRouter;
+    public $plan;
 
     /**
      * Токен для авторизации сгенерированных Python-скриптов при обращении к API источника данных.
@@ -78,7 +80,7 @@ class DashboardGenerator
             ->pluck('id', 'name')
             ->toArray();
 
-        $this->dashboardGeneratorAi = new DashboardAi();
+        $this->dashboardGeneratorAi = new DashboardAi($this->dataSource);
         $this->connectionProviderRouter = new ConnectionProviderRouter($this->dataSource->id);
         $this->fetchSchemaDb();
     }
@@ -88,11 +90,7 @@ class DashboardGenerator
         return '"' . str_replace('"', '""', $identifier) . '"';
     }
 
-    /**
-     * Приводит строку результата (объект или массив, ассоциативный или числовой)
-     * к единому ассоциативному виду. Если ключи числовые, они остаются числовыми —
-     * это используется как fallback ниже.
-     */
+
     private function normalizeRow($row): array
     {
         if (is_object($row)) {
@@ -105,8 +103,44 @@ class DashboardGenerator
 
         return [];
     }
+    public function createPlan()
+    {
+        $task = AiChatTask::query()->create([
+            'chat_id' => $this->chat->id,
+            'message_id' => $this->message->id,
+            'task_id' => $this->tasks['dashboard_creating_plan'],
+            'status_id' => $this->tasks_statuses['in_progress'],
+        ]);
+        $task->load(['status', 'task']);
+        $this->dashboard->status = "generating_scheme";
+        $this->dashboard->save();
+        event(new DashboardWidgetChanged($this->dashboard));
+        event(new \App\Events\MessageTasksChanged($this->message, $task, $this->dashboard->id));
 
+        $scheme = $this->connectionProviderRouter->getSchema(
+            tables: [],
+            options: [
+                'count_rows',
+                'relations' => [
+                    'column' => [
+                        'type',
+                    ],
+                    'relation' => [
+                        'table',
+                    ],
+                ],
+            ]
+        );
+        $schemeStr = json_encode($scheme, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        $result=$this->dashboardGeneratorAi->generatePlan($this->message->message,$schemeStr);
+        $this->plan = $result['content'];
 
+        $task->status_id = $this->tasks_statuses['completed'];
+        $task->save();
+        $task->load('status');
+        event(new \App\Events\MessageTasksChanged($this->message, $task));
+
+    }
     public function fetchSchemaDb()
     {
         $this->tables = $this->connectionProviderRouter->showTables();
@@ -153,14 +187,10 @@ class DashboardGenerator
             'status_id' => $this->tasks_statuses['in_progress'],
         ]);
         $task->load(['status', 'task']);
-        $this->dashboard->status = "generating_scheme";
-        $this->dashboard->save();
-        event(new DashboardWidgetChanged($this->dashboard));
 
         event(new \App\Events\MessageTasksChanged($this->message, $task, $this->dashboard->id));
         $text = $this->message->message;
 
-        // Collection не поддерживает ->select(), формируем облегчённый список сами.
         $widgetsList = $this->widgets->map(function ($widget) {
             return [
                 'name' => $widget->name,
@@ -171,11 +201,39 @@ class DashboardGenerator
         $widgets = json_encode($widgetsList, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
         $tables = json_encode($this->tables, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
 
-        $response = $this->dashboardGeneratorAi->generateWidgets($tables, $widgets, $text);
-        $generateWidgets = $response['content']['widgets'];
+        foreach ($this->plan['plans'] as $plan) {
+            $planTablesScheme = $this->connectionProviderRouter->getSchema($plan["tables"],[
+                'count_rows',
+                'columns',
+                'relations' => [
+                    'column' => [
+                        'type',
+                        'nullable',
+                        'key',
+                        'default',
+                    ],
+
+                    'relation' => [
+                        'column',
+                        'table',
+                        'confidence',
+                        'match_rate',
+                    ],
+                ],
+            ]);
+            $planTablesSchemeStr = json_encode($planTablesScheme,JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+            $response = $this->dashboardGeneratorAi->generateWidget($plan['description'],$planTablesSchemeStr,$widgets);
+
+            $widget = $response['content'];
+            if($widget) {
+                $widget['tables'] = $plan['tables'];
+                $generateWidgets[] = $widget;
+            }
+
+        }
 
         foreach ($generateWidgets as $list) {
-            $widget = $this->widgets->where('name', $list['name'])->first();
+            $widget = $this->widgets->where('name', $list['widget_name'])->first();
 
             if (!$widget) {
                 continue;
@@ -195,7 +253,7 @@ class DashboardGenerator
         $task->load('status');
         event(new \App\Events\MessageTasksChanged($this->message, $task));
 
-        $this->dashboard->name = $response['content']['dashboard_name'];
+        $this->dashboard->name = $this->plan['dashboard_name'];
         $this->dashboard->status = "generating_widgets";
         $this->dashboard->save();
         event(new DashboardWidgetChanged($this->dashboard));
@@ -222,7 +280,25 @@ class DashboardGenerator
         foreach ($widgets_dash as $index => $widget) {
             $widget_tables = json_decode($widget->tables, true) ?? [];
 
-            $tables_scheme = collect($this->dbSchema)->only($widget_tables)->toArray();
+            $tables_scheme = $this->connectionProviderRouter->getSchema($widget_tables,[
+                'count_rows',
+                'columns',
+                'relations' => [
+                    'column' => [
+                        'type',
+                        'nullable',
+                        'key',
+                        'default',
+                    ],
+
+                    'relation' => [
+                        'column',
+                        'table',
+                        'confidence',
+                        'match_rate',
+                    ],
+                ],
+            ]);
             $results[] = $this->generateContentWidget($widget, $index, $tables_scheme);
         }
 
@@ -244,10 +320,12 @@ class DashboardGenerator
 
         $codeTemplater = new CodeTemplater($this->dataSource->id, $this->token);
         $codeTemplate = $codeTemplater->generateFullScript();
+        $schemeStr = json_encode($tables_scheme,JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+
 
         $mainBody = $this->dashboardGeneratorAi->generateContentWidget(
             $dashboard_widget,
-            $tables_scheme,
+            $schemeStr,
             $type,
             $codeTemplate
         );

@@ -9,12 +9,12 @@ import '@tabler/core/dist/css/tabler-themes.rtl.css';
 import '@tabler/core/dist/css/tabler-vendors.css';
 import '@tabler/core/dist/css/tabler-vendors.rtl.css';
 
-
 import '@tabler/core/js/tabler.js';
 import '@tabler/core/js/tabler-theme.js';
 
 
 const app = createApp(App);
+
 
 app.use(router);
 app.use(i18n);

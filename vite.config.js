@@ -16,6 +16,7 @@ export default defineConfig({
                 'resources/css/viewer/app.css',
                 'resources/js/viewer/app.js',
 
+
             ],
             refresh: true,
             fonts: [

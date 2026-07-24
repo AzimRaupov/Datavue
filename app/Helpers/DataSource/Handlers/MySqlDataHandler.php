@@ -89,10 +89,58 @@ class MySqlDataHandler
             }
         }
 
-        // Сортируем CREATE TABLE по зависимостям (FOREIGN KEY)
+        // Сортируем CREATE TABLE по зависимостям (FOREIGN KEY): родители раньше потомков
         $createStatements = $this->sortTablesByDependencies($createStatements);
 
-        // Добавляем точки с запятой
+        // ИСПРАВЛЕНИЕ (связи не создавались):
+        // Раньше DROP TABLE IF EXISTS вклеивался прямо перед каждым CREATE TABLE
+        // (внутри normalizeForDuckdb), то есть DROP шёл в том же порядке,
+        // что и CREATE — родитель раньше потомка. Это ломает связи при
+        // повторном импорте: если таблицы уже существуют в DuckDB с ранее
+        // созданными FOREIGN KEY, DROP TABLE родителя ("customers") падает
+        // с ошибкой, потому что на него всё ещё ссылается FK потомка
+        // ("orders"), который на этот момент ещё не дропнут. В итоге весь
+        // DROP+CREATE для родителя не выполнялся, таблица оставалась
+        // старой/отсутствующей, а связь на неё у потомка не создавалась.
+        //
+        // Теперь DROP-статements вынесены в отдельный блок в НАЧАЛЕ файла
+        // и идут в ОБРАТНОМ порядке зависимостей (сначала дропаются
+        // потомки, потом родители) — ровно как того требует ссылочная
+        // целостность при удалении. CREATE-statements, как и раньше, идут
+        // в прямом порядке (сначала родители, потом потомки).
+        // ИСПРАВЛЕНИЕ (связи не создавались, часть 2):
+        // extractTableNamesInOrder искала только "CREATE TABLE" и строила
+        // DROP-список только из таблиц. Но $createStatements на этом этапе
+        // уже мог содержать CREATE VIEW (см. фикс в sortTablesByDependencies
+        // ниже — раньше view вообще молча терялись). Если view не дропать
+        // перед повторным импортом, DuckDB падает с "already exists" на
+        // CREATE VIEW, скрипт обрывается посреди файла, и все таблицы
+        // ПОСЛЕ этого места в файле не создаются вовсе — соответственно
+        // все FK-связи, ссылающиеся на них, тоже не создаются. Поэтому
+        // теперь отдельно собираем DROP VIEW (сначала, т.к. view может
+        // зависеть от таблиц) и DROP TABLE (потомки раньше родителей).
+        $entities = $this->extractCreateEntitiesInOrder($createStatements);
+
+        $viewNames = array_column(
+            array_filter($entities, fn ($e) => $e['type'] === 'VIEW'),
+            'name'
+        );
+        $tableNames = array_column(
+            array_filter($entities, fn ($e) => $e['type'] === 'TABLE'),
+            'name'
+        );
+
+        $dropStatements = array_map(
+            fn ($viewName) => 'DROP VIEW IF EXISTS ' . $this->quoteIdentifier($viewName) . ';',
+            array_reverse($viewNames)
+        );
+
+        $dropStatements = array_merge($dropStatements, array_map(
+            fn ($tableName) => 'DROP TABLE IF EXISTS ' . $this->quoteIdentifier($tableName) . ';',
+            array_reverse($tableNames)
+        ));
+
+        // Добавляем точки с запятой к CREATE/INSERT
         $createStatements = array_map(fn($s) => $s . ';', $createStatements);
         $insertStatements = array_map(fn($s) => $s . ';', $insertStatements);
 
@@ -105,6 +153,8 @@ class MySqlDataHandler
         $content .= "-- Дата: " . now()->toDateTimeString() . "\n";
         $content .= "-- CREATE таблиц: {$createCount}\n";
         $content .= "-- INSERT запросов: {$insertCount}\n\n";
+        $content .= "-- DROP (в обратном порядке зависимостей, чтобы не ловить ошибку FK при повторном импорте)\n";
+        $content .= implode("\n", $dropStatements) . "\n\n";
         $content .= implode("\n\n", $createStatements) . "\n\n";
         $content .= implode("\n\n", $insertStatements) . "\n";
 
@@ -117,10 +167,46 @@ class MySqlDataHandler
             'stats' => $this->stats,
         ]);
     }
+
+    /**
+     * Извлекает имена CREATE TABLE / CREATE VIEW стейтментов вместе с их
+     * типом, СТРОГО в том порядке, в котором они переданы (после
+     * топологической сортировки). Используется для построения списка
+     * DROP-стейтментов с правильным ключевым словом (DROP TABLE / DROP VIEW).
+     *
+     * Возвращает массив вида [['type' => 'TABLE'|'VIEW', 'name' => '...'], ...]
+     */
+    private function extractCreateEntitiesInOrder(array $createStatements): array
+    {
+        $entities = [];
+
+        foreach ($createStatements as $stmt) {
+            if (preg_match(
+                '/CREATE\s+VIEW\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:"([^"]+)"|(\w+))/i',
+                $stmt,
+                $m
+            )) {
+                $entities[] = ['type' => 'VIEW', 'name' => $m[1] ?? $m[2]];
+                continue;
+            }
+
+            if (preg_match(
+                '/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:"([^"]+)"|(\w+))/i',
+                $stmt,
+                $m
+            )) {
+                $entities[] = ['type' => 'TABLE', 'name' => $m[1] ?? $m[2]];
+            }
+        }
+
+        return $entities;
+    }
+
     private function sortTablesByDependencies(array $createStatements): array
     {
         $tables = [];
         $dependencies = [];
+        $others = [];
 
         // Извлекаем имена таблиц и их зависимости
         foreach ($createStatements as $stmt) {
@@ -142,6 +228,17 @@ class MySqlDataHandler
                     }
                 }
                 $dependencies[$tableName] = array_unique($deps);
+            } else {
+                // ИСПРАВЛЕНИЕ (CREATE VIEW терялись бесследно):
+                // Раньше любой стейтмент, не подошедший под "CREATE TABLE"
+                // (в первую очередь CREATE VIEW), просто пропускался этим
+                // if/else и никуда не сохранялся. Ниже $result строился
+                // ИСКЛЮЧИТЕЛЬНО из $tables, поэтому такие стейтменты
+                // молча выпадали из итогового SQL-файла целиком (не было
+                // даже DROP для них, они просто никогда не выполнялись).
+                // Складываем их отдельно и возвращаем в конец результата —
+                // view обычно зависит от уже созданных таблиц.
+                $others[] = $stmt;
             }
         }
 
@@ -193,7 +290,14 @@ class MySqlDataHandler
             }
         }
 
+        // Возвращаем CREATE VIEW и прочие non-table стейтменты в конец —
+        // раньше они здесь безвозвратно терялись (см. комментарий выше).
+        foreach ($others as $stmt) {
+            $result[] = $stmt;
+        }
+
         $this->stats['sorted_tables'] = array_keys($tables);
+        $this->stats['other_statements_preserved'] = count($others);
 
         return $result;
     }
@@ -415,6 +519,25 @@ class MySqlDataHandler
         $sql = preg_replace('/,\s*KEY\s+["\w]+\s*\([^)]+\)/i', '', $sql);
         $sql = preg_replace('/,\s*INDEX\s+["\w]+\s*\([^)]+\)/i', '', $sql);
 
+        // 11.1 ИСПРАВЛЕНИЕ (связи не создавались):
+        // MySQL пишет уникальные индексы как "UNIQUE KEY `name` (`col`)".
+        // Это НЕ валидный синтаксис DuckDB — DuckDB понимает только
+        // "UNIQUE (col)" (без имени индекса). Из-за этого CREATE TABLE
+        // падал целиком с ошибкой парсера, таблица не создавалась вообще,
+        // а любой FOREIGN KEY, ссылающийся на неё, тоже не мог быть создан
+        // (referenced-таблицы просто не существовало). Приводим к валидному
+        // виду: "UNIQUE KEY "name" ("col")" -> "UNIQUE ("col")".
+        //
+        // ДОПОЛНЕНИЕ: mysqldump также генерирует форму "UNIQUE INDEX `name`
+        // (`col`)" — синтаксически то же самое, но раньше не покрывалось
+        // регэкспом (искали только слово KEY). Она так же невалидна для
+        // DuckDB и так же роняла весь CREATE TABLE. Обрабатываем оба варианта.
+        $sql = $this->replaceOutsideStrings(
+            $sql,
+            '/\bUNIQUE\s+(?:KEY|INDEX)\s+(?:"[^"]+"|\w+)\s*(\([^)]+\))/i',
+            'UNIQUE $1'
+        );
+
         // Нормализуем CONSTRAINT блоки
         // CONSTRAINT fk_name PRIMARY KEY (col) -> PRIMARY KEY (col)
         $sql = preg_replace('/CONSTRAINT\s+["\w]+\s+PRIMARY\s+KEY/i', 'PRIMARY KEY', $sql);
@@ -425,13 +548,26 @@ class MySqlDataHandler
         // CONSTRAINT fk_name UNIQUE (col) -> UNIQUE (col)
         $sql = preg_replace('/CONSTRAINT\s+["\w]+\s+UNIQUE/i', 'UNIQUE', $sql);
 
-        // 12. DROP TABLE IF EXISTS перед CREATE TABLE
-        if (preg_match('/^\s*CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?("[^"]+"|\w+)/i', $sql, $m)) {
-            $tableName = $m[1];
-            $sql = "DROP TABLE IF EXISTS {$tableName};\n" . $sql;
-        }
+        // 11.2 ИСПРАВЛЕНИЕ (связи не создавались):
+        // Убираем ON DELETE/ON UPDATE referential actions у FOREIGN KEY
+        // (CASCADE/RESTRICT/SET NULL/SET DEFAULT/NO ACTION). Эта СУБД
+        // (DuckDB) нужна нам здесь только для чтения/анализа схемы, сами
+        // cascade-действия не используются, а разные версии DuckDB
+        // по-разному (не)поддерживают эти конструкции в FOREIGN KEY —
+        // при несовпадении версии весь CREATE TABLE падал, и связь не
+        // создавалась вовсе. Сам FOREIGN KEY ... REFERENCES ... остаётся.
+        $sql = $this->replaceOutsideStrings(
+            $sql,
+            '/\s*ON\s+DELETE\s+(CASCADE|RESTRICT|NO\s+ACTION|SET\s+NULL|SET\s+DEFAULT)/i',
+            ''
+        );
+        $sql = $this->replaceOutsideStrings(
+            $sql,
+            '/\s*ON\s+UPDATE\s+(CASCADE|RESTRICT|NO\s+ACTION|SET\s+NULL|SET\s+DEFAULT)/i',
+            ''
+        );
 
-        // 12.1 Конвертация MySQL backslash-escaping в стандартный SQL (doubled quote).
+        // 12. Конвертация MySQL backslash-escaping в стандартный SQL (doubled quote).
         // Выполняется ПОСЛЕ всех replaceOutsideStrings-преобразований, так как
         // они рассчитаны на backslash-escaped строки. После этого шага строки
         // приведены к диалекту, который понимает DuckDB.
@@ -555,5 +691,14 @@ class MySqlDataHandler
             $parts[$i] = preg_replace($pattern, $replacement, $parts[$i]);
         }
         return implode('', $parts);
+    }
+
+    /**
+     * Экранирует имя таблицы для использования в отдельно
+     * сгенерированных DROP TABLE-стейтментах.
+     */
+    private function quoteIdentifier(string $identifier): string
+    {
+        return '"' . str_replace('"', '""', trim($identifier, '"')) . '"';
     }
 }

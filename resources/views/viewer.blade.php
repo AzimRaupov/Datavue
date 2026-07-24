@@ -11,7 +11,8 @@
     @vite(['resources/css/viewer/app.css', 'resources/js/viewer/app.js'])
 
 </head>
-<body>
+<body class="body-marketing body-gradient">
 <div id="app"></div>
+
 </body>
 </html>

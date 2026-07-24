@@ -10,6 +10,25 @@ use Illuminate\Support\Facades\Hash;
 
 class AuthController extends Controller
 {
+    public function getUser(Request $request)
+    {
+        $user = $request->user();
+
+        if (!$user) {
+            return response()->json([
+                'message' => 'Пользователь не авторизован',
+            ], 401);
+        }
+
+        return response()->json([
+            'user' => $user->load([
+                'company',
+                'roles',
+                'permissions',
+            ]),
+        ]);
+    }
+
     public function register(Request $request)
     {
         $data = $request->validate([

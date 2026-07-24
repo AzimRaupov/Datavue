@@ -42,7 +42,7 @@ class DashboardGeneratorJob implements ShouldQueue
                 $this->chat_id,
                 $this->message_id,
             );
-
+            $dashboard_generate->createPlan();
             $dashboard_generate->generateWidgets();
             $dashboard_generate->generateContentToWidgets();
 
