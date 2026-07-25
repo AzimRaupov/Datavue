@@ -78,7 +78,7 @@ class DashboardReGenerator
             ->toArray();
         $this->connectionProviderRouter = new ConnectionProviderRouter($this->dataSource->id);
         $this->tables=$this->connectionProviderRouter->showTables();
-        $this->dashboardReGeneratorAi = new DashboardAi();
+        $this->dashboardReGeneratorAi = new DashboardAi($this->dataSource);
         $this->codeTemplate = new CodeTemplater($this->dataSource->id);
     }
     public function fetchSchemaDb(?array $tables = null)

@@ -4,7 +4,6 @@ namespace App\Helpers\DataSource;
 
 use App\Helpers\DataSource\Handlers\MySqlDataHandler;
 use App\Helpers\DataSource\Handlers\TableDataHandler;
-use App\Helpers\PythonRunner;
 use App\Models\AiChat;
 use App\Models\AiChatTask;
 use App\Models\DataSourceType;
@@ -17,116 +16,98 @@ use Illuminate\Support\Facades\Log;
 
 class DataSourceRouter
 {
+    public AiChat $chat;
+    public UploadedFile $uploadFile;
+    public User $user;
+    public ?DataSourceType $dataSourceType;
 
-    public $chat;
-    public $uploadFile;
+    public AiChatTask $chat_task;
 
-    public $message;
-    public $user;
+    public array $tasks;
+    public array $tasks_status;
 
-    public $storage;
-    public $dick='company';
+    public string $storage;
+    public string $outputPath;
+    public string $dbFilePath;
+    public string $databaseName;
 
-    public $chat_task;
+    private const SUPPORTED_TABLE_TYPES = ['csv', 'xls', 'xlsx'];
 
-    public $tasks;
-
-    public $tasks_status;
-
-    public $outputPath;
-    public $dbFilePath;
-    public $dataSourceType;
     /**
      * Create a new job instance.
      */
-    public function __construct($chat_id,$upload_file_id,$user_id,$type_id=null)
+    public function __construct($chat_id, $upload_file_id, $user_id, $type_id = null)
     {
+        $this->user = User::query()->with('company')->findOrFail($user_id);
+        $this->chat = AiChat::query()->findOrFail($chat_id);
+        $this->uploadFile = UploadedFile::query()->findOrFail($upload_file_id);
+        $this->dataSourceType = $type_id ? DataSourceType::query()->find($type_id) : null;
 
-        $this->user= User::query()->with('company')->find($user_id);
-        $this->chat=AiChat::query()->find($chat_id);
-        $this->uploadFile=UploadedFile::query()->find($upload_file_id);
-        $this->dataSourceType=DataSourceType::query()->find($type_id);
         $this->storage = storage_path('app/company/' . $this->user->company->id . '/chats/' . $this->chat->id);
         $this->outputPath = $this->storage . '/extracted_data';
         $this->dbFilePath = $this->outputPath . '/data.duckdb';
 
-        $this->tasks_status = TaskStatus::query()
-            ->pluck('id', 'name')
-            ->toArray();
-        $this->tasks = Task::query()
-            ->pluck('id', 'name')
-            ->toArray();
+        if (!is_dir($this->outputPath)) {
+            mkdir($this->outputPath, 0775, true);
+        }
 
-        $this->chat_task=AiChatTask::create([
+        $this->tasks_status = TaskStatus::query()->pluck('id', 'name')->toArray();
+        $this->tasks = Task::query()->pluck('id', 'name')->toArray();
+
+        $this->chat_task = AiChatTask::create([
             'chat_id'   => $this->chat->id,
             'task_id'   => $this->tasks['data_processing'],
             'status_id' => $this->tasks_status['start'],
         ]);
 
+        $this->databaseName = 'data_source_' . $user_id . '_chat_' . $chat_id;
     }
 
     /**
      * Execute the job.
+     *
+     * @return array{success: bool, message: string, extraction: ?DataSourceExtraction}
      */
-    public function handle()
+    public function handle(): array
     {
         try {
-
             $this->chat_task->status_id = $this->tasks_status['in_progress'];
             $this->chat_task->save();
 
-            $save_handler = null;
+            $dataHandler = $this->resolveHandler();
 
-            if ($this->uploadFile->file_type == 'sql') {
-                if($this->dataSourceType->name == "mysql") {
-                    $save_handler = new MySqlDataHandler(
-                        $this->chat,
-                        $this->uploadFile,
-                        $this->storage
-                    );
-                }
-            }
-            else if($this->uploadFile->file_type == 'csv' || $this->uploadFile->file_type == 'xls' || $this->uploadFile->file_type == 'xlsx') {
-                $save_handler = new TableDataHandler(
-                    $this->chat,
-                    $this->uploadFile,
-                    $this->storage
-                );
-            }
-
-            // ИСПРАВЛЕНИЕ: раньше, если ни одно из условий выше не срабатывало
-            // (например file_type == 'sql', но dataSourceType->name != 'mysql'),
-            // $save_handler оставался неопределённым, и следующая строка
-            // ($save_handler->end()) падала с "Call to a member function end()
-            // on null" — эта ошибка тихо гасилась в catch ниже и наружу
-            // вылезал только фатал на ->id в контроллере.
-            if ($save_handler === null) {
+            if (!$dataHandler) {
                 throw new \RuntimeException(
-                    "Не удалось определить обработчик для файла типа '{$this->uploadFile->file_type}'"
-                    . ($this->dataSourceType ? " (source type: {$this->dataSourceType->name})" : '')
+                    'Неподдерживаемый тип файла: ' . $this->uploadFile->file_type
                 );
             }
 
-            $resultExtract = $save_handler->end();
+            $result = $dataHandler->handle();
 
-            $resultCreateDb = $this->createDuckdbDatabase($this->dbFilePath,$resultExtract['sql_path']);
-
-            $lines = $resultCreateDb['output'] ?? [];
-            $lastLine = trim((string) end($lines));
-
-            if ($resultCreateDb['exit_code'] !== 0 || $lastLine !== 'ok') {
-                throw new \Exception("Ошибка создания базы данных DuckDB. Ответ: " . json_encode($resultCreateDb));
+            if (!($result['success'] ?? false)) {
+                throw new \RuntimeException(
+                    $result['message'] ?? 'Ошибка при обработке файла'
+                );
             }
-            $resultExtract = DataSourceExtraction::create([
-                'file_id'    => $this->uploadFile->id,
-                'company_id' => $this->chat->company->id,
-                'chat_id'    => $this->chat->id,
-                'data_path'  => $this->dbFilePath,
+
+            $extraction = DataSourceExtraction::create([
+                'file_id'       => $this->uploadFile->id,
+                'company_id'    => $this->chat->company_id,
+                'chat_id'       => $this->chat->id,
+                'data_path'     => $this->dbFilePath,
                 'document_type' => $this->uploadFile->file_type,
             ]);
 
+            $this->chat_task->status_id = $this->tasks_status['done'] ?? $this->tasks_status['in_progress'];
+            $this->chat_task->save();
 
-            return $resultExtract;
+            return [
+                'success'    => true,
+                'message'    => $result['message'] ?? 'База данных успешно создана и файл импортирован.',
+                'extraction' => $extraction,
+                // null для table-хендлера, массив с host/port/... для mysql-дампа
+                'connection' => $result['connection'] ?? null,
+            ];
 
         } catch (\Throwable $e) {
 
@@ -136,39 +117,41 @@ class DataSourceRouter
             Log::error('DataSourceRouter error', [
                 'chat_id' => $this->chat->id ?? null,
                 'file_id' => $this->uploadFile->id ?? null,
-                'error' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
-                'trace' => $e->getTraceAsString(),
+                'error'   => $e->getMessage(),
+                'file'    => $e->getFile(),
+                'line'    => $e->getLine(),
+                'trace'   => $e->getTraceAsString(),
             ]);
 
-            // ИСПРАВЛЕНИЕ: раньше здесь ничего не возвращалось и не
-            // пробрасывалось — handle() молча завершался с null.
-            // Вызывающий код (контроллер) получал $resultHandler = null
-            // и падал на $resultHandler->id с невнятной ошибкой.
-            // Теперь исключение летит дальше — контроллер должен поймать
-            // его сам и вернуть пользователю понятное сообщение
-            // (см. правку ChatController ниже).
-            throw $e;
+            return [
+                'success'    => false,
+                'message'    => 'Ошибка при обработке файла: ' . $e->getMessage(),
+                'extraction' => null,
+                'connection' => null,
+            ];
         }
     }
-
-    private function createDuckdbDatabase($dbFilePath,$sqlFilePath)
+    private function resolveHandler()
     {
-        $path = "/home/azim/projects/Datavue/app/Helpers/DataSource/sql_to_duck.py";
+        if ($this->uploadFile->file_type === 'sql') {
+            if (!$this->dataSourceType || $this->dataSourceType->name !== 'mysql') {
+                return null;
+            }
 
+            return new MySqlDataHandler(
+                $this->uploadFile->file_path,
+                $this->databaseName
+            );
+        }
 
-        $runner = new PythonRunner(
-            $path,
-            [
-                '--sql'  => $sqlFilePath,
-                '--path' => $dbFilePath,
-            ]
-        );
+        if (in_array($this->uploadFile->file_type, self::SUPPORTED_TABLE_TYPES, true)) {
+            return new TableDataHandler(
+                $this->uploadFile->file_path,
+                $this->outputPath,
+                $this->dbFilePath
+            );
+        }
 
-        $result = $runner->run();
-
-        return $result;
+        return null;
     }
-
 }

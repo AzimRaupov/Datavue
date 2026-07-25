@@ -26,6 +26,58 @@ class MysqlConnectionRemoteProvider
         $this->database = $database;
     }
 
+    /**
+     * Создаёт базу данных, если её ещё нет.
+     *
+     * Использует "сырой" PDO-коннект без указания database,
+     * т.к. Laravel-соединение (connection()) требует, чтобы
+     * database уже существовала — иначе будет ошибка
+     * "Unknown database".
+     *
+     * После создания базы сбрасываем закешированное
+     * Laravel-соединение, чтобы остальные методы
+     * (query, showTables, getSchema и т.д.) снова
+     * работали как обычно.
+     */
+    public function createDatabaseIfNotExists(): bool
+    {
+        try {
+            $dsn = sprintf(
+                'mysql:host=%s;port=%s;charset=utf8mb4',
+                $this->host,
+                $this->port
+            );
+
+            $pdo = new \PDO(
+                $dsn,
+                $this->username,
+                $this->password,
+                [
+                    \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
+                ]
+            );
+
+            $pdo->exec(
+                'CREATE DATABASE IF NOT EXISTS ' .
+                $this->quoteIdentifier($this->database) .
+                ' CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'
+            );
+
+            $pdo = null;
+
+            // Сбрасываем закешированное соединение Laravel,
+            // чтобы следующий connection() подключился уже
+            // к существующей базе.
+            DB::purge('remote_database');
+
+            return true;
+        } catch (\Throwable $e) {
+            throw new \RuntimeException(
+                'Ошибка создания базы данных: ' . $e->getMessage()
+            );
+        }
+    }
+
     public function showTables(): array
     {
         $rows = $this->query('SHOW TABLES');
@@ -37,6 +89,46 @@ class MysqlConnectionRemoteProvider
             ->toArray();
     }
 
+    public function import(string $sqlPath): bool
+    {
+        if (!is_file($sqlPath)) {
+            throw new \RuntimeException(
+                "SQL файл не найден: {$sqlPath}"
+            );
+        }
+
+        $command = sprintf(
+            'mysql --host=%s --port=%s --user=%s %s < %s',
+            escapeshellarg($this->host),
+            escapeshellarg((string) $this->port),
+            escapeshellarg($this->username),
+            escapeshellarg($this->database),
+            escapeshellarg($sqlPath)
+        );
+
+        if ($this->password !== null && $this->password !== '') {
+            $command = sprintf(
+                'MYSQL_PWD=%s %s',
+                escapeshellarg($this->password),
+                $command
+            );
+        }
+
+        exec(
+            $command . ' 2>&1',
+            $output,
+            $exitCode
+        );
+
+        if ($exitCode !== 0) {
+            throw new \RuntimeException(
+                "Ошибка импорта SQL:\n" .
+                implode("\n", $output)
+            );
+        }
+
+        return true;
+    }
     public function showColumns(string $tableName): array
     {
         $rows = $this->query(

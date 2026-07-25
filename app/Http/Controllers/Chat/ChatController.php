@@ -63,95 +63,148 @@ class ChatController extends Controller
     public function store(StoreRequest $request)
     {
         $user = auth()->user();
-        return DB::transaction(function () use ($request, $user) {
 
-            $chat = AiChat::create([
-                'user_id'    => $user->id,
-                'company_id' => $user->company->id,
-            ]);
-            $type = DataSourceType::query()->find($request->input('type_id'));
+        if ($request->input('connection_type') === 'local' && !$request->hasFile('data_file')) {
+            return [
+                'success' => false,
+                'message' => 'Файл не был передан.',
+            ];
+        }
 
-           if($request->input('connection_type')=="local") {
+        $storedFullPath = null;
 
-               if ($request->hasFile('data_file')) {
-                   $file = $request->file('data_file');
-                   $path = $user->company->id . '/chats/' . $chat->id . '/data';
-                   $name = uniqid('', true) . '.' . $file->getClientOriginalExtension();
-                   $storedPath = Storage::disk('company')->putFileAs(
-                       $path,
-                       $file,
-                       $name
-                   );
-                   $fullPath = Storage::disk('company')->path($storedPath);
-                   $upload = UploadedFile::create([
-                       'company_id' => $user->company->id,
-                       'chat_id' => $chat->id,
-                       'original_name' => $file->getClientOriginalName(),
-                       'file_path' => $fullPath,
-                       'file_type' => $file->getClientOriginalExtension(),
-                       'file_size' => $file->getSize(),
-                   ]);
-               }
+        try {
+            $result = DB::transaction(function () use ($request, $user, &$storedFullPath) {
 
-
-                $data_source=new DataSourceRouter($chat->id, $upload->id, $user->id,$request->input('type_id'));
-                $resultHandler=$data_source->handle();
-
-                $dataSource = DataSource::query()->create([
-                   'company_id'=>$chat->company_id,
-                   'chat_id' => $chat->id,
-                   'type_id' => 1,
-                   'extracted_id'=>$resultHandler->id,
-                   'name'=>'test',
-                   'connection_type'=>$request->input('connection_type'),
-                   'version'=>$request->input('version'),
-                   'path'=>$resultHandler->data_path
+                $chat = AiChat::create([
+                    'user_id'    => $user->id,
+                    'company_id' => $user->company->id,
                 ]);
+                $types = DataSourceType::query()->pluck('id', 'name')->toArray();
 
+                $connectionType = $request->input('connection_type');
 
+                if ($connectionType === 'local') {
 
-               return ['chat' => $chat,'success'=>true,'message'=>'Успешно'];
+                    $file = $request->file('data_file');
+                    $path = $user->company->id . '/chats/' . $chat->id . '/data';
+                    $name = uniqid('', true) . '.' . $file->getClientOriginalExtension();
 
+                    $storedPath = Storage::disk('company')->putFileAs($path, $file, $name);
+                    $storedFullPath = Storage::disk('company')->path($storedPath);
 
-           }
-           if($request->input('connection_type')=="remote") {
-               $remoteDb =new ConnectRemoteDb(
-                   $request->host,
-                   $request->port,
-                   $request->database,
-                   $type->name,
-                   $request->username,
-                   $request->password
+                    $upload = UploadedFile::create([
+                        'company_id'    => $user->company->id,
+                        'chat_id'       => $chat->id,
+                        'original_name' => $file->getClientOriginalName(),
+                        'file_path'     => $storedFullPath,
+                        'file_type'     => strtolower($file->getClientOriginalExtension()),
+                        'file_size'     => $file->getSize(),
+                    ]);
 
-               );
-               $resultCheck = $remoteDb->check();
-               if($resultCheck['success']) {
-                   $dataSource = DataSource::query()->create([
-                       'company_id'=>$chat->company_id,
-                       'chat_id' => $chat->id,
-                       'type_id' => $request->input('type_id'),
-                       'name'=>'test',
-                       'host'=>$request->input('host'),
-                       'port'=>$request->input('port'),
-                       'database'=>$request->input('database'),
-                       'username'=>$request->input('username'),
-                       'password'=>$request->input('password'),
-                       'connection_type'=>$request->input('connection_type'),
-                       'version' => $request->input('version') ?: null,
-                       ]);
-                   return ['chat' => $chat,'success'=>true,'message'=>$resultCheck['message']];
-               }
-               else{
-                   return ['chat' => $chat,'success'=>false,'message'=>$resultCheck['message']];
+                    $dataSourceRouter = new DataSourceRouter(
+                        $chat->id,
+                        $upload->id,
+                        $user->id,
+                        $request->input('type_id')
+                    );
 
-               }
+                    $handlerResult = $dataSourceRouter->handle();
 
-           }
-            return ['chat' => $chat];
-        });
+                    if (!$handlerResult['success']) {
+                        throw new \RuntimeException($handlerResult['message']);
+                    }
+
+                    $extraction = $handlerResult['extraction'];
+                    $connection = $handlerResult['connection'] ?? null;
+
+                    if ($connection) {
+                        // это был .sql дамп, импортированный в реальную mysql-базу —
+                        // сохраняем источник как remote, а не local
+                        DataSource::query()->create([
+                            'company_id'      => $chat->company_id,
+                            'chat_id'         => $chat->id,
+                            'type_id'         => $types[$connection['type_database']],
+                            'extracted_id'    => $extraction->id,
+                            'name'            => $upload->original_name,
+                            'connection_type' => 'remote',
+                            'version'         => $request->input('version'),
+                            'host'            => $connection['host'],
+                            'port'            => $connection['port'],
+                            'database'        => $connection['database'],
+                            'username'        => $connection['username'],
+                            'password'        => $connection['password'],
+                            'path'            => null,
+                        ]);
+                    } else {
+                        DataSource::query()->create([
+                            'company_id'      => $chat->company_id,
+                            'chat_id'         => $chat->id,
+                            'type_id'         => 1,
+                            'extracted_id'    => $extraction->id,
+                            'name'            => $upload->original_name,
+                            'connection_type' => $connectionType,
+                            'version'         => $request->input('version'),
+                            'path'            => $extraction->data_path,
+                        ]);
+                    }
+
+                    return ['chat' => $chat, 'success' => true, 'message' => $handlerResult['message']];
+                }
+
+                if ($connectionType === 'remote') {
+
+                    $type = DataSourceType::query()->find($request->input('type_id'));
+
+                    $remoteDb = new ConnectRemoteDb(
+                        $request->input('host'),
+                        $request->input('port'),
+                        $request->input('database'),
+                        $type->name ?? null,
+                        $request->input('username'),
+                        $request->input('password')
+                    );
+
+                    $checkResult = $remoteDb->check();
+
+                    if (!$checkResult['success']) {
+                        throw new \RuntimeException($checkResult['message']);
+                    }
+
+                    DataSource::query()->create([
+                        'company_id'      => $chat->company_id,
+                        'chat_id'         => $chat->id,
+                        'type_id'         => $request->input('type_id'),
+                        'name'            => $request->input('database'),
+                        'host'            => $request->input('host'),
+                        'port'            => $request->input('port'),
+                        'database'        => $request->input('database'),
+                        'username'        => $request->input('username'),
+                        'password'        => $request->input('password'),
+                        'connection_type' => $connectionType,
+                        'version'         => $request->input('version') ?: null,
+                    ]);
+
+                    return ['chat' => $chat, 'success' => true, 'message' => $checkResult['message']];
+                }
+
+                throw new \RuntimeException('Неизвестный connection_type.');
+            });
+
+            return $result;
+
+        } catch (\Throwable $e) {
+
+            if ($storedFullPath && file_exists($storedFullPath)) {
+                @unlink($storedFullPath);
+            }
+
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+            ];
+        }
     }
-
-
 
 }
 

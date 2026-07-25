@@ -457,7 +457,7 @@ TEXT;
 PROMPT;
         return (new AIService(
             responseFormat: 'json',
-            tokens: 7000
+            tokens: 9000
         ))->ask($prompt, $system);
     }
 
@@ -500,7 +500,6 @@ PROMPT;
 Ответ строго валидный JSON-объект, без пояснений и markdown:
 {"python_code": "def main():\\n    ..."}
 PROMPT;
-
         return (new AIService(
             responseFormat: 'json',
             tokens: 8000,

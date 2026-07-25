@@ -11,8 +11,8 @@ class DuckDbConnectionLocalProvider
     public string $pathDb;
 
     /**
-     * Кэш ключевых колонок (PRIMARY KEY / UNIQUE), полученных из duckdb_constraints().
-     * Формат: ['table_name' => ['column_name' => 'PRI'|'UNI']]
+     * Кэш ключевых колонок, полученных из duckdb_constraints() и метаданных импорта.
+     * Формат: ['table_name' => ['column_name' => 'PRI'|'UNI'|'MUL']]
      */
     private ?array $keyColumnsCache = null;
 
@@ -30,6 +30,7 @@ class DuckDbConnectionLocalProvider
 
         return collect($rows)
             ->map(fn ($row) => $row->name ?? array_values((array) $row)[0] ?? null)
+            ->filter(fn ($name) => !is_string($name) || !str_starts_with($name, '__datavue_'))
             ->filter()
             ->values()
             ->toArray();
@@ -327,11 +328,11 @@ class DuckDbConnectionLocalProvider
     }
 
     /**
-     * Возвращает карту PRIMARY KEY / UNIQUE колонок по всем таблицам БД,
-     * полученную напрямую из duckdb_constraints() (без парсинга DESCRIBE,
-     * которое в DuckDB не всегда надёжно проставляет 'PRI'/'UNI').
+     * Возвращает карту key-колонок по всем таблицам БД.
+     * Сначала берём реальные DuckDB constraints, затем дополняем
+     * метаданными, которые MySqlDataHandler сохраняет из ALTER TABLE.
      *
-     * Формат: ['table_name' => ['column_name' => 'PRI'|'UNI', ...]]
+     * Формат: ['table_name' => ['column_name' => 'PRI'|'UNI'|'MUL', ...]]
      */
     private function getKeyColumns(): array
     {
@@ -347,7 +348,7 @@ class DuckDbConnectionLocalProvider
             );
         } catch (\Throwable $e) {
             Log::warning('DuckDB key columns detection unavailable: ' . $e->getMessage());
-            return $this->keyColumnsCache = [];
+            $rows = collect();
         }
 
         $keys = [];
@@ -385,6 +386,37 @@ class DuckDbConnectionLocalProvider
 
                 $keys[$tableName][$columnName] = $marker;
             }
+        }
+
+        try {
+            $metaRows = $this->query(
+                'SELECT table_name, column_name, key_type
+                 FROM "__datavue_keys"'
+            );
+        } catch (\Throwable $e) {
+            $metaRows = collect();
+        }
+
+        foreach ($metaRows as $row) {
+            $row = (array) $row;
+
+            $tableName = $row['table_name'] ?? null;
+            $columnName = $row['column_name'] ?? null;
+            $keyType = $row['key_type'] ?? null;
+
+            if (!$tableName || !$columnName || !in_array($keyType, ['PRI', 'UNI', 'MUL'], true)) {
+                continue;
+            }
+
+            if (($keys[$tableName][$columnName] ?? null) === 'PRI') {
+                continue;
+            }
+
+            if (($keys[$tableName][$columnName] ?? null) === 'UNI' && $keyType === 'MUL') {
+                continue;
+            }
+
+            $keys[$tableName][$columnName] = $keyType;
         }
 
         return $this->keyColumnsCache = $keys;
@@ -506,6 +538,8 @@ class DuckDbConnectionLocalProvider
      */
     private function getForeignKeyRelations(): array
     {
+        $relations = [];
+
         try {
             $rows = $this->query(
                 "SELECT table_name, constraint_text
@@ -514,10 +548,8 @@ class DuckDbConnectionLocalProvider
             );
         } catch (\Throwable $e) {
             Log::warning('DuckDB FK detection unavailable: ' . $e->getMessage());
-            return [];
+            $rows = collect();
         }
-
-        $relations = [];
 
         foreach ($rows as $row) {
             $row = (array) $row;
@@ -529,22 +561,6 @@ class DuckDbConnectionLocalProvider
                 continue;
             }
 
-            // Примеры реальных форматов constraint_text в DuckDB:
-            // FOREIGN KEY (customer_id) REFERENCES customers(id)
-            // FOREIGN KEY("customer_id") REFERENCES "customers"("id")
-            // FOREIGN KEY (customer_id) REFERENCES main.customers(id)
-            //
-            // ИСПРАВЛЕНИЕ (связи не создавались для составных FK):
-            // Раньше группы внутри скобок ограничивались одним словом
-            // ([a-zA-Z0-9_]+), поэтому композитный FOREIGN KEY вида
-            // "FOREIGN KEY (customer_id, region_id) REFERENCES
-            // customers(id, region_id)" вообще не матчился регуляркой —
-            // весь constraint молча улетал в лог-warning и связь никогда
-            // не появлялась в схеме, хотя сам FK в таблице был создан
-            // корректно. Теперь захватываем весь список колонок внутри
-            // каждой пары скобок и раскладываем его на отдельные relation
-            // по позиционному соответствию (from[i] -> to[i]), как это
-            // и требует составной FOREIGN KEY.
             if (
                 preg_match(
                     '/FOREIGN\s+KEY\s*\(\s*([^)]+?)\s*\)\s*REFERENCES\s*(?:"?[a-zA-Z0-9_]+"?\.)?"?([a-zA-Z0-9_]+)"?\s*\(\s*([^)]+?)\s*\)/i',
@@ -557,9 +573,6 @@ class DuckDbConnectionLocalProvider
                 $toColumns = $this->splitIdentifierList($matches[3]);
 
                 foreach ($fromColumns as $index => $fromColumn) {
-                    // Если по какой-то причине число колонок не совпало,
-                    // подстраховываемся первой referenced-колонкой, чтобы
-                    // не потерять связь целиком.
                     $toColumn = $toColumns[$index] ?? ($toColumns[0] ?? null);
 
                     if ($fromColumn === '' || $toColumn === null || $toColumn === '') {
@@ -581,7 +594,50 @@ class DuckDbConnectionLocalProvider
             }
         }
 
-        return $relations;
+        try {
+            $metaRows = $this->query(
+                'SELECT from_table, from_column, to_table, to_column
+                 FROM "__datavue_relations"'
+            );
+        } catch (\Throwable $e) {
+            $metaRows = collect();
+        }
+
+        foreach ($metaRows as $row) {
+            $row = (array) $row;
+
+            $fromTable = $row['from_table'] ?? null;
+            $fromColumn = $row['from_column'] ?? null;
+            $toTable = $row['to_table'] ?? null;
+            $toColumn = $row['to_column'] ?? null;
+
+            if (!$fromTable || !$fromColumn || !$toTable || !$toColumn) {
+                continue;
+            }
+
+            $relations[] = [
+                'from_table' => $fromTable,
+                'from_column' => $fromColumn,
+                'to_table' => $toTable,
+                'to_column' => $toColumn,
+            ];
+        }
+
+        $unique = [];
+        $deduped = [];
+
+        foreach ($relations as $relation) {
+            $key = $relation['from_table'] . '|' . $relation['from_column'] . '|' . $relation['to_table'] . '|' . $relation['to_column'];
+
+            if (isset($unique[$key])) {
+                continue;
+            }
+
+            $unique[$key] = true;
+            $deduped[] = $relation;
+        }
+
+        return $deduped;
     }
 
     /**

@@ -121,12 +121,20 @@ class DashboardGenerator
             tables: [],
             options: [
                 'count_rows',
+                'columns',
                 'relations' => [
                     'column' => [
                         'type',
+                        'nullable',
+                        'key',
+                        'default',
                     ],
+
                     'relation' => [
+                        'column',
                         'table',
+                        'confidence',
+                        'match_rate',
                     ],
                 ],
             ]
@@ -134,6 +142,7 @@ class DashboardGenerator
         $schemeStr = json_encode($scheme, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
         $result=$this->dashboardGeneratorAi->generatePlan($this->message->message,$schemeStr);
         $this->plan = $result['content'];
+
 
         $task->status_id = $this->tasks_statuses['completed'];
         $task->save();

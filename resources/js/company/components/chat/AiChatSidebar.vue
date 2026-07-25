@@ -294,7 +294,7 @@ onUnmounted(() => {
                     <div v-for="message in messages" :key="message.id" class="d-flex flex-column gap-3">
                         <div v-if="message.message" class="d-flex justify-content-end">
                             <div class="card card-body bg-primary text-white shadow-sm p-3 pb-0" style="max-width: 80%;">
-                                <div class="small lh-base">{{ message.message }}</div>
+                                <div class="small">{{ message.message }}</div>
                                 <div class="text-end text-white-50 small">{{ message.created_at ? new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '' }}</div>
                             </div>
                         </div>
@@ -320,7 +320,6 @@ onUnmounted(() => {
                                     </div>
                                 </transition>
 
-                                <div class="text-end text-muted small" v-if="message.answer">AI</div>
 
                                 <TransitionGroup
                                     v-if="message.tasks?.length"
