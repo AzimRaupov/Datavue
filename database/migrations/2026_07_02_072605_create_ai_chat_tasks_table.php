@@ -21,6 +21,7 @@ return new class extends Migration
                 ->constrained('tasks')
                 ->cascadeOnDelete();
             $table->foreignId('message_id')
+                ->nullable()
                 ->constrained('ai_chat_messages')
                 ->cascadeOnDelete();
             $table->foreignId('status_id')

@@ -1,24 +1,52 @@
 <script setup>
-import { onMounted } from 'vue'
+import { onBeforeUnmount, onMounted, nextTick, ref } from 'vue'
 import { Dropdown } from 'bootstrap'
 import { useI18n } from 'vue-i18n'
 
-
 const logo = '/logos/logo.png'
+
 
 const { t, locale } = useI18n()
 
 const user = JSON.parse(localStorage.getItem('user') || 'null')
+const languageToggleRef = ref(null)
+const userToggleRef = ref(null)
+const dropdownInstances = []
 
 const changeLanguage = (lang) => {
     locale.value = lang
     localStorage.setItem('lang', lang)
+    const instance = languageToggleRef.value
+        ? Dropdown.getInstance(languageToggleRef.value)
+        : null
+
+    instance?.hide()
 }
 
-onMounted(() => {
-    document.querySelectorAll('[data-bs-toggle="dropdown"]').forEach(el => {
-        new Dropdown(el)
-    })
+const toggleDropdown = (event) => {
+    event.preventDefault()
+    const current = Dropdown.getOrCreateInstance(event.currentTarget)
+
+    dropdownInstances
+        .filter((instance) => instance !== current)
+        .forEach((instance) => instance.hide())
+
+    current.toggle()
+}
+
+onMounted(async () => {
+    await nextTick()
+
+    ;[languageToggleRef.value, userToggleRef.value]
+        .filter(Boolean)
+        .forEach((el) => {
+            const instance = Dropdown.getOrCreateInstance(el)
+            dropdownInstances.push(instance)
+        })
+})
+
+onBeforeUnmount(() => {
+    dropdownInstances.forEach((instance) => instance.dispose())
 })
 </script>
 <template>
@@ -39,37 +67,13 @@ onMounted(() => {
             <!-- END NAVBAR TOGGLER -->
             <!-- BEGIN NAVBAR LOGO -->
             <div class="navbar-brand navbar-brand-autodark d-none-navbar-horizontal pe-0 pe-md-3">
-                <a href="." aria-label="Tabler"
-                >
-                    <img :src="logo" width="110" />
+                <a href="." aria-label="Tabler">
+                    <img :src="logo" width="115" />
+
                 </a>
             </div>
             <!-- END NAVBAR LOGO -->
             <div class="navbar-nav flex-row order-md-last">
-                <div class="nav-item d-none d-md-flex me-3">
-                    <div class="btn-list">
-                        <a href="https://github.com/sponsors/codecalm" class="btn btn-6" target="_blank" rel="noreferrer">
-                            <!-- Download SVG icon from http://tabler.io/icons/icon/heart -->
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                width="24"
-                                height="24"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                aria-hidden="true"
-                                focusable="false"
-                                class="icon text-pink icon-2"
-                            >
-                                <path d="M19.5 12.572l-7.5 7.428l-7.5 -7.428a5 5 0 1 1 7.5 -6.566a5 5 0 1 1 7.5 6.572" />
-                            </svg>
-                            Sponsor
-                        </a>
-                    </div>
-                </div>
                 <div class="d-none d-md-flex me-3">
                     <!-- BEGIN THEME TOGGLE -->
                     <div class="nav-item">
@@ -298,48 +302,15 @@ onMounted(() => {
                     </div>
                     <!-- END NOTIFICATIONS -->
                     <!-- BEGIN APPS -->
-                    <div class="nav-item dropdown d-none d-md-flex">
-                        <a
-                            href="#"
-                            class="nav-link px-0"
-                            data-bs-toggle="dropdown"
-                            tabindex="-1"
-                            aria-label="Show app menu"
-                            data-bs-auto-close="outside"
-                            aria-expanded="false"
-                        >
-                            <!-- Download SVG icon from http://tabler.io/icons/icon/apps -->
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                width="24"
-                                height="24"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                aria-hidden="true"
-                                focusable="false"
-                                class="icon icon-1"
-                            >
-                                <path d="M4 5a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -4" />
-                                <path d="M4 15a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -4" />
-                                <path d="M14 15a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -4" />
-                                <path d="M14 7l6 0" />
-                                <path d="M17 4l0 6" />
-                            </svg>
-                        </a>
-                        <!-- BEGIN NAVBAR APPS -->
-                        <!-- END NAVBAR APPS -->
-                    </div>
                     <!-- END APPS -->
                     <!-- BEGIN LANGUAGE SELECTOR -->
                     <div class="nav-item dropdown d-none d-md-flex">
                         <a
+                            ref="languageToggleRef"
                             href="#"
                             class="nav-link px-0"
                             data-bs-toggle="dropdown"
+                            @click.stop.prevent="toggleDropdown"
                             tabindex="-1"
                             aria-label="Select language"
                             data-bs-auto-close="outside"
@@ -348,11 +319,11 @@ onMounted(() => {
                             ТҶ
                         </a>
                         <div class="dropdown-menu dropdown-menu-arrow dropdown-menu-end">
-                            <a class="dropdown-item" href="#" @click.prevent="changeLanguage('ru')">
-                                Русский
-                            </a>
+                        <a class="dropdown-item" href="#" @click.prevent="changeLanguage('ru')">
+                            Русский
+                        </a>
 
-                            <a class="dropdown-item" href="#" @click.prevent="changeLanguage('tj')">
+                        <a class="dropdown-item" href="#" @click.prevent="changeLanguage('tj')">
                                 Тоҷики
                             </a>
 
@@ -363,9 +334,17 @@ onMounted(() => {
                     </div>
                     <!-- END LANGUAGE SELECTOR -->
                 </div>
-                <!-- BEGIN USER MENU -->
+                    <!-- BEGIN USER MENU -->
                 <div class="nav-item dropdown">
-                    <a href="#" class="nav-link d-flex lh-1 p-0 px-2" data-bs-toggle="dropdown" aria-label="Open user menu">
+                    <a
+                        ref="userToggleRef"
+                        href="#"
+                        class="nav-link d-flex lh-1 p-0 px-2"
+                        data-bs-toggle="dropdown"
+                        @click.stop.prevent="toggleDropdown"
+                        aria-label="Open user menu"
+                        aria-expanded="false"
+                    >
                        <span class="avatar avatar-0">
                       <!-- Download SVG icon from http://tabler.io/icons/icon/user -->
                       <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" class="icon avatar-icon icon-2">
@@ -379,8 +358,11 @@ onMounted(() => {
                         </div>
                     </a>
                     <div class="dropdown-menu dropdown-menu-end dropdown-menu-arrow">
-                        <a class="dropdown-item" href="./profile.html"
-                        ><!-- Download SVG icon from http://tabler.io/icons/icon/user -->
+                        <router-link
+                            class="dropdown-item"
+                            :to="{ name: 'settings.profile' }"
+                        >
+                            <!-- Download SVG icon from http://tabler.io/icons/icon/user -->
                             <svg
                                 xmlns="http://www.w3.org/2000/svg"
                                 width="24"
@@ -398,8 +380,8 @@ onMounted(() => {
                                 <path d="M8 7a4 4 0 1 0 8 0a4 4 0 0 0 -8 0" />
                                 <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
                             </svg>
-                            Profile</a
-                        >
+                            Profile
+                        </router-link>
                         <a class="dropdown-item" href="#"
                         ><!-- Download SVG icon from http://tabler.io/icons/icon/chart-pie -->
                             <svg

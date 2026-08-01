@@ -10,6 +10,8 @@ class DataSource extends Model
         'company_id',
         'chat_id',
         'type_id',
+        'extracted_id',
+        'connection_type',
         'name',
         'host',
         'port',
@@ -25,5 +27,12 @@ class DataSource extends Model
         'port' => 'integer',
         'options' => 'array',
     ];
+
+    public function extracted(){
+        return $this->belongsTo(DataSourceExtraction::class,'extracted_id');
+    }
+    public function type(){
+        return $this->belongsTo(DataSourceType::class,'type_id');
+    }
 
 }

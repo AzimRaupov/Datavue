@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\DashboardStatus;
 use App\Models\User;
 use Database\Seeders\Widgets\BarChartSeeder;
 use Database\Seeders\Widgets\DonutChartSeeder;
@@ -25,6 +26,7 @@ class DatabaseSeeder extends Seeder
         // User::factory(10)->create();
 
         $this->call([
+            RolePermissionSeeder::class,
             UserSeeder::class,
             MultiSeriesTrendSeeder::class,
             PieChartSeeder::class,
@@ -34,7 +36,9 @@ class DatabaseSeeder extends Seeder
             DonutChartSeeder::class,
             TaskSeeder::class,
             TaskStatusSeeder::class,
-            BarChartSeeder::class
+            BarChartSeeder::class,
+            DataSourceTypesSeeder::class,
+            DashboardStatusesSeeder::class
         ]);
 
     }

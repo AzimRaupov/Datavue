@@ -2,30 +2,43 @@
 
 namespace App\Http\Controllers\Widget;
 
-use App\Helpers\PythonRunner;
+use App\Helpers\Widget\WidgetCodeRun;
 use App\Http\Controllers\Controller;
 use App\Models\DashboardWidget;
-use App\Models\ExtractedData;
+use App\Models\DataSource;
 use Illuminate\Http\Request;
 
 class WidgetRunController extends Controller
 {
-    public function run($id,Request $request){
+    public function run(
+        int $id,
+        Request $request,
+        WidgetCodeRun $widgetCodeRun
+    ) {
+        $dataSource = DataSource::query()
+            ->where(
+                'chat_id',
+                $request->chat_id
+            )
+            ->firstOrFail();
 
-        $extracted = ExtractedData::query()->where('chat_id', $request->chat_id)->first();
+        $widget = DashboardWidget::query()
+            ->findOrFail($id);
 
-        $widget = DashboardWidget::query()->find($id);
-
-        $runner = new PythonRunner(
-            $widget->code_path,
-            [
-                "--path={$extracted->data_path}"
-            ]
+        $result = $widgetCodeRun->run(
+            widget: $widget,
+            dataSource: $dataSource
         );
 
-        $result = $runner->run();
+        if (isset($result['error'])) {
+            return response()->json(
+                $result,
+                422
+            );
+        }
 
-
-        return response()->json($result);
+        return response()->json(
+            $result
+        );
     }
 }

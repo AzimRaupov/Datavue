@@ -151,10 +151,7 @@ async function sendMessage() {
 
     if (!text || loading.value) return;
 
-    if (!dashboardId) {
-        error.value = 'Дашборд ещё не загружен, подождите секунду и попробуйте снова';
-        return;
-    }
+
 
     loading.value = true;
     error.value = null;
@@ -297,7 +294,7 @@ onUnmounted(() => {
                     <div v-for="message in messages" :key="message.id" class="d-flex flex-column gap-3">
                         <div v-if="message.message" class="d-flex justify-content-end">
                             <div class="card card-body bg-primary text-white shadow-sm p-3 pb-0" style="max-width: 80%;">
-                                <div class="small lh-base">{{ message.message }}</div>
+                                <div class="">{{ message.message }}</div>
                                 <div class="text-end text-white-50 small">{{ message.created_at ? new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '' }}</div>
                             </div>
                         </div>
@@ -309,10 +306,10 @@ onUnmounted(() => {
                                 style="max-width: 80%;"
                             >
                                 <transition name="fade" mode="out-in">
-                                    <div v-if="message.answer" key="answer" class="small lh-base text-dark">
+                                    <div v-if="message.answer" key="answer" class="lh-base text-dark">
                                         {{ message.answer }}
                                     </div>
-                                    <div v-else-if="isFailed(message)" key="failed" class="small lh-base text-danger d-flex align-items-center gap-2 py-1">
+                                    <div v-else-if="isFailed(message)" key="failed" class="lh-base text-danger d-flex align-items-center gap-2 py-1">
                                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
                                         Не удалось получить ответ
                                     </div>
@@ -323,7 +320,6 @@ onUnmounted(() => {
                                     </div>
                                 </transition>
 
-                                <div class="text-end text-muted small" v-if="message.answer">AI</div>
 
                                 <TransitionGroup
                                     v-if="message.tasks?.length"
@@ -335,9 +331,12 @@ onUnmounted(() => {
                                         v-for="task in message.tasks"
                                         :key="task.id"
                                         class="step-item"
+                                        style="margin: 3px;"
                                         :class="`step-status-${taskStatus(task)}`"
                                     >
-                                        <div class="h4 m-0">{{ t(`tasks.${taskName(task)}`) }}</div>
+                                        <div class="text-secondary">
+                                            {{ t(`tasks.${taskName(task)}`) }}
+                                        </div>
                                         <div class="d-flex align-items-center gap-2">
                                             <span class="task-marker" :class="`marker-${taskStatus(task)}`" aria-hidden="true">
                                                 <span v-if="taskStatus(task) === 'in_progress'" class="marker-spinner"></span>
@@ -507,8 +506,8 @@ onUnmounted(() => {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 16px;
-    height: 16px;
+    width: 13px;
+    height: 13px;
     border-radius: 50%;
     flex-shrink: 0;
     transition: background-color .3s ease, border-color .3s ease, transform .3s ease;
@@ -575,4 +574,5 @@ onUnmounted(() => {
     0%, 100% { opacity: 1; }
     50%      { opacity: .72; }
 }
+
 </style>

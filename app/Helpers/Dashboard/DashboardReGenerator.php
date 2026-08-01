@@ -2,19 +2,30 @@
 
 namespace App\Helpers\Dashboard;
 
+use App\Events\DashboardWidgetChanged;
 use App\Helpers\Ai\AIService;
+use App\Helpers\Ai\DashboardAi;
+use App\Helpers\DataSource\CodeTemplater;
+use App\Helpers\DataSource\ConnectionProviderRouter;
 use App\Models\AiChat;
 use App\Models\AiChatMessage;
 use App\Models\AiChatTask;
 use App\Models\Dashboard;
 use App\Models\DashboardWidget;
+use App\Models\DataSource;
+use App\Models\DataSourceGroup;
+use App\Models\DataSourceTable;
 use App\Models\Task;
 use App\Models\TaskStatus;
 use App\Models\Widget;
 use App\Helpers\DuckDB;
+use Faker\Provider\Text;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use phpDocumentor\Reflection\DocBlock\Tags\Formatter;
+use Throwable;
 
 class DashboardReGenerator
 {
@@ -26,17 +37,44 @@ class DashboardReGenerator
     public $widgets;
 
     private string $availableWidgetsJson;
-
-    public $duckdb;
+    public $connectionProviderRouter;
     public $tables;
 
     public array $operations = [];
     public ?Dashboard $newDashboard = null;
-
     public $tasks_statuses;
     public $tasks;
     public $message;
     public array $finalWidgets = [];
+    private DashboardAi $dashboardReGeneratorAi;
+    public $dataSource;
+    public $dbSchema;
+    public $groups;
+
+    public $codeTemplate;
+
+    private const OP_UPDATE_STRUCT = 'update_struct';
+    private const OP_UPDATE_VIEW   = 'update_view';
+    private const OP_ADD           = 'add';
+    private const OP_DELETE        = 'delete';
+    public $selectedGroupsTables;
+
+    // списки созданных/обновлённых виджетов
+    // listAddWidgets: элементы - объекты DashboardWidget (новые, source = add)
+    // listUpdateWidgets: элементы - массивы ['widget' => DashboardWidget, 'dashboard_widget_id' => int, 'old_instruction' => string|null] (source = update_struct)
+    public array $listAddWidgets = [];
+    public array $listUpdateWidgets = [];
+
+    // готовые к отправке в ИИ массивы
+    public array $addWidgetsPayload = [];
+    public array $updateWidgetsPayload = [];
+    public $storage;
+
+    // списки DashboardWidget, подготовленные в generateInstruction()
+    // и потребляемые generatingWidgets() / reGeneratingWidgets().
+    // Заполняются в $this->, методы больше не принимают их как аргументы.
+    public array $generateNewWidgets = [];
+    public array $reGenerateWidgets = [];
 
     public function __construct(
         int $dashboardId,
@@ -46,43 +84,47 @@ class DashboardReGenerator
         $this->dashboard = Dashboard::findOrFail($dashboardId);
         $this->chat = AiChat::with('extractedData')->findOrFail($chatId);
         $this->message = AiChatMessage::find($messageId);
+        $this->dataSource = DataSource::query()->where('chat_id', $chatId)->with('type', 'extracted')->first();
+
         $this->dashboardWidgets = DashboardWidget::query()
             ->where('dashboard_id', $dashboardId)
             ->orderBy('position')
             ->get();
 
         $this->widgets = Widget::all();
-        $this->duckdb = new DuckDB($this->chat->extractedData->data_path);
-        $this->tables = $this->duckdb->run("SHOW TABLES;");
-        $this->availableWidgetsJson = json_encode(
-            $this->widgets
-                ->map(fn($widget) => [
-                    'name' => $widget->name,
-                    'scheme_description' => $widget->scheme_description,
-                ])
-                ->toArray(),
-            JSON_UNESCAPED_UNICODE
-        );
 
+        $this->storage = storage_path(
+            'app/company/'.
+            $this->chat->company_id.
+            '/chats/'.
+            $this->chat->id
+        );
         $this->tasks_statuses = TaskStatus::query()
             ->pluck('id', 'name')
             ->toArray();
         $this->tasks = Task::query()
             ->pluck('id', 'name')
             ->toArray();
+        $this->connectionProviderRouter = new ConnectionProviderRouter($this->dataSource->id);
+        $this->tables = $this->connectionProviderRouter->showTables();
+        $this->dashboardReGeneratorAi = new DashboardAi($this->dataSource);
+        $this->codeTemplate = new CodeTemplater($this->dataSource->id);
+        $this->groups = DataSourceGroup::query()->where('data_source_id', $this->dataSource->id)->get();
+
     }
+
 
     public function determineChanges(string $instruction): void
     {
         $task = AiChatTask::query()->create([
             'chat_id' => $this->chat->id,
-            'message_id'=>$this->message->id,
-            'task_id'=>$this->tasks["determine_changes"],
-            'status_id'=>$this->tasks_statuses["in_progress"]
+            'message_id' => $this->message->id,
+            'task_id' => $this->tasks["determine_changes"],
+            'status_id' => $this->tasks_statuses["in_progress"]
         ]);
         $task->load(['status', 'task']);
 
-        event(new \App\Events\MessageTasksChanged($this->message,$task,null));
+        event(new \App\Events\MessageTasksChanged($this->message, $task, null));
 
         $this->instruction = $instruction;
 
@@ -94,122 +136,194 @@ class DashboardReGenerator
                     'title' => $widget->title,
                     'instruction' => $widget->instruction,
                     'widget_name' => $widget->widget?->name,
-                    'tables' => json_decode($widget->tables, true) ?? [],
+                    'tables' => $widget->tables ?? [],
                 ])
                 ->values()
                 ->toArray(),
             JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT
         );
 
-        $tablesJson = json_encode($this->tables, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        $groups = json_encode($this->groups->select('id', 'name'), JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        $widgets = json_encode($this->widgets->select('name', 'description'), JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
 
-        $system = "Ты AI агент аналитической платформы DataVue. Твоя задача — по запросу пользователя точно определить минимальный набор операций над дашбордом (add/update/move/delete), не создавая дублей и не теряя существующие виджеты, которые пользователь не просил менять.";
+        $data = [
+            'dashboard_name' => $this->dashboard->name,
+            'dashboard_widgets' => $widgetsJson,
+            'groups' => $groups,
+            'widgets' => $widgets,
+            'text' => $instruction
+        ];
 
-        $prompt = <<<PROMPT
-Ты анализируешь запрос пользователя к дашборду DataVue.
+        $resultDefine = $this->dashboardReGeneratorAi->defineChanges($data);
 
-Твоя задача — определить, какие изменения необходимо выполнить над существующим дашбордом, чтобы итоговый набор и порядок виджетов точно соответствовал запросу.
 
-=== Текущие виджеты дашборда (в текущем порядке, поле position — их текущая позиция, нумерация с 0) ===
-{$widgetsJson}
+//        $resultDefine=[
+//  "total_tokens" => 5799,
+//  "content" => [
+//    "dashboard_new_name" => "Аналитика клиентов и продаж",
+//    "groups_tables" =>[
+//      45
+//    ],
+//    "operations" => [
+//      [
+//        "widget_id" => null,
+//        "operation_type" => "add",
+//        "widget_name" => "bar",
+//        "title" => "Клиенты по странам",
+//        "position" => 6,
+//        "operation_description" => "Бар-чарт: количество клиентов по странам. Источник данных: таблица customers. Для каждой страны посчитать COUNT(*) записей и привести результат к целому числу; ось X — названия стран (country), ось Y — количество клиентов (COUNT). ◀"
+//      ]
+//    ]
+//  ]
+//];
 
-=== Все таблицы, доступные в базе данных ===
-{$tablesJson}
-
-=== Список доступных типов виджетов (используются в поле "widget_name") ===
-{$this->availableWidgetsJson}
-
-=== Запрос пользователя ===
-"{$this->instruction}"
-
-=== Допустимые типы операции ===
-- add — создать новый виджет, которого сейчас нет на дашборде.
-- update — изменить содержание/визуализацию/данные существующего виджета (виджет остаётся тем же по смыслу, но пересчитывается заново).
-- move — переместить существующий виджет на новую позицию БЕЗ изменения его содержимого. Используй эту операцию, когда пользователь просит изменить только порядок/расположение/место виджетов на дашборде, ничего не меняя в их данных или визуализации.
-- delete — удалить существующий виджет с дашборда.
-
-=== Правила определения типа операции ===
-1. Если пользователь просит изменить только порядок или расположение уже существующих виджетов (например "передвинь", "поставь первым", "поменяй местами", "должны быть в начале/в конце") — используй ТОЛЬКО "move" для этих виджетов. Никогда не используй "add" для перемещения — это создаст дубликат существующего виджета. Никогда не используй "update" для перемещения — это впустую пересоздаст контент виджета.
-2. Используй "add" только тогда, когда на дашборде нет виджета, который бы уже показывал то, что просит пользователь.
-3. Используй "update", когда существующий виджет нужно оставить (тот же смысл/место в дашборде), но изменить его данные, метрику, тип визуализации или формулировку.
-4. Верни только те операции, которые реально требуются по запросу. Все остальные виджеты не упоминай вообще — они автоматически останутся на дашборде без изменений.
-
-=== Правила по полям ===
-5. Для "update", "move" и "delete" обязательно используй существующий id виджета из списка выше в поле widget_id.
-6. Для "add" всегда указывай "widget_id": null.
-7. Никогда не придумывай несуществующие widget_id — используй только те, что реально есть в списке текущих виджетов.
-8. "widget_name" обязателен для "add" и должен быть строго одним из значений поля "name" в списке доступных типов виджетов. Для "update" указывай новый widget_name только если тип визуализации должен смениться, иначе оставь прежний. Для "delete" и "move" widget_name не нужен (null).
-9. Каждый id существующего виджета должен участвовать не более чем в одной операции.
-10. "instruction" заполняется только для "add" и "update" и должно описывать, как именно должен выглядеть виджет и что именно он показывает (без выдуманных полей схемы, без упоминания номера/позиции). Для "delete" и "move" instruction = null.
-11. "title" обязателен для "add" и "update" — короткий, точный, человекочитаемый заголовок, который отражает реальное содержание виджета (конкретную метрику/срез данных), а не общие фразы вроде "Новый виджет" или "Виджет 1". Для "delete" и "move" title = null.
-12. "tables" — только реально существующие и релевантные таблицы из схемы, нужен для "add" и "update". Для "delete" и "move" — пустой массив [].
-13. "position" — целевая позиция виджета в ИТОГОВОМ дашборде после применения всех операций (нумерация с 0, учитывай как изменяемые/новые, так и все нетронутые виджеты вместе). Указывай "position" для "add", "update" и "move" всегда, исходя из смысла запроса (если порядок не важен — ставь позицию в конец списка). Для "delete" position = null.
-14. Если ни один виджет не требует изменений — верни пустой массив [].
-
-=== Формат ответа ===
-Верни ТОЛЬКО валидный JSON-массив объектов, без текста и markdown до или после JSON.
-
-[
-  {
-    "widget_id": 5,
-    "operation_type": "update",
-    "widget_name": "",
-    "title": "Продажи по месяцам",
-    "position": 2,
-    "instruction": "Столбчатая диаграмма, сравнивающая объём продаж по месяцам",
-    "tables": ["orders"]
-  },
-  {
-    "widget_id": null,
-    "operation_type": "add",
-    "widget_name": "",
-    "title": "Количество продаж по категориям",
-    "position": 0,
-    "instruction": "Карточки с количеством продаж в разрезе категорий товаров",
-    "tables": ["orders", "products"]
-  },
-  {
-    "widget_id": 3,
-    "operation_type": "move",
-    "widget_name": null,
-    "title": null,
-    "position": 1,
-    "instruction": null,
-    "tables": []
-  },
-  {
-    "widget_id": 9,
-    "operation_type": "delete",
-    "widget_name": null,
-    "title": null,
-    "position": null,
-    "instruction": null,
-    "tables": []
-  }
-]
-PROMPT;
-        $response = (new AIService(
-            responseFormat: 'json',
-            tokens: 5000
-        ))->ask($prompt, $system);
-
-        $operations = $response['content'] ?? null;
-
+        $operations = $resultDefine['content']['operations'] ?? null;
+        $this->selectedGroupsTables= $resultDefine['content']['groups_tables'] ?? null;
         if (!is_array($operations)) {
             Log::error('DashboardGenerator: invalid AI response for determineChanges', [
                 'dashboard_id' => $this->dashboard->id ?? null,
-                'response' => $response,
+                'response' => $resultDefine,
             ]);
             $operations = [];
         }
 
         $this->operations = $operations;
 
+
         $task->status_id = $this->tasks_statuses["completed"];
         $task->save();
         $task->load('status');
-        event(new \App\Events\MessageTasksChanged($this->message,$task,null));
+        event(new \App\Events\MessageTasksChanged($this->message, $task, null));
+    }
 
+    public function prepareAiPayload(): void
+    {
+        $this->addWidgetsPayload = collect($this->listAddWidgets)
+            ->map(function (DashboardWidget $widget) {
+                return [
+                    'id'=>$widget->id,
+                    'title' => $widget->title,
+                    'description' => $widget->instruction,
+                    'widget_name' => $widget->widget?->name,
+                ];
+            })
+            ->values()
+            ->all();
+
+        $this->updateWidgetsPayload = collect($this->listUpdateWidgets)
+            ->map(function (array $entry) {
+                /** @var DashboardWidget $widget */
+                $widget = $entry['widget'];
+                return [
+                    'id'=>$entry['id'],
+                    'old_instruction' => $entry['old_instruction'] ?? '',
+                    'old_widget_name'=>$entry['old_widget_name'] ?? '',
+                    'description_update' => $widget->instruction,
+                    'widget_name'=> $widget->widget?->name
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Только определяет инструкции/таблицы для виджетов по ответу ИИ
+     * и раскладывает их по $this->generateNewWidgets / $this->reGenerateWidgets.
+     * Сама генерация кода (generatingWidgets()/reGeneratingWidgets()) сюда больше
+     * не вызывается — вызывающий код должен вызвать их отдельно после этого метода.
+     */
+    public function generateInstruction()
+    {
+
+        $task = AiChatTask::query()->create([
+            'chat_id' => $this->chat->id,
+            'message_id' => $this->message->id,
+            'task_id' => $this->tasks["generating_widget_instructions"],
+            'status_id' => $this->tasks_statuses["in_progress"]
+        ]);
+        $task->load(['status', 'task']);
+
+        event(new \App\Events\MessageTasksChanged($this->message, $task, null));
+
+        $tables = DataSourceTable::query()
+            ->whereIn('data_source_group_id', $this->selectedGroupsTables)
+            ->pluck('name')
+            ->toArray();
+        $schema = $this->connectionProviderRouter->getSchema($tables,[
+            'count_rows',
+            'columns',
+            'relations' => [
+                'column' => [
+                    'type',
+                    'nullable',
+                    'key',
+                ],
+                'relation' => [
+                    'table',
+                ],
+            ],
+        ]);
+
+        $this->prepareAiPayload();
+        $widgets = json_encode($this->widgets->select('name','description' ,'scheme_description'), JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        $schemaStr = json_encode($schema, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        $listAddWidgets = json_encode($this->addWidgetsPayload, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        $listUpdateWidgets = json_encode($this->updateWidgetsPayload, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        $data=[
+            'schema' => $schemaStr,
+            'widgets' => $widgets,
+            'listAddWidgets' => $listAddWidgets,
+            'listUpdateWidgets' => $listUpdateWidgets,
+        ];
+        $response=$this->dashboardReGeneratorAi->generateInstruction($data);
+
+        $content = $response['content'] ?? null;
+
+        if (!is_array($content)) {
+            Log::error('DashboardReGenerator: invalid AI response for generateInstruction', [
+                'dashboard_id' => $this->dashboard->id ?? null,
+                'response' => $response,
+            ]);
+            $content = [];
+        }
+
+        // сбрасываем перед новым наполнением, чтобы не накапливать данные
+        // от предыдущих вызовов generateInstruction() в рамках одного объекта
+        $this->generateNewWidgets = [];
+        $this->reGenerateWidgets = [];
+
+        foreach ($content as $listWidget) {
+            $widget = DashboardWidget::query()->find($listWidget['widget_id'] ?? null);
+
+            if (!$widget) {
+                Log::warning('DashboardReGenerator: dashboard widget not found in generateInstruction', [
+                    'widget_id' => $listWidget['widget_id'] ?? null,
+                ]);
+                continue;
+            }
+
+            if(isset($listWidget['impossible'])){
+                $widget->status="failed";
+            }
+            else{
+                $widget->instruction=$listWidget['instruction'] ?? $widget->instruction;
+                $widget->tables = $listWidget['tables'] ?? $widget->tables;
+
+            }
+            $widget->save();
+
+            if(($listWidget['operation'] ?? null)=="add") {
+                $this->generateNewWidgets[]=$widget;
+            }
+            else if(($listWidget['operation'] ?? null)=="update") {
+                $this->reGenerateWidgets[]=$widget;
+            }
+        }
+
+        $task->status_id = $this->tasks_statuses["completed"];
+        $task->save();
+        $task->load('status');
+        event(new \App\Events\MessageTasksChanged($this->message, $task, null));
     }
 
 
@@ -221,32 +335,46 @@ PROMPT;
 
         $task = AiChatTask::query()->create([
             'chat_id' => $this->chat->id,
-            'message_id'=>$this->message->id,
-            'task_id'=>$this->tasks["updating_dashboard"],
-            'status_id'=>$this->tasks_statuses["in_progress"]
+            'message_id' => $this->message->id,
+            'task_id' => $this->tasks["updating_dashboard"],
+            'status_id' => $this->tasks_statuses["in_progress"]
         ]);
         $task->load(['status', 'task']);
 
-        event(new \App\Events\MessageTasksChanged($this->message,$task,null));
-
+        event(new \App\Events\MessageTasksChanged($this->message, $task, null));
 
         foreach ($this->operations as $operation) {
             $type = $operation['operation_type'] ?? null;
             $widgetId = $operation['widget_id'] ?? null;
 
-            if (!$widgetId) {
+            if ($type === self::OP_ADD) {
                 continue;
             }
 
-            if ($type === 'update') {
-                $updatedIds[] = (int) $widgetId;
-            } elseif ($type === 'delete') {
-                $deletedIds[] = (int) $widgetId;
-            } elseif ($type === 'move') {
-                $movedIds[] = (int) $widgetId;
+            if (!$widgetId) {
+                Log::warning('DashboardReGenerator: operation without widget_id skipped', [
+                    'operation' => $operation,
+                ]);
+                continue;
+            }
+
+            switch ($type) {
+                case self::OP_UPDATE_STRUCT:
+                    $updatedIds[] = (int) $widgetId;
+                    break;
+                case self::OP_DELETE:
+                    $deletedIds[] = (int) $widgetId;
+                    break;
+                case self::OP_UPDATE_VIEW:
+                    $movedIds[] = (int) $widgetId;
+                    break;
+                default:
+                    Log::warning('DashboardReGenerator: unknown operation_type skipped', [
+                        'operation_type' => $type,
+                        'widget_id' => $widgetId,
+                    ]);
             }
         }
-
 
         $untouched = $this->dashboardWidgets
             ->reject(fn($w) => in_array($w->id, $updatedIds, true)
@@ -259,11 +387,12 @@ PROMPT;
                 'title' => $w->title,
                 'instruction' => $w->instruction,
                 'widget_name' => $w->widget?->name,
-                'tables' => json_decode($w->tables, true) ?? [],
+                'tables' => $w->tables ?? [],
                 'python_code' => ($w->code_path && file_exists($w->code_path))
                     ? file_get_contents($w->code_path)
                     : null,
                 'position' => $w->position,
+                'status' => $w->status ?? 'active',
             ])
             ->all();
 
@@ -272,26 +401,28 @@ PROMPT;
         foreach ($this->operations as $operation) {
             $type = $operation['operation_type'] ?? null;
 
-            if ($type === 'update') {
-                $result = $this->reGenerateWidget($operation);
+            if ($type === self::OP_UPDATE_STRUCT) {
+
+                $result = $this->updateWidget($operation);
                 if ($result) {
-                    $result['source'] = 'update';
+                    $result['source'] = 'update_struct';
                     $inserts[] = $result;
                 }
-            } elseif ($type === 'add') {
+            } elseif ($type === self::OP_ADD) {
                 $result = $this->addWidget($operation);
                 if ($result) {
                     $result['source'] = 'add';
                     $inserts[] = $result;
                 }
-            } elseif ($type === 'move') {
+            } elseif ($type === self::OP_UPDATE_VIEW) {
                 $result = $this->moveWidget($operation);
                 if ($result) {
-                    $result['source'] = 'move';
+                    $result['source'] = 'update_view';
                     $inserts[] = $result;
                 }
             }
         }
+
 
         usort($inserts, function ($a, $b) {
             $posA = $a['position'] ?? PHP_INT_MAX;
@@ -308,10 +439,12 @@ PROMPT;
                 $position = count($final);
             }
 
+            // не даём вылезти за границы массива
             $position = min($position, count($final));
 
             array_splice($final, $position, 0, [$item]);
         }
+
 
         foreach ($final as $index => &$item) {
             $item['position'] = $index;
@@ -324,43 +457,267 @@ PROMPT;
             'chat_id' => $this->chat->id,
             'name' => $this->dashboard->name,
             'company_id' => $this->chat->company_id,
+            'status' => 'empty'
         ]);
 
         foreach ($this->finalWidgets as $item) {
             $this->persistWidget($this->newDashboard, $item);
         }
 
+        $task->status_id = $this->tasks_statuses["completed"];
+        $task->save();
+        $task->load('status');
+        event(new \App\Events\MessageTasksChanged($this->message, $task, $this->newDashboard->id));
+
+
+        $this->generateInstruction();
+        $this->generatingWidgets();
+        $this->reGeneratingWidgets();
+
+        return $this->newDashboard;
+    }
+
+
+    public function reGeneratingWidgets(): void
+    {
+        if (empty($this->reGenerateWidgets)) {
+            return;
+        }
+
+        $task = AiChatTask::query()->create([
+            'chat_id' => $this->chat->id,
+            'message_id' => $this->message->id,
+            'task_id' => $this->tasks["updating_dashboard"],
+            'status_id' => $this->tasks_statuses["in_progress"]
+        ]);
+        $task->load(['status', 'task']);
+
+        event(new \App\Events\MessageTasksChanged($this->message, $task, null));
+        foreach ($this->reGenerateWidgets as $dashboard_widget) {
+
+            if (!is_file($dashboard_widget->code_path)) {
+                $dashboard_widget->status = 'failed';
+                $dashboard_widget->save();
+
+                continue;
+            }
+
+            $code = file_get_contents($dashboard_widget->code_path);
+
+            if ($code === false || trim($code) === '') {
+                $dashboard_widget->status = 'failed';
+                $dashboard_widget->save();
+
+                continue;
+            }
+
+            $widget = Widget::query()->find($dashboard_widget->widget_id);
+
+            if (!$widget) {
+                $dashboard_widget->status = 'failed';
+                $dashboard_widget->save();
+
+                continue;
+            }
+
+            $fullCode = $this->codeTemplate->getLibraries() . "\n";
+            $fullCode .= $this->codeTemplate->getQueryTemplate() . "\n";
+            $fullCode .= $code . "\n";
+            $fullCode .= $this->codeTemplate->getFooter();
+            $scheme = $this->connectionProviderRouter->getSchema(
+                $dashboard_widget->tables,
+                [
+                    'count_rows',
+                    'columns',
+                    'relations' => [
+                        'column' => [
+                            'type',
+                            'nullable',
+                            'key',
+                        ],
+                        'relation' => [
+                            'table',
+                        ],
+                    ],
+                ]
+            );
+
+            $schemeStr = json_encode(
+                $scheme,
+                JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT
+            );
+
+            $data = [
+                'scheme' => $schemeStr,
+                'instruction' => $dashboard_widget->instruction,
+                'widget_name' => $widget->name,
+                'code' => $fullCode,
+                'widget_scheme' => $widget->scheme,
+                'widget_scheme_description' => $widget->scheme_description,
+            ];
+
+            $response = $this->dashboardReGeneratorAi->reGenerateWidget($data);
+
+            $codePath = $this->storage
+                . '/dashboard/widgets/'
+                . $dashboard_widget->id
+                . '/generated_script.py';
+
+            $directory = dirname($codePath);
+
+            if (!is_dir($directory)) {
+                mkdir($directory, 0755, true);
+            }
+
+            if (
+                !empty($response['content']['python_code']) &&
+                is_string($response['content']['python_code'])
+            ) {
+                file_put_contents(
+                    $codePath,
+                    $response['content']['python_code']
+                );
+
+                $dashboard_widget->code_path = $codePath;
+                $dashboard_widget->status = 'active';
+            } else {
+                $dashboard_widget->status = 'failed';
+            }
+
+            $dashboard_widget->save();
+
+            event(new DashboardWidgetChanged($this->newDashboard));
+        }
 
         $task->status_id = $this->tasks_statuses["completed"];
         $task->save();
         $task->load('status');
-        event(new \App\Events\MessageTasksChanged($this->message,$task,$this->newDashboard->id));
-
-        return $this->newDashboard;
-
+        event(new \App\Events\MessageTasksChanged($this->message, $task));
     }
 
-
-    private function moveWidget(array $operation): ?array
+    /**
+     * Генерирует код для новых виджетов.
+     * Список виджетов берётся из $this->generateNewWidgets (заполняется в generateInstruction()).
+     */
+    public function generatingWidgets()
     {
-        $dashboardWidget = $this->dashboardWidgets->firstWhere('id', $operation['widget_id'] ?? null);
+        if (empty($this->generateNewWidgets)) {
+            return;
+        }
 
-        if (!$dashboardWidget) {
-            Log::error('DashboardReGenerator: dashboard widget not found for move', [
+        $task = AiChatTask::query()->create([
+            'chat_id' => $this->chat->id,
+            'message_id' => $this->message->id,
+            'task_id' => $this->tasks["generate_widgets_dashboard"],
+            'status_id' => $this->tasks_statuses["in_progress"]
+        ]);
+        $task->load(['status', 'task']);
+
+        event(new \App\Events\MessageTasksChanged($this->message, $task, null));
+
+        $codeTemplate=$this->codeTemplate->generateFullScript();
+        foreach ($this->generateNewWidgets as $dashboard_widget) {
+            if($dashboard_widget->instruction) {
+
+                $scheme = $this->connectionProviderRouter->getSchema(
+                    $dashboard_widget->tables,
+                    [
+                        'count_rows',
+                        'columns',
+                        'relations' => [
+                            'column' => [
+                                'type',
+                                'nullable',
+                                'key',
+                            ],
+                            'relation' => [
+                                'table',
+                            ],
+                        ],
+                    ]
+                );
+                $schemeStr = json_encode(
+                    $scheme,
+                    JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT
+                );
+
+                $codePath = $this->storage
+                    . '/dashboard/widgets/'
+                    . $dashboard_widget->id
+                    . '/generated_script.py';
+                $data = [
+                    'scheme' => $schemeStr,
+                    'codeTemplate' => $codeTemplate,
+                    'instruction' => $dashboard_widget->instruction,
+                ];
+                $mainBody = $this->dashboardReGeneratorAi->generateContentWidget($dashboard_widget,$schemeStr,$codeTemplate);
+
+                File::ensureDirectoryExists(dirname($codePath));
+                File::put($codePath, $mainBody);
+                $dashboard_widget->code_path = $codePath;
+                $dashboard_widget->status = 'active';
+                $dashboard_widget->save();
+
+            }
+            event(new DashboardWidgetChanged($this->dashboard));
+
+        }
+        $task->status_id = $this->tasks_statuses["completed"];
+        $task->save();
+        $task->load('status');
+        event(new \App\Events\MessageTasksChanged($this->message, $task));
+    }
+
+    public function updateWidget(array $operation): ?array
+    {
+        $widgetDashboard = DashboardWidget::query()->with('widget')->find($operation['widget_id'] ?? null);
+
+        if (!$widgetDashboard) {
+            Log::error('DashboardReGenerator: dashboard widget not found for update_struct', [
                 'widget_id' => $operation['widget_id'] ?? null,
             ]);
             return null;
         }
 
         return [
-            'title' => $dashboardWidget->title,
+            'title' => $operation['title'] ?? $widgetDashboard->title,
+            'instruction' => $operation['operation_description'] ?? ($widgetDashboard->instruction ?? ''),
+            'widget_name' => $operation['widget_name'] ?? $widgetDashboard->widget?->name,
+            'tables' => $operation['tables'] ?? ($widgetDashboard->tables ?? []),
+            'python_code' => ($widgetDashboard->code_path && file_exists($widgetDashboard->code_path))
+                ? file_get_contents($widgetDashboard->code_path)
+                : null,
+            'position' => $operation['position'] ?? $widgetDashboard->position ?? 0,
+            'status' => 'draft',
+            // id исходного (старого) dashboard_widget, который редактировался
+            'dashboard_widget_id' => $widgetDashboard->id,
+            // старая инструкция до правки (для payload в ИИ)
+            'old_instruction' => $widgetDashboard->instruction,
+            'old_widget_name'=>$widgetDashboard->widget?->name
+        ];
+    }
+
+    private function moveWidget(array $operation): ?array
+    {
+        $dashboardWidget = $this->dashboardWidgets->firstWhere('id', $operation['widget_id'] ?? null);
+
+        if (!$dashboardWidget) {
+            Log::error('DashboardReGenerator: dashboard widget not found for update_view', [
+                'widget_id' => $operation['widget_id'] ?? null,
+            ]);
+            return null;
+        }
+
+        return [
+            'title' => $operation['title'] ?? $dashboardWidget->title,
             'instruction' => $dashboardWidget->instruction,
             'widget_name' => $dashboardWidget->widget?->name,
-            'tables' => json_decode($dashboardWidget->tables, true) ?? [],
+            'tables' => $dashboardWidget->tables ?? [],
             'python_code' => ($dashboardWidget->code_path && file_exists($dashboardWidget->code_path))
                 ? file_get_contents($dashboardWidget->code_path)
                 : null,
-            'position' => $operation['position'] ?? null,
+            'position' => $operation['position'] ?? $dashboardWidget->position ?? 0,
+            'status' => $dashboardWidget->status ?? 'active',
         ];
     }
 
@@ -373,7 +730,7 @@ PROMPT;
             $codePath = $this->savePythonCode($dashboard->id, $item['python_code']);
         }
 
-        return DashboardWidget::query()->create([
+        $result = DashboardWidget::query()->create([
             'dashboard_id' => $dashboard->id,
             'widget_id' => $widget?->id,
             'title' => $item['title'],
@@ -381,7 +738,28 @@ PROMPT;
             'tables' => json_encode($item['tables'] ?? [], JSON_UNESCAPED_UNICODE),
             'code_path' => $codePath,
             'position' => $item['position'],
+            'status' => $item['status'] ?? 'draft',
         ]);
+
+        // подгружаем связь widget, чтобы widget->name был доступен без доп. запроса позже
+        if ($widget) {
+            $result->setRelation('widget', $widget);
+        }
+
+        // $result уже содержит id (проставляется после create())
+        if ($item['source'] === 'add') {
+            $this->listAddWidgets[] = $result;
+        } elseif ($item['source'] === 'update_struct') {
+            $this->listUpdateWidgets[] = [
+                'id'=>$result->id,
+                'widget' => $result,
+                'dashboard_widget_id' => $item['dashboard_widget_id'] ?? null,
+                'old_widget_name' => $item['old_widget_name'] ?? null,
+                'old_instruction' => $item['old_instruction'] ?? null,
+            ];
+        }
+
+        return $result;
     }
 
     private function savePythonCode(int $dashboardId, string $code): string
@@ -392,195 +770,25 @@ PROMPT;
         return Storage::path($relativePath);
     }
 
-    public function reGenerateWidget(array $operation): ?array
+    public function addWidget(array $operation): ?array
     {
+        $widgetName = $operation['widget_name'] ?? null;
 
-        $dashboardWidget = $this->dashboardWidgets->firstWhere('id', $operation['widget_id'] ?? null);
-
-        if (!$dashboardWidget) {
-            Log::error('DashboardReGenerator: dashboard widget not found', [
-                'widget_id' => $operation['widget_id'] ?? null,
+        if (!$widgetName) {
+            Log::error('DashboardReGenerator: widget_name is required for add operation', [
+                'operation' => $operation,
             ]);
             return null;
         }
-
-        $widgetName = $operation['widget_name'] ?? $dashboardWidget->widget?->name;
-
-        $widget = Widget::query()
-            ->where('name', $widgetName)
-            ->select(['name', 'scheme', 'scheme_description'])
-            ->first();
-
-        if (!$widget) {
-            Log::error('DashboardReGenerator: widget type not found', [
-                'widget_name' => $widgetName,
-            ]);
-            return null;
-        }
-
-        $currentTables = json_decode($dashboardWidget->tables, true) ?? [];
-
-        $currentWidget = [
-            'title' => $dashboardWidget->title,
-            'widget_name' => $dashboardWidget->widget?->name,
-            'instruction' => $dashboardWidget->instruction,
-            'tables' => $currentTables,
-            'python_code' => null,
-        ];
-
-        if ($dashboardWidget->code_path && file_exists($dashboardWidget->code_path)) {
-            $currentWidget['python_code'] = file_get_contents($dashboardWidget->code_path);
-        }
-
-        $currentWidgetJson = json_encode($currentWidget, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-
-        $targetTables = !empty($operation['tables']) ? $operation['tables'] : $currentTables;
-
-        $tablesScheme = $this->duckdb->getSchema($targetTables);
-        $tablesSchemeJson = json_encode($tablesScheme, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-
-        $widgetSchemaJson = json_encode($widget, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-
-        $system = <<<'TEXT'
-Ты — специализированный генератор автономных Python-скриптов для аналитики данных платформы DataVue.
-Твоя задача — переписать Python-код существующего виджета под новые требования: чистый, эффективный, рабочий код на основе DuckDB и Pandas.
-TEXT;
-
-        $prompt = <<<PROMPT
-Целевая схема виджета (тип, формат вывода):
-{$widgetSchemaJson}
-
-Схема доступных таблиц DuckDB, релевантных виджету:
-{$tablesSchemeJson}
-
-Текущий виджет дашборда (для контекста, что было раньше):
-{$currentWidgetJson}
-
-Что нужно изменить (инструкция):
-{$operation['instruction']}
-
-ОБЯЗАТЕЛЬНАЯ СТРУКТУРА СКРИПТА:
-1. Импорт модулей: `duckdb`, `pandas as pd`, `json`, `sys`, `argparse`.
-2. Парсинг единственного аргумента `--path` (через sys.argv или argparse). Других аргументов быть не должно.
-3. Подключение к базе данных через `duckdb.connect()`.
-4. Получение DataFrame через `.df()`, финальная подгонка под JSON-структуру.
-5. Вывод итогового JSON в stdout через `print(json.dumps(..., ensure_ascii=False))`.
-
-ВАЖНО:
-- Используй только реально существующие таблицы и поля из приведённой схемы. Не выдумывай поля.
-- Если нужных данных нет — сформируй пустой результат, соответствующий целевой схеме.
-- Можно использовать любые стандартные библиотеки Python и pandas.
-- Никаких комментариев в коде.
-- Никакого markdown (без ```).
-- Итоговый вывод скрипта должен строго соответствовать целевой схеме виджета "$widget->name".
-
-Ответ строго валидный JSON-объект, без пояснений и markdown:
-{"python_code": ""}
-PROMPT;
-
-        $response = (new AIService(
-            responseFormat: 'json',
-            tokens: 8000,
-        ))->ask($prompt, $system);
-
-        $result = $response['content'] ?? null;
-        if (!is_array($result) || empty($result['python_code'])) {
-            Log::error('DashboardReGenerator: invalid AI response for reGenerateWidget', [
-                'widget_id' => $dashboardWidget->id,
-                'response' => $response,
-            ]);
-            return null;
-        }
-
-        $pythonCode = trim((string) $result['python_code']);
-        $pythonCode = preg_replace('/^```(?:python)?\s*/i', '', $pythonCode);
-        $pythonCode = preg_replace('/\s*```$/', '', $pythonCode);
 
         return [
-            'title' => $operation['title'] ?? $dashboardWidget->title,
-            'instruction' => $operation['instruction'] ?? $dashboardWidget->instruction,
+            'title' => $operation['title'] ?? $widgetName,
+            'instruction' => $operation['operation_description'] ?? '',
             'widget_name' => $widgetName,
-            'tables' => $targetTables,
-            'python_code' => $pythonCode,
-            'position' => $operation['position'] ?? null,
-        ];
-    }
-
-    public function addWidget($operation): ?array
-    {
-        $tablesScheme = $this->duckdb->getSchema($operation['tables'] ?? []);
-        $tablesJson = json_encode($tablesScheme, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-
-        $widget = Widget::query()
-            ->where('name', $operation['widget_name'])
-            ->first();
-
-        if (!$widget) {
-            Log::error('DashboardReGenerator: widget type not found for add', [
-                'widget_name' => $operation['widget_name'] ?? null,
-            ]);
-            return null;
-        }
-
-        $system = <<<'TEXT'
-Ты — специализированный генератор автономных Python-скриптов для аналитики данных.
-Твоя задача — написать чистый, эффективный и рабочий код, сочетающий DuckDB и Python.
-
-СТРОГИЕ ТЕХНИЧЕСКИЕ ОГРАНИЧЕНИЯ:
-1. Скрипт должен принимать ровно один аргумент командной строки: --path (путь к файлу базы данных DuckDB). Добавлять другие аргументы (даты, лимиты, флаги) категорически запрещено.
-TEXT;
-
-        $prompt = <<<TEXT
-Напиши автономный Python-скрипт, который агрегирует данные из DuckDB и форматирует их в нужный вид.
-
-ОБЯЗАТЕЛЬНАЯ СТРУКТУРА СКРИПТА:
-1. Импорт модулей: `duckdb`, `pandas as pd`, `json`, `sys`, `argparse`.
-2. Парсинг единственного аргумента `--path` (через sys.argv или argparse).
-3. Подключение к базе данных через `duckdb.connect()`.
-5. Получение DataFrame через `.df()`, финальная подгонка под JSON-структуру.
-6. Вывод итогового JSON в stdout через `print(json.dumps(..., ensure_ascii=False))`.
-
-ВАЖНО:
-- Используй только реально существующие таблицы и поля из доступной схемы.
-- Если нужных данных или таблиц для выполнения инструкции нет, сформируй пустой результат, соответствующий целевой схеме.
-
-ДОСТУПНАЯ СХЕМА DUCKDB:
-{$tablesJson}
-
-ИНСТРУКЦИЯ ПО КАК ДОЛЖНО БЫТ:
-{$operation['instruction']}
-
-ЦЕЛЕВАЯ JSON СХЕМА ВЫВОДА:
-{$widget->scheme}
-
-ОПИСАНИЕ ПОЛЕЙ JSON ВЫХОДА:
-{$widget->scheme_description}
-
-ТЕХНИЧЕСКИЕ ПРАВИЛА:
-- Аргумент базы передается строго как --path=
-- Никаких комментариев в коде.
-- Можно использовать любые системный библатеки python и pandas
-- Никакого markdown (не используй блоки ```).
-- Только чистый, готовый к исполнению Python-код.
-TEXT;
-
-        $response = (new AIService(
-            responseFormat: 'text',
-            tokens: 5000,
-        ))->ask($prompt, $system);
-
-        $pythonCode = trim((string) $response['content']);
-        $pythonCode = preg_replace('/^```(?:python)?\s*/i', '', $pythonCode);
-        $pythonCode = preg_replace('/\s*```$/', '', $pythonCode);
-        $pythonCode = preg_replace('/["\']\s*$/', '', $pythonCode);
-
-        return [
-            'title' => $operation['title'],
-            'instruction' => $operation['instruction'],
-            'widget_name' => $operation['widget_name'],
             'tables' => $operation['tables'] ?? [],
-            'python_code' => $pythonCode,
+            'python_code' => null, // генерация кода временно отключена
             'position' => $operation['position'] ?? null,
+            'status' => 'draft',
         ];
     }
 }

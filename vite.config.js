@@ -16,8 +16,9 @@ export default defineConfig({
                 'resources/css/viewer/app.css',
                 'resources/js/viewer/app.js',
 
+
             ],
-            refresh: true,
+            refresh: false,
             fonts: [
                 bunny('Instrument Sans', {
                     weights: [400, 500, 600],

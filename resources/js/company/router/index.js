@@ -4,7 +4,7 @@ import 'nprogress/nprogress.css';
 
 import DashboardPage from '../pages/DashboardPage.vue';
 import ChatPage from '../pages/ChatPage.vue';
-
+import Profile from "../pages/settings/Profile.vue";
 const routes = [
     {
         path: '/',
@@ -16,6 +16,12 @@ const routes = [
         name: 'company.chat',
         component: ChatPage,
     },
+    {
+        path:'/settings/profile',
+        name: 'settings.profile',
+        component: Profile
+    },
+
 ];
 
 const router = createRouter({

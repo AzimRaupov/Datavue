@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
+use Spatie\Permission\Models\Role;
 
 class UserSeeder extends Seeder
 {
@@ -25,10 +26,15 @@ class UserSeeder extends Seeder
             ['email' => 'zmraupov@gmail.com'],
             [
                 'name' => 'Start Coding',
-                'role' => 'company',
                 'password' => Hash::make('zmraupov@gmail.com'),
                 'company_id' => $company->id,
             ]
         );
+        $role = Role::firstOrCreate([
+            'name' => 'company_admin',
+            'guard_name' => 'web',
+        ]);
+
+        $user->assignRole($role);
     }
 }

@@ -15,7 +15,7 @@ class MiniCountersSeeder extends Seeder
         $schemeData = [
             'counters' => [
                 [
-                    'name' => '',
+                    'name' => 'max',
                     'value' => 12,
                     'prefix' => '',
                     'suffix' => '',

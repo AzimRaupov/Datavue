@@ -2,12 +2,12 @@
 
 namespace App\Jobs;
 
-use App\Helpers\DataHandlers\SqlDataHandler;
-use App\Helpers\DataHandlers\TableDataHandler;
+use App\Helpers\DataSource\Handlers\MySqlDataHandler;
+use App\Helpers\DataSource\Handlers\TableDataHandler;
 use App\Helpers\PythonRunner;
 use App\Models\AiChat;
 use App\Models\AiChatTask;
-use App\Models\ExtractedData;
+use App\Models\DataSourceExtraction;
 use App\Models\Task;
 use App\Models\TaskStatus;
 use App\Models\UploadedFile;
@@ -34,17 +34,13 @@ class DataHandlerJob implements ShouldQueue
 
     public $tasks_status;
 
-    public $dashboard_id;
-    public $message_id;
     public $outputPath;
     public $dbFilePath;
     /**
      * Create a new job instance.
      */
-    public function __construct($chat_id,$upload_file_id,$user_id,$message_id,$dashboard_id)
+    public function __construct($chat_id,$upload_file_id,$user_id)
     {
-        $this->dashboard_id = $dashboard_id;
-        $this->message_id = $message_id;
 
         $this->user= User::query()->with('company')->find($user_id);
         $this->chat=AiChat::query()->find($chat_id);
@@ -62,7 +58,6 @@ class DataHandlerJob implements ShouldQueue
 
         $this->chat_task=AiChatTask::create([
             'chat_id'   => $this->chat->id,
-            'message_id' => $this->message_id,
             'task_id'   => $this->tasks['data_processing'],
             'status_id' => $this->tasks_status['start'],
         ]);
@@ -80,7 +75,7 @@ class DataHandlerJob implements ShouldQueue
             $this->chat_task->save();
 
             if ($this->uploadFile->file_type == 'sql') {
-                $save_handler = new SqlDataHandler(
+                $save_handler = new MySqlDataHandler(
                     $this->chat,
                     $this->uploadFile,
                     $this->storage
@@ -104,7 +99,7 @@ class DataHandlerJob implements ShouldQueue
             if ($resultCreateDb['exit_code'] !== 0 || $lastLine !== 'ok') {
                 throw new \Exception("Ошибка создания базы данных DuckDB. Ответ: " . json_encode($resultCreateDb));
             }
-            ExtractedData::create([
+            DataSourceExtraction::create([
                 'file_id'    => $this->uploadFile->id,
                 'company_id' => $this->chat->company->id,
                 'chat_id'    => $this->chat->id,
@@ -114,7 +109,7 @@ class DataHandlerJob implements ShouldQueue
             $this->chat_task->status_id = $this->tasks_status['completed'];
             $this->chat_task->save();
 
-            dispatch(new GeneratorDashboardJob($this->message_id, $this->chat->id,$this->user->id,$this->dashboard_id));
+//            dispatch(new DashboardGeneratorJob($this->message_id, $this->chat->id,$this->user->id,$this->dashboard_id));
 
         } catch (\Throwable $e) {
 
@@ -127,7 +122,7 @@ class DataHandlerJob implements ShouldQueue
 
     private function createDuckdbDatabase($dbFilePath,$sqlFilePath)
     {
-        $path = "/home/azim/projects/Datavue/app/Helpers/DataHandlers/sql_to_duck.py";
+        $path = "/home/azim/projects/Datavue/app/Helpers/DataSource/sql_to_duck.py";
 
 
         $runner = new PythonRunner(

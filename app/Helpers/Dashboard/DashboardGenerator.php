@@ -3,20 +3,22 @@
 namespace App\Helpers\Dashboard;
 
 use App\Events\DashboardWidgetChanged;
-use App\Helpers\Ai\AIService;
-use App\Helpers\DuckDB;
-use App\Helpers\PythonRunner;
+use App\Helpers\Ai\DashboardAi;
+use App\Helpers\DataSource\CodeTemplater;
+use App\Helpers\DataSource\ConnectionProviderRouter;
 use App\Models\AiChat;
 use App\Models\AiChatMessage;
-use App\Models\AiChatTask;
 use App\Models\Dashboard;
 use App\Models\DashboardWidget;
+use App\Models\DataSource;
+use App\Models\DataSourceGroup;
+use App\Models\DataSourceTable;
 use App\Models\Task;
 use App\Models\TaskStatus;
 use App\Models\Widget;
 use Illuminate\Support\Facades\File;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Process;
+use RuntimeException;
+use Throwable;
 
 class DashboardGenerator
 {
@@ -31,15 +33,33 @@ class DashboardGenerator
     public $dashboard;
 
     public $tables;
-    public $duckdb;
     public $dbSchema;
 
     public $tasks;
     public $tasks_statuses;
-    public function __construct($chat_id, $message_id,$dashboard_id)
+    public $dataSource;
+    public $connectionProviderRouter;
+    public $plan;
+    public $selectedTables = [];
+
+    /**
+     * Токен для авторизации сгенерированных Python-скриптов при обращении к API источника данных.
+     * При необходимости замените на реальный источник токена (например, API-токен компании/чата).
+     */
+    public ?string $token = null;
+
+    protected DashboardAi $dashboardGeneratorAi;
+
+    public function __construct($chat_id, $message_id)
     {
-        $this->chat = AiChat::query()->with('user','extractedData')->find($chat_id);
+        $this->chat = AiChat::query()->with('user', 'extractedData')->find($chat_id);
         $this->message = AiChatMessage::query()->find($message_id);
+
+        $this->dataSource = DataSource::query()->where('chat_id', $chat_id)->with('type', 'extracted')->first();
+
+        if (!$this->dataSource) {
+            throw new RuntimeException("DataSource не найден для чата #{$chat_id}");
+        }
 
         $this->storage = storage_path(
             'app/company/'.
@@ -48,10 +68,12 @@ class DashboardGenerator
             $this->chat->id
         );
 
-        $this->duckdb = new DuckDB($this->chat->extractedData->data_path);
-
         $this->widgets = Widget::all();
-        $this->dashboard = Dashboard::query()->find($dashboard_id);
+        $this->dashboard = Dashboard::query()->create([
+            'chat_id' => $chat_id,
+            'company_id' => $this->chat->company_id,
+            'status' => 'empty',
+        ]);
 
         $this->tasks_statuses = TaskStatus::query()
             ->pluck('id', 'name')
@@ -60,273 +82,289 @@ class DashboardGenerator
             ->pluck('id', 'name')
             ->toArray();
 
-        $this->fetchSchemaDb();
+        $this->dashboardGeneratorAi = new DashboardAi($this->dataSource);
+        $this->connectionProviderRouter = new ConnectionProviderRouter($this->dataSource->id);
 
+        $this->fetchSchemaDb();
     }
+
+    private function quoteIdentifier(string $identifier): string
+    {
+        return '"'.str_replace('"', '""', $identifier).'"';
+    }
+
+    private function normalizeRow($row): array
+    {
+        if (is_object($row)) {
+            return get_object_vars($row);
+        }
+
+        if (is_array($row)) {
+            return $row;
+        }
+
+        return [];
+    }
+
+    /**
+     * Единый формат ответа каждого шага.
+     */
+    private function result(bool $errors, string $message = '', array $extra = []): array
+    {
+        return array_merge(['errors' => $errors, 'message' => $message], $extra);
+    }
+
+    public function defineGroups(): array
+    {
+        try {
+            $schemeGroups = DataSourceGroup::query()
+                ->where('data_source_id', $this->dataSource->id)
+                ->get(['id', 'name', 'description']);
+
+            if ($schemeGroups->isEmpty()) {
+                return $this->result(
+                    true,
+                    'For this data source no groups were found. Run DataSourceGrouping::handle()+save() first.'
+                );
+            }
+
+            $response = $this->dashboardGeneratorAi->defineGroups(
+                groups: $schemeGroups,
+                text: $this->message->message
+            );
+            $groupsIds = $response['content']['groups'];
+
+            $this->selectedTables = DataSourceTable::query()
+                ->whereIn('data_source_group_id', $groupsIds)
+                ->get();
+
+            return $this->result(false, '', ['groups' => $groupsIds]);
+        } catch (Throwable $e) {
+            return $this->result(true, $e->getMessage());
+        }
+    }
+
+    public function createPlan(): array
+    {
+        try {
+            $tables = $this->selectedTables
+                ->pluck('name')
+                ->toArray();
+
+            $scheme = $this->connectionProviderRouter->getSchema(
+                tables: $tables,
+                options: [
+                    'count_rows',
+                    'columns',
+                    'relations' => [
+                        'column' => [
+                            'type',
+                            'nullable',
+                            'key',
+                        ],
+                        'relation' => [
+                            'table',
+                        ],
+                    ],
+                ]
+            );
+            $schemeStr = json_encode($scheme, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+
+            $result = $this->dashboardGeneratorAi->generatePlan($this->message->message, $schemeStr);
+            $this->plan = $result['content'];
+
+            return $this->result(false, '', ['plan' => $this->plan]);
+        } catch (Throwable $e) {
+            return $this->result(true, $e->getMessage());
+        }
+    }
+
     public function fetchSchemaDb()
     {
-        $this->tables = $this->duckdb->run("SHOW TABLES;");
+        $this->tables = $this->connectionProviderRouter->showTables();
 
         $dbSchema = [];
 
-        foreach ($this->tables as $table) {
-            $tableName = $table['name'] ?? $table['table_name'] ?? null;
+        foreach ($this->tables as $tableName) {
+            $columns = $this->connectionProviderRouter->showColumns($tableName);
 
-            if ($tableName) {
-                $rawColumns = $this->duckdb->run("DESCRIBE " . $tableName . ";");
+            $tableColumns = [];
 
-                $tableColumns = [];
+            foreach ($columns as $column) {
+                $columnName = $column['column_name'] ?? null;
 
-                foreach ($rawColumns as $column) {
-                    $columnName = $column['column_name'] ?? $column['Field'] ?? null;
-
-                    if ($columnName) {
-                        $tableColumns[$columnName] = [
-                            'type' => $column['column_type'] ?? $column['Type'] ?? 'unknown',
-                            'nullable' => $column['null'] ?? $column['Null'] ?? 'YES',
-                            'key' => $column['key'] ?? $column['Key'] ?? '',
-                            'default' => $column['default'] ?? $column['Default'] ?? null,
-                        ];
-                    }
+                if (!$columnName) {
+                    continue;
                 }
 
-                $dbSchema[$tableName] = $tableColumns;
+                $tableColumns[$columnName] = [
+                    'type' => $column['type'] ?? 'unknown',
+                    'nullable' => $column['nullable'] ?? 'YES',
+                    'key' => $column['key'] ?? '',
+                    'default' => $column['default'] ?? null,
+                ];
             }
+
+            $dbSchema[$tableName] = $tableColumns;
         }
-        $this->dbSchema=$dbSchema;
+
+        $this->dbSchema = $dbSchema;
     }
+
     public function getDashboard()
     {
         return $this->dashboard;
     }
 
-    public function generateWidgets()
+    public function generateWidgets(): array
     {
-        $task = AiChatTask::query()->create([
-            'chat_id' => $this->chat->id,
-            'message_id' => $this->message->id,
-            'task_id'=>$this->tasks['detect_schema_dashboard'],
-            'status_id'=>$this->tasks_statuses['in_progress'],
-        ]);
-        $task->load(['status', 'task']);
+        try {
+            $text = $this->message->message;
 
-        event(new \App\Events\MessageTasksChanged($this->message,$task));
+            $widgetsList = $this->widgets->map(function ($widget) {
+                return [
+                    'name' => $widget->name,
+                    'description' => $widget->description,
+                ];
+            });
 
-        $text=$this->message->message;
-        $widgetsList = $this->widgets->select(['name', 'description']);
-        $widgets = json_encode($widgetsList, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+            $tables = $this->selectedTables
+                ->pluck('name')
+                ->toArray();
 
-        $tables=json_encode($this->tables,JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+            $widgets = json_encode($widgetsList, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
 
+            $scheme = $this->connectionProviderRouter->getSchema(
+                tables: $tables,
+                options: [
+                    'count_rows',
+                    'columns',
+                    'relations' => [
+                        'column' => [
+                            'type',
+                            'nullable',
+                            'key',
+                        ],
+                        'relation' => [
+                            'table',
+                        ],
+                    ],
+                ]
+            );
 
-        $prompt = <<<TEXT
+            $schemeStr = json_encode($scheme, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+            $response = $this->dashboardGeneratorAi->generateWidgets($schemeStr, $widgets, $text);
+            $generateWidgets = $response['content']['widgets'];
 
-### 1. СПИСОК ДОСТУПНЫХ ТАБЛИЦ:
-$tables
+            foreach ($generateWidgets as $list) {
+                $widget = $this->widgets->where('name', $list['name'])->first();
 
-### 2. СПИСОК ДОСТУПНЫХ ТИПОВ ВИДЖЕТОВ (Используй ТОЛЬКО 'name' из этого списка):
-$widgets
+                if (!$widget) {
+                    continue;
+                }
 
-### 3. ЗАПРОС ПОЛЬЗОВАТЕЛЯ (ГЛАВНЫЙ ПРИОРИТЕТ):
-"{$text}"
+                DashboardWidget::query()->create([
+                    'dashboard_id' => $this->dashboard->id,
+                    'widget_id' => $widget->id,
+                    'title' => $list['title'],
+                    'instruction' => $list['instruction'],
+                    'tables' => $list['tables'],
+                ]);
+            }
 
----
+            $this->dashboard->name = $response['content']['dashboard_name'];
+            $this->dashboard->save();
 
-### ЗАДАЧА:
-Сформируй полноценную, профессиональную структуру аналитического дашборда, которая максимально точно отвечает запросу пользователя.
-
----
-
-## ❗ КРИТИЧЕСКИЕ ПРАВИЛА (ОБЯЗАТЕЛЬНО К СОБЛЮДЕНИЮ):
-
-### 1. ЗАПРЕТ НА ВЫДУМЫВАНИЕ ПОЛЕЙ СХЕМЫ:
-- Используй ТОЛЬКО поля, которые реально существуют в списке таблиц.
-- НЕЛЬЗЯ придумывать новые названия колонок, метрик или атрибутов.
-- Если нужного поля нет в схеме — НЕ ИЗОБРЕТАЙ ЕГО, а адаптируй логику под доступные данные.
-
----
-
-### 2. ПРАВИЛА ДЛЯ "instruction":
-- "instruction" — это ТОЛЬКО описание визуального вида и логики построения виджета.
-- ЗАПРЕЩЕНО перечислять или выдумывать названия полей внутри instruction.
-- Можно ссылаться только на уже существующие поля из схемы (без изменения их названий).
-- Описывай:
-  - тип визуализации (график, столбцы, линии, KPI и т.д.)
-  - что сравнивается
-  - как группируются данные
-  - какие фильтры или агрегации применяются
-- НЕЛЬЗЯ: придумывать новые атрибуты, поля, ключи или структуры данных.
-
----
-
-### 3. РАЗБИЕНИЕ НА ЛОГИЧЕСКИЕ ЧАСТИ:
-Если запрос комплексный — разбивай на отдельные аналитические блоки.
-Каждый блок = отдельный объект JSON.
-
----
-
-### 4. РАЗНООБРАЗИЕ ВИДЖЕТОВ:
-- Виджеты mini-cards используй для общих метрик.
-- Размети первыми виджеты mini-cards
-- Используй разные графики для разных срезов
-- Не дублируй смысл виджетов
-
----
-
-### 5. УНИКАЛЬНОСТЬ:
-- Каждый "title" должен быть уникальным
-- Каждый объект должен отражать отдельную бизнес-логику
-- Запрещено дублировать один и тот же смысл разными виджетами
-
----
-
-## 📦 ТРЕБОВАНИЯ К JSON:
-
-1. Выводи ТОЛЬКО валидный JSON массив
-2. Никакого markdown, текста или пояснений
-3. Ключи строго: "name", "title", "instruction", "tables"
-4. "name" — только из списка виджетов
-5. "tables" — только реально используемые таблицы из схемы
-6. "title" — короткий человекочитаемый заголовок
-7. "instruction" — строго визуальное описание без выдуманных полей
-
----
-
-## 📐 ЭТАЛОННЫЙ ФОРМАТ:
-[
-  {
-    "name": "название_виджета_из_списка",
-    "title": "Уникальный заголовок",
-    "instruction": "Описание того, как визуально должен выглядеть график, какие данные группируются и как отображаются (без выдуманных полей)",
-    "tables": []
-  }
-]
-
-TEXT;
-        $response = (new AIService(responseFormat: 'json'))->ask($prompt);
-        $generateWidgets = $response['content'];
-        foreach ($generateWidgets as $list) {
-            $widget = $this->widgets->where('name', $list['name'])->first();
-            DashboardWidget::query()->create([
-                'dashboard_id' => $this->dashboard->id,
-                'widget_id' => $widget->id,
-                'title' => $list['title'],
-                'instruction' => $list['instruction'],
-                'tables'=> json_encode($list['tables']),
-            ]);
+            return $this->result(false, '', ['dashboard_name' => $this->dashboard->name]);
+        } catch (Throwable $e) {
+            return $this->result(true, $e->getMessage());
         }
-        $task->status_id = $this->tasks_statuses['completed'];
-        $task->save();
-        $task->load('status');
-        event(new \App\Events\MessageTasksChanged($this->message,$task));
-
-        event(new DashboardWidgetChanged($this->dashboard));
-
     }
 
-    public function generateContentToWidgets()
+    public function generateContentToWidgets(): array
     {
-        $widgets_dash = DashboardWidget::query()->with('widget')
-            ->where('dashboard_id', $this->dashboard->id)->get();
+        try {
+            $widgets_dash = DashboardWidget::query()->with('widget')
+                ->where('dashboard_id', $this->dashboard->id)->get()
+                ->values();
 
-        $results = [];
+            $results = [];
+            $hasErrors = false;
 
-        $task = AiChatTask::query()->create([
-            'chat_id' => $this->chat->id,
-            'message_id' => $this->message->id,
-            'task_id'=>$this->tasks['generate_widgets_dashboard'],
-            'status_id'=>$this->tasks_statuses['in_progress'],
-        ]);
-        $task->load(['status', 'task']);
+            foreach ($widgets_dash as $index => $widget) {
+                $widget_tables = $widget->tables ?? [];
+                $tables_scheme = $this->connectionProviderRouter->getSchema($widget_tables, [
+                    'count_rows',
+                    'columns',
+                    'relations' => [
+                        'column' => [
+                            'type',
+                            'nullable',
+                            'key',
+                            'default',
+                        ],
+                        'relation' => [
+                            'column',
+                            'table',
+                            'confidence',
+                            'match_rate',
+                        ],
+                    ],
+                ]);
 
-        event(new \App\Events\MessageTasksChanged($this->message,$task));
+                $widgetResult = $this->generateContentWidget($widget, $index, $tables_scheme);
 
-        foreach ($widgets_dash as $index => $widget) {
-            $widget_tables = json_decode($widget->tables, true) ?? [];
+                if (!empty($widgetResult['errors'])) {
+                    $hasErrors = true;
+                }
 
-            $tables_scheme = collect($this->dbSchema)->only($widget_tables)->toArray();
-            $results[] = $this->generateContentWidget($widget, $index, $tables_scheme);
+                $results[] = $widgetResult;
+            }
 
-
+            return $this->result(
+                $hasErrors,
+                $hasErrors ? 'Some widgets failed to generate' : '',
+                ['widgets' => $results]
+            );
+        } catch (Throwable $e) {
+            return $this->result(true, $e->getMessage());
         }
-        $task->status_id = $this->tasks_statuses['completed'];
-        $task->save();
-        $task->load('status');
-        event(new \App\Events\MessageTasksChanged($this->message,$task));
-
-        return $results;
-
     }
 
-
-    public function generateContentWidget($dashboard_widget, $position,$tables_scheme)
+    public function generateContentWidget($dashboard_widget, $position, $tables_scheme): array
     {
+        try {
+            $type = $this->dataSource->type->name;
 
-        $system = <<<'TEXT'
-Ты — специализированный генератор автономных Python-скриптов для аналитики данных.
-Твоя задача — написать чистый, эффективный и рабочий код, сочетающий DuckDB и Python.
+            $codeTemplater = new CodeTemplater($this->dataSource->id, $this->token);
+            $codeTemplate = $codeTemplater->generateFullScript();
+            $schemeStr = json_encode($tables_scheme, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
 
-СТРОГИЕ ТЕХНИЧЕСКИЕ ОГРАНИЧЕНИЯ:
-1. Скрипт должен принимать ровно один аргумент командной строки: --path (путь к файлу базы данных DuckDB). Добавлять другие аргументы (даты, лимиты, флаги) категорически запрещено.
-TEXT;
+            $mainBody = $this->dashboardGeneratorAi->generateContentWidget(
+                $dashboard_widget,
+                $schemeStr,
+                $codeTemplate
+            );
 
-        $tablesJson = json_encode($tables_scheme, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+            $path = $this->storage.'/dashboard/widgets/'.$dashboard_widget->id.'/generated_script.py';
 
-        $prompt = <<<TEXT
-Напиши автономный Python-скрипт, который агрегирует данные из DuckDB и форматирует их в нужный вид.
+            File::ensureDirectoryExists(dirname($path));
+            File::put($path, $mainBody);
 
-ОБЯЗАТЕЛЬНАЯ СТРУКТУРА СКРИПТА:
-1. Импорт модулей: `duckdb`, `pandas as pd`, `json`, `sys`, `argparse`.
-2. Парсинг единственного аргумента `--path` (через sys.argv или argparse).
-3. Подключение к базе данных через `duckdb.connect()`.
-5. Получение DataFrame через `.df()`, финальная подгонка под JSON-структуру.
-6. Вывод итогового JSON в stdout через `print(json.dumps(..., ensure_ascii=False))`.
+            $dashboard_widget->code_path = $path;
+            $dashboard_widget->status = 'active';
+            $dashboard_widget->position = $position;
+            $dashboard_widget->save();
+            event(new DashboardWidgetChanged($this->dashboard));
 
-ВАЖНО:
-- Используй только реально существующие таблицы и поля из доступной схемы.
-- Если нужных данных или таблиц для выполнения инструкции нет, сформируй пустой результат, соответствующий целевой схеме.
-
-ДОСТУПНАЯ СХЕМА DUCKDB:
-{$tablesJson}
-
-ИНСТРУКЦИЯ ПО КАК ДОЛЖНО БЫТ:
-{$dashboard_widget->instruction}
-
-ЦЕЛЕВАЯ JSON СХЕМА ВЫВОДА:
-{$dashboard_widget->widget->scheme}
-
-ОПИСАНИЕ ПОЛЕЙ JSON ВЫХОДА:
-{$dashboard_widget->widget->scheme_description}
-
-ТЕХНИЧЕСКИЕ ПРАВИЛА:
-- Аргумент базы передается строго как --path=
-- Никаких комментариев в коде.
-- Можно использовать любые системный библатеки python и pandas
-- Никакого markdown (не используй блоки ```).
-- Только чистый, готовый к исполнению Python-код.
-TEXT;
-        $response = (new AIService(
-            responseFormat: 'text',
-        ))->ask($prompt, $system);
-
-        $pythonCode = trim((string) $response['content']);
-        $pythonCode = preg_replace('/^```(?:python)?\s*/i', '', $pythonCode);
-        $pythonCode = preg_replace('/\s*```$/', '', $pythonCode);
-        $pythonCode = preg_replace('/["\']\s*$/', '', $pythonCode);
-
-        $path = $this->storage.'/dashboard/widgets/'.$dashboard_widget->id.'/generated_script.py';
-
-        File::ensureDirectoryExists(dirname($path));
-
-        File::put($path, $pythonCode);
+            return $this->result(false, '', ['widget' => $dashboard_widget]);
+        } catch (Throwable $e) {
+            $dashboard_widget->status = 'failed';
+            $dashboard_widget->position = $position;
+            $dashboard_widget->save();
 
 
-        $dashboard_widget->code_path= $path;
-        $dashboard_widget->status = 'active';
-        $dashboard_widget->position = $position;
-        $dashboard_widget->save();
-        event(new DashboardWidgetChanged($this->dashboard));
-
-        return $dashboard_widget;
+            return $this->result(true, $e->getMessage(), ['widget' => $dashboard_widget]);
+        }
     }
 }

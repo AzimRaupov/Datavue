@@ -7,21 +7,24 @@ import AiChatSidebar from "../components/chat/AiChatSidebar.vue";
 import { useRoute, useRouter } from "vue-router";
 import api from "../api.js";
 import WidgetContainer from "../components/WidgetContainer.vue";
-import Echo from 'laravel-echo';
-import Pusher from 'pusher-js';
+import Echo from "laravel-echo";
+import Pusher from "pusher-js";
 
 window.Pusher = Pusher;
 
 const echo = new Echo({
-    broadcaster: 'reverb',
+    broadcaster: "reverb",
     key: import.meta.env.VITE_REVERB_APP_KEY,
-    wsHost: import.meta.env.VITE_REVERB_HOST || '127.0.0.1',
+    wsHost: import.meta.env.VITE_REVERB_HOST || "127.0.0.1",
     wsPort: import.meta.env.VITE_REVERB_PORT || 8080,
     wssPort: import.meta.env.VITE_REVERB_PORT || 8080,
     forceTLS: false,
     disableStats: true,
-    enabledTransports: ['ws'],
+    enabledTransports: ["ws"],
 });
+
+const empty_img = "/static/illustrations/light/chart-circle.png";
+const generate_img = "/static/illustrations/light/boy-and-laptop.png";
 
 const route = useRoute();
 const router = useRouter();
@@ -32,31 +35,48 @@ const chat = ref({});
 const dashboards = ref([]);
 const error = ref(null);
 
-const selectedDashboardId = ref(route.params.dashboard ? Number(route.params.dashboard) : null);
+const selectedDashboardId = ref(
+    route.params.dashboard ? Number(route.params.dashboard) : null
+);
 
 const currentDashboard = ref({});
 const widgets = ref([]);
 
 let currentChannelName = null;
-let isRefreshing = false;
 
+const isRefreshing = ref(false);
+
+// Токен ручного обновления контента виджетов.
+// Меняется ТОЛЬКО по клику на кнопку "Обновить".
+// WidgetContainer следит за ним и перезапрашивает свои данные,
+// независимо от того, поменялся ли widget.updated_at на бэке.
+const refreshToken = ref(0);
+
+const hasDashboards = computed(() => dashboards.value.length > 0);
+
+const showDashboardSelect = computed(() =>
+    hasDashboards.value && currentDashboard.value?.status !== "generating_scheme"
+);
+
+// Ключ теперь стабильный — только id виджета.
+// Компонент WidgetContainer НЕ пересоздаётся при каждом обновлении дашборда,
+// поэтому не мигает skeleton-заглушками по всем виджетам разом.
 function widgetKey(widget) {
-    return [
-        widget.id,
-        widget.status,
-        widget.code_path,
-        widget.updated_at,
-        widget.position,
-    ].join('-');
+    return widget.id;
 }
 
-// Хелпер: приводим id дашборда к числу для надёжного сравнения
-// (бэкенд иногда отдаёт id как строку, из-за чего === не срабатывает).
 function toId(val) {
     return val === null || val === undefined ? null : Number(val);
 }
 
 async function getCurrentDashboard() {
+    if (!hasDashboards.value) {
+        selectedDashboardId.value = null;
+        currentDashboard.value = {};
+        widgets.value = [];
+        return;
+    }
+
     if (!selectedDashboardId.value) {
         selectedDashboardId.value = toId(dashboards.value[0]?.id) ?? null;
     }
@@ -76,19 +96,42 @@ async function getCurrentDashboard() {
     }
 }
 
+// Обновляет метаданные дашборда/список виджетов (структуру),
+// но НЕ форсирует перезагрузку контента внутри WidgetContainer.
 async function refreshWidgets() {
     if (!currentDashboard.value?.id) return;
-    if (isRefreshing) return;
+    if (isRefreshing.value) return;
 
-    isRefreshing = true;
+    isRefreshing.value = true;
+
     try {
-        const { data } = await api.get(`/dashboards/${currentDashboard.value.id}`);
+        const { data } = await api.get(
+            `/dashboards/${currentDashboard.value.id}`,
+            { params: { refresh: Date.now() } }
+        );
+
         widgets.value = data.widgets ?? [];
+        currentDashboard.value = data;
+
+        const idx = dashboards.value.findIndex(d => d.id === toId(data.id));
+        if (idx !== -1) {
+            dashboards.value[idx] = {
+                ...dashboards.value[idx],
+                name: data.name,
+                status: data.status,
+            };
+        }
     } catch (err) {
         console.error("Не удалось обновить виджеты:", err);
     } finally {
-        isRefreshing = false;
+        isRefreshing.value = false;
     }
+}
+
+
+async function onRefreshClick() {
+    await refreshWidgets();
+    refreshToken.value = Date.now();
 }
 
 async function getChat() {
@@ -96,8 +139,7 @@ async function getChat() {
         const { data } = await api.get(`/chats/${chatId}`);
 
         chat.value = data;
-        // Нормализуем id дашбордов в списке к числу,
-        // чтобы <select> и все сравнения работали одинаково.
+
         dashboards.value = (data.dashboards ?? []).map(d => ({
             ...d,
             id: toId(d.id),
@@ -121,7 +163,7 @@ async function onDashboardChange() {
     if (!selectedDashboardId.value) return;
 
     router.replace({
-        name: 'company.chat',
+        name: "company.chat",
         params: {
             id: chatId,
             dashboard: selectedDashboardId.value,
@@ -153,14 +195,15 @@ function subscribeToDashboardChannel() {
     currentChannelName = `dashboard.${currentDashboard.value.id}`;
 
     echo.channel(currentChannelName)
-        .listen('.DashboardWidgetChanged', (e) => {
-            console.log('--- РЕАЛТАЙМ ИЗМЕНЕНИЕ ДАШБОРДА ПОЙМАНО ---', e);
+        .listen(".DashboardWidgetChanged", (e) => {
+            console.log("--- РЕАЛТАЙМ ИЗМЕНЕНИЕ ДАШБОРДА ПОЙМАНО ---", e);
             refreshWidgets();
+
+            // Принудительно обновляем данные всех WidgetContainer
+            refreshToken.value = Date.now();
         });
 }
 
-// Следим за изменением dashboard-параметра в URL — срабатывает и когда
-// AiChatSidebar делает router.push после вебсокет-события.
 watch(
     () => route.params.dashboard,
     async (newVal) => {
@@ -169,9 +212,6 @@ watch(
         const newId = toId(newVal);
         if (newId === selectedDashboardId.value) return;
 
-        // Если пришедшего дашборда нет в текущем локальном списке —
-        // подтягиваем актуальный список дашбордов чата,
-        // иначе <select> не найдёт совпадающий <option> и будет пустым.
         const exists = dashboards.value.some(d => d.id === newId);
         if (!exists) {
             await getChat();
@@ -185,6 +225,7 @@ watch(
 
 onMounted(async () => {
     document.body.classList.add("chat-page");
+
     await getChat();
     await getCurrentDashboard();
 
@@ -208,6 +249,15 @@ body.chat-page .page {
     display: flex;
     flex-direction: column;
 }
+
+.icon-spin {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
 </style>
 
 <template>
@@ -219,12 +269,13 @@ body.chat-page .page {
                 <div class="container-xl">
                     <div class="row g-2 align-items-center">
                         <div class="col">
-                            <h1 class="page-title">{{ currentDashboard?.name }}</h1>
+                            <h1 v-if="hasDashboards" class="page-title">{{ currentDashboard?.name }}</h1>
                         </div>
 
                         <div class="col-auto ms-auto d-print-none">
                             <div class="d-flex align-items-center gap-2 flex-wrap">
                                 <select
+                                    v-if="showDashboardSelect"
                                     class="form-select"
                                     style="width: 220px; max-width: 100%;"
                                     v-model="selectedDashboardId"
@@ -239,6 +290,34 @@ body.chat-page .page {
                                         {{ d.name }}
                                     </option>
                                 </select>
+
+                                <!-- КНОПКА ОБНОВЛЕНИЯ -->
+                                <button
+                                    v-if="hasDashboards"
+                                    class="btn btn-outline-primary"
+                                    type="button"
+                                    title="Обновить дашборд"
+                                    @click="onRefreshClick"
+                                    :disabled="isRefreshing"
+                                >
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        width="18"
+                                        height="18"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        :class="{ 'icon-spin': isRefreshing }"
+                                    >
+                                        <path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 5v4h4" />
+                                        <path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 19v-4h-4" />
+                                    </svg>
+
+                                    {{ isRefreshing ? "Обновление..." : "Обновить" }}
+                                </button>
 
                                 <button
                                     v-if="!chatOpen"
@@ -258,11 +337,12 @@ body.chat-page .page {
                                         stroke-linejoin="round"
                                         class="icon me-2"
                                     >
-                                        <path d="M12 8a4 4 0 0 1 4 4"/>
-                                        <path d="M12 4a8 8 0 0 1 8 8"/>
-                                        <path d="M12 20a8 8 0 0 1 -8 -8"/>
-                                        <circle cx="12" cy="12" r="1"/>
+                                        <path d="M12 8a4 4 0 0 1 4 4" />
+                                        <path d="M12 4a8 8 0 0 1 8 8" />
+                                        <path d="M12 20a8 8 0 0 1-8-8" />
+                                        <circle cx="12" cy="12" r="1" />
                                     </svg>
+
                                     AI Ассистент
                                 </button>
                             </div>
@@ -272,20 +352,63 @@ body.chat-page .page {
             </div>
 
             <div class="container-xl">
-                <div
-                    v-for="widget in widgets"
-                    :key="widgetKey(widget)"
-                    class="row row-cards widgets-content"
-                >
-                    <div class="col-12 mt-4">
-                        <h3 class="h3">{{ widget.title }}</h3>
 
-                        <WidgetContainer
-                            :widget="widget"
-                            :chat-id="chatId"
-                        />
+                <div
+                    v-if="!hasDashboards"
+                    class="d-flex align-items-center justify-content-center"
+                    style="min-height: 60vh;"
+                >
+                    <div class="text-center">
+                        <img
+                            :src="empty_img"
+                            alt="chart"
+                            class="img-fluid d-block mx-auto mb-4"
+                            style="max-width: 270px; width: 100%;"
+                        >
+                        <h3 class="mb-2">Дашбордов пока нет</h3>
+                        <p class="text-muted mb-0">
+                            Как только для этого чата будет создан дашборд, он появится здесь
+                        </p>
                     </div>
                 </div>
+
+                <div
+                    v-if="currentDashboard.status === 'generating_scheme'"
+                    class="d-flex align-items-center justify-content-center"
+                    style="min-height: 60vh;"
+                >
+                    <div class="text-center">
+                        <img
+                            :src="generate_img"
+                            alt="generating"
+                            class="img-fluid d-block mx-auto mb-4"
+                            style="max-width: 270px; width: 100%;"
+                        >
+                        <div class="text-secondary mb-3">Генерация дашборда...</div>
+                        <div class="progress progress-sm">
+                            <div class="progress-bar progress-bar-indeterminate"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <template v-else>
+                    <div
+                        v-for="widget in widgets"
+                        :key="widgetKey(widget)"
+                        class="row row-cards widgets-content"
+                    >
+                        <div class="col-12 mt-4">
+                            <h3 class="h3">{{ widget.title }}</h3>
+
+                            <WidgetContainer
+                                :widget="widget"
+                                :chat-id="chatId"
+                                :refresh-token="refreshToken"
+                            />
+                        </div>
+                    </div>
+                </template>
+
             </div>
         </div>
 
@@ -300,7 +423,22 @@ body.chat-page .page {
         />
 
         <button v-if="!chatOpen" class="chat-fab" @click="toggleChat" aria-label="Открыть чат">
-            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8a4 4 0 0 1 4 4"/><path d="M12 4a8 8 0 0 1 8 8"/><path d="M12 20a8 8 0 0 1 -8 -8"/><circle cx="12" cy="12" r="1"/></svg>
+            <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+            >
+                <path d="M12 8a4 4 0 0 1 4 4" />
+                <path d="M12 4a8 8 0 0 1 8 8" />
+                <path d="M12 20a8 8 0 0 1-8-8" />
+                <circle cx="12" cy="12" r="1" />
+            </svg>
         </button>
 
     </div>

@@ -58,7 +58,7 @@ class Company extends Model
      */
     public function extractedData(): HasMany
     {
-        return $this->hasMany(ExtractedData::class);
+        return $this->hasMany(DataSourceExtraction::class);
     }
 
     /**
