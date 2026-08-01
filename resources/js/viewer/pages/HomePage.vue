@@ -52,15 +52,14 @@
                                         >
                                             <path d="M3 12h2l3 -9l4 18l3 -9h4" />
                                         </svg>
-                                        app.data-to-dashboard.ai
+                                        datavue.startcoding.tj
                                     </a>
                                 </div>
                             </div>
                         </div>
                         <picture>
                             <img
-                                src="../static/marketing/preview.png"
-                                srcset="../static/marketing/preview.png 1x, ../static/marketing/preview@2x.png 2x"
+                                :src="'/static/dashboard-chat.png'"
                                 alt="Интерфейс ИИ-агента для создания дашбордов"
                                 class="img-fluid"
                                 width="1040"

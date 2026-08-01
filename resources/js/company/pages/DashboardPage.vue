@@ -150,7 +150,7 @@ onMounted(async () => {
                             </div>
                             <div v-for="dashboard in chat.dashboards" class="list-group list-group-flush border-top">
                                 <router-link :to="`/chat/${chat.id}/${dashboard.id}`" class="list-group-item list-group-item-action d-flex align-items-center py-2 px-3">
-                                    <div class="col-auto align-self-center" >
+                                    <div class="col-auto align-self-center m-1" >
                                         <div class="badge bg-primary" style="border-radius: 2.2px;"></div>
                                     </div>
                                     <span class="text-truncate">{{ dashboard.name }}</span>

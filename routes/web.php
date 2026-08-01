@@ -1,6 +1,5 @@
 <?php
 
-use App\Helpers\Task\RouterTask;
 use App\Jobs\DashboardGeneratorJob;
 use App\Jobs\DashboardReGeneratorJob;
 use App\Jobs\RouterTaskJob;
@@ -19,8 +18,67 @@ Route::get('/test2',function() {
 });
 
 Route::get('/test',function(){
+//    $task_list = Task::query()->where('name', 're_generate_dashboard')
+//        ->orWhere('name', 'response_in_chat')
+//        ->select('name', 'description')
+//        ->get();
+//    dispatch(new RouterTaskJob(20,14,$task_list->toArray(),110,1));
+//
 
-    dispatch(new DashboardReGeneratorJob(72,133,28,"в перед последнем виджете переводит заголоки таблици на русский"));
+        dispatch(new DashboardReGeneratorJob(16,117,35,"добаф виджет для показа клиентов по странам"));
+
+//        $r=new \App\Helpers\Widget\ReviewWidgetsDashboard(20,5);
+//       $result=$r->handle();
+//       dd($result);
+//    dispatch(new DashboardGeneratorJob(6,5,1,5));
+//dd("d");
+//    $resultDefine = [
+//        "total_tokens" => 5738,
+//        "content" => [
+//            "dashboard_new_name" => "Sales & Customers Analytics",
+//            "groups_tables" => [
+//                14,
+//            ],
+//            "operations" => [
+//                [
+//                    "widget_id" => 14,
+//                    "operation_type" => "update_struct",
+//                    "widget_name" => "mini-counters",
+//                    "title" => "Ключевые показатели: клиенты, заказы и выручка",
+//                    "position" => 4,
+//                    "operation_description" => "Перевести подписи мини-метрик внутри виджета на русский язык, сохранив те же метрики и данные (числа клиентов, заказов и общей выручки), оставить источники данн "
+//                ],
+//            ],
+//        ],
+//    ];
+//
+//    dispatch(new DashboardReGeneratorJob(5,5,9,"измени заголовки виджетов на англиский"));
+
+//     dispatch(new DashboardGeneratorJob(5,4,1,4));
+
+//    dispatch(new \App\Jobs\ReviewWidgetsDashboardJob(4,4,5));
+//
+//    $r=new \App\Helpers\Widget\ReviewWidgetsDashboard(183,47);
+//    $r->handle();
+//       dispatch(new DashboardGeneratorJob(32,75,1,44));
+//
+//    dd("");
+//
+//    $grouping = new \App\Helpers\DataSource\DataSourceGrouping(41);
+//
+//    if (!$grouping->load()) {
+//        $grouping->handle();
+//        $grouping->save();
+//    }
+//
+//    $groups = $grouping->getGroups();
+//    $tables = $grouping->getTables();
+//    dd($tables,$groups);
+
+//      dispatch(new DashboardGeneratorJob(27,71,1));
+
+
+//    dispatch(new DashboardReGeneratorJob(72,133,28,"в перед последнем виджете переводит заголоки таблици на русский"));
 
 //    $task_list = Task::query()->where('name', 're_generate_dashboard')
 //        ->orWhere('name', 'response_in_chat')

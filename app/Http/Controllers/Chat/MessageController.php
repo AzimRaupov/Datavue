@@ -62,7 +62,6 @@ class MessageController extends Controller
         }
         else{
             $task_list = Task::query()->where('name', 'generate_dashboard')
-                ->orWhere('name', 'response_in_chat')
                 ->select('name', 'description')
                 ->get();
         }

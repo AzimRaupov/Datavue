@@ -10,6 +10,7 @@ use App\Models\AiChat;
 use App\Models\AiChatMessage;
 use App\Models\AiChatTask;
 use App\Models\DashboardWidget;
+use App\Models\DataSource;
 use App\Models\Task;
 use App\Models\TaskStatus;
 
@@ -27,6 +28,7 @@ class RouterTask
     public $dashboardId;
     public $resultDefine;
     public $userId;
+    public $dataSource;
     public function __construct($currentMessageId, $chatId,$task_list,$dashboardId,$userId)
     {
         $this->userId = $userId;
@@ -47,8 +49,9 @@ class RouterTask
             ->select('message', 'answer')
             ->get();
         $this->task_list = $task_list;
+        $this->dataSource= DataSource::query()->where('chat_id',$chatId)->first();
         $this->widgets = DashboardWidget::query()->where('dashboard_id', $this->dashboardId)
-            ->select('title')->get();
+            ->select('title','instruction')->get();
     }
 
     public function define()
@@ -64,10 +67,17 @@ class RouterTask
             event(new MessageTasksChanged($this->currentMessage, $this->current_task,null));
 
             $define_task = new DefineTaskAi($this->messages, $this->currentMessage->message,$this->task_list);
-            $this->resultDefine = $define_task->defineTask($this->widgets->toArray());
-            $this->currentMessage->tokens_used = $this->resultDefine['total_tokens'];
+
+            $data=[
+                'dashboard_widgets'=>$this->widgets->toArray(),
+            ];
+            $this->resultDefine = $define_task->defineTask($data);
+
+
+
+             $this->currentMessage->tokens_used = $this->resultDefine['total_tokens'];
             $this->currentMessage->answer = $this->resultDefine['content']['message'];
-            $this->currentMessage->status = 'answered';
+            $this->currentMessage->status = 'generating';
             $this->currentMessage->save();
 
             $this->current_task->status_id = $this->statuses['completed'];
@@ -109,7 +119,7 @@ class RouterTask
         else if($task=="generate_dashboard"){
             $this->chat->title = $this->resultDefine['content']['task_title'];
             $this->chat->save();
-            dispatch(new DashboardGeneratorJob($this->currentMessage->id,$this->chat->id,$this->userId));
+            dispatch(new DashboardGeneratorJob($this->currentMessage->id,$this->chat->id,$this->userId,$this->dataSource->id));
 
         }
     }

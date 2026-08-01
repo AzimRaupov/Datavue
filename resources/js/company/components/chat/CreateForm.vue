@@ -5,7 +5,7 @@
 
                 <div class="modal-content">
                     <div class="modal-header">
-                        <h5 class="modal-title">Data to Dashboard</h5>
+                        <h5 class="modal-title">Новый проект</h5>
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
                     <div class="modal-body">
@@ -102,7 +102,7 @@
                             <div class="row">
                                 <div class="col-lg-8">
                                     <div class="mb-3">
-                                        <label class="form-label">Host</label>
+                                        <label class="form-label">Хост</label>
                                         <input
                                             type="text"
                                             class="form-control"
@@ -115,7 +115,7 @@
                                 </div>
                                 <div class="col-lg-4">
                                     <div class="mb-3">
-                                        <label class="form-label">Port</label>
+                                        <label class="form-label">Порт</label>
                                         <input
                                             type="number"
                                             class="form-control"
@@ -129,7 +129,7 @@
                             </div>
 
                             <div class="mb-3">
-                                <label class="form-label">Database</label>
+                                <label class="form-label">Базаданных</label>
                                 <input
                                     type="text"
                                     class="form-control"
@@ -143,7 +143,7 @@
                             <div class="row">
                                 <div class="col-lg-6">
                                     <div class="mb-3">
-                                        <label class="form-label">Username</label>
+                                        <label class="form-label">Имя ползователя</label>
                                         <input
                                             type="text"
                                             class="form-control"
@@ -155,7 +155,7 @@
                                 </div>
                                 <div class="col-lg-6">
                                     <div class="mb-3">
-                                        <label class="form-label">Password</label>
+                                        <label class="form-label">Парол</label>
                                         <input
                                             type="password"
                                             class="form-control"
@@ -170,7 +170,7 @@
 
                     </div>
                     <div class="modal-footer">
-                        <a href="#" class="btn btn-link link-secondary btn-3" data-bs-dismiss="modal" v-if="!isLoading"> Cancel </a>
+                        <a href="#" class="btn btn-link link-secondary btn-3" data-bs-dismiss="modal" v-if="!isLoading"> Назад </a>
 
                         <button type="submit" class="btn btn-primary btn-5 ms-auto" :disabled="isLoading || !isFormValid">
                             <span v-if="isLoading" class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
@@ -191,7 +191,7 @@
                             >
                                 <path d="M16 18a2 2 0 0 1 2 2a2 2 0 0 1 2 -2a2 2 0 0 1 -2 -2a2 2 0 0 1 -2 2zm0 -12a2 2 0 0 1 2 2a2 2 0 0 1 2 -2a2 2 0 0 1 -2 -2a2 2 0 0 1 -2 2zm-11 5a3 3 0 0 1 3 3a3 3 0 0 1 3 -3a3 3 0 0 1 -3 -3a3 3 0 0 1 -3 3z" />
                             </svg>
-                            {{ isLoading ? 'Loading...' : 'Create dashboard' }}
+                            {{ isLoading ? 'Loading...' : 'Создать проект' }}
                         </button>
                     </div>
                 </div>

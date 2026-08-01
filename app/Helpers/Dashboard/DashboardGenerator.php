@@ -8,16 +8,17 @@ use App\Helpers\DataSource\CodeTemplater;
 use App\Helpers\DataSource\ConnectionProviderRouter;
 use App\Models\AiChat;
 use App\Models\AiChatMessage;
-use App\Models\AiChatTask;
 use App\Models\Dashboard;
 use App\Models\DashboardWidget;
 use App\Models\DataSource;
+use App\Models\DataSourceGroup;
+use App\Models\DataSourceTable;
 use App\Models\Task;
 use App\Models\TaskStatus;
 use App\Models\Widget;
 use Illuminate\Support\Facades\File;
 use RuntimeException;
-use function Pest\Laravel\options;
+use Throwable;
 
 class DashboardGenerator
 {
@@ -39,6 +40,7 @@ class DashboardGenerator
     public $dataSource;
     public $connectionProviderRouter;
     public $plan;
+    public $selectedTables = [];
 
     /**
      * Токен для авторизации сгенерированных Python-скриптов при обращении к API источника данных.
@@ -82,14 +84,14 @@ class DashboardGenerator
 
         $this->dashboardGeneratorAi = new DashboardAi($this->dataSource);
         $this->connectionProviderRouter = new ConnectionProviderRouter($this->dataSource->id);
+
         $this->fetchSchemaDb();
     }
 
     private function quoteIdentifier(string $identifier): string
     {
-        return '"' . str_replace('"', '""', $identifier) . '"';
+        return '"'.str_replace('"', '""', $identifier).'"';
     }
-
 
     private function normalizeRow($row): array
     {
@@ -103,53 +105,80 @@ class DashboardGenerator
 
         return [];
     }
-    public function createPlan()
+
+    /**
+     * Единый формат ответа каждого шага.
+     */
+    private function result(bool $errors, string $message = '', array $extra = []): array
     {
-        $task = AiChatTask::query()->create([
-            'chat_id' => $this->chat->id,
-            'message_id' => $this->message->id,
-            'task_id' => $this->tasks['dashboard_creating_plan'],
-            'status_id' => $this->tasks_statuses['in_progress'],
-        ]);
-        $task->load(['status', 'task']);
-        $this->dashboard->status = "generating_scheme";
-        $this->dashboard->save();
-        event(new DashboardWidgetChanged($this->dashboard));
-        event(new \App\Events\MessageTasksChanged($this->message, $task, $this->dashboard->id));
-
-        $scheme = $this->connectionProviderRouter->getSchema(
-            tables: [],
-            options: [
-                'count_rows',
-                'columns',
-                'relations' => [
-                    'column' => [
-                        'type',
-                        'nullable',
-                        'key',
-                        'default',
-                    ],
-
-                    'relation' => [
-                        'column',
-                        'table',
-                        'confidence',
-                        'match_rate',
-                    ],
-                ],
-            ]
-        );
-        $schemeStr = json_encode($scheme, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-        $result=$this->dashboardGeneratorAi->generatePlan($this->message->message,$schemeStr);
-        $this->plan = $result['content'];
-
-
-        $task->status_id = $this->tasks_statuses['completed'];
-        $task->save();
-        $task->load('status');
-        event(new \App\Events\MessageTasksChanged($this->message, $task));
-
+        return array_merge(['errors' => $errors, 'message' => $message], $extra);
     }
+
+    public function defineGroups(): array
+    {
+        try {
+            $schemeGroups = DataSourceGroup::query()
+                ->where('data_source_id', $this->dataSource->id)
+                ->get(['id', 'name', 'description']);
+
+            if ($schemeGroups->isEmpty()) {
+                return $this->result(
+                    true,
+                    'For this data source no groups were found. Run DataSourceGrouping::handle()+save() first.'
+                );
+            }
+
+            $response = $this->dashboardGeneratorAi->defineGroups(
+                groups: $schemeGroups,
+                text: $this->message->message
+            );
+            $groupsIds = $response['content']['groups'];
+
+            $this->selectedTables = DataSourceTable::query()
+                ->whereIn('data_source_group_id', $groupsIds)
+                ->get();
+
+            return $this->result(false, '', ['groups' => $groupsIds]);
+        } catch (Throwable $e) {
+            return $this->result(true, $e->getMessage());
+        }
+    }
+
+    public function createPlan(): array
+    {
+        try {
+            $tables = $this->selectedTables
+                ->pluck('name')
+                ->toArray();
+
+            $scheme = $this->connectionProviderRouter->getSchema(
+                tables: $tables,
+                options: [
+                    'count_rows',
+                    'columns',
+                    'relations' => [
+                        'column' => [
+                            'type',
+                            'nullable',
+                            'key',
+                        ],
+                        'relation' => [
+                            'table',
+                        ],
+                    ],
+                ]
+            );
+            $schemeStr = json_encode($scheme, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+
+            $result = $this->dashboardGeneratorAi->generatePlan($this->message->message, $schemeStr);
+            $this->plan = $result['content'];
+
+            return $this->result(false, '', ['plan' => $this->plan]);
+        } catch (Throwable $e) {
+            return $this->result(true, $e->getMessage());
+        }
+    }
+
     public function fetchSchemaDb()
     {
         $this->tables = $this->connectionProviderRouter->showTables();
@@ -187,171 +216,155 @@ class DashboardGenerator
         return $this->dashboard;
     }
 
-    public function generateWidgets()
+    public function generateWidgets(): array
     {
-        $task = AiChatTask::query()->create([
-            'chat_id' => $this->chat->id,
-            'message_id' => $this->message->id,
-            'task_id' => $this->tasks['detect_schema_dashboard'],
-            'status_id' => $this->tasks_statuses['in_progress'],
-        ]);
-        $task->load(['status', 'task']);
+        try {
+            $text = $this->message->message;
 
-        event(new \App\Events\MessageTasksChanged($this->message, $task, $this->dashboard->id));
-        $text = $this->message->message;
+            $widgetsList = $this->widgets->map(function ($widget) {
+                return [
+                    'name' => $widget->name,
+                    'description' => $widget->description,
+                ];
+            });
 
-        $widgetsList = $this->widgets->map(function ($widget) {
-            return [
-                'name' => $widget->name,
-                'description' => $widget->description,
-            ];
-        });
+            $tables = $this->selectedTables
+                ->pluck('name')
+                ->toArray();
 
-        $widgets = json_encode($widgetsList, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-        $tables = json_encode($this->tables, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+            $widgets = json_encode($widgetsList, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
 
-        foreach ($this->plan['plans'] as $plan) {
-            $planTablesScheme = $this->connectionProviderRouter->getSchema($plan["tables"],[
-                'count_rows',
-                'columns',
-                'relations' => [
-                    'column' => [
-                        'type',
-                        'nullable',
-                        'key',
-                        'default',
+            $scheme = $this->connectionProviderRouter->getSchema(
+                tables: $tables,
+                options: [
+                    'count_rows',
+                    'columns',
+                    'relations' => [
+                        'column' => [
+                            'type',
+                            'nullable',
+                            'key',
+                        ],
+                        'relation' => [
+                            'table',
+                        ],
                     ],
+                ]
+            );
 
-                    'relation' => [
-                        'column',
-                        'table',
-                        'confidence',
-                        'match_rate',
-                    ],
-                ],
-            ]);
-            $planTablesSchemeStr = json_encode($planTablesScheme,JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-            $response = $this->dashboardGeneratorAi->generateWidget($plan['description'],$planTablesSchemeStr,$widgets);
+            $schemeStr = json_encode($scheme, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+            $response = $this->dashboardGeneratorAi->generateWidgets($schemeStr, $widgets, $text);
+            $generateWidgets = $response['content']['widgets'];
 
-            $widget = $response['content'];
-            if($widget) {
-                $widget['tables'] = $plan['tables'];
-                $generateWidgets[] = $widget;
+            foreach ($generateWidgets as $list) {
+                $widget = $this->widgets->where('name', $list['name'])->first();
+
+                if (!$widget) {
+                    continue;
+                }
+
+                DashboardWidget::query()->create([
+                    'dashboard_id' => $this->dashboard->id,
+                    'widget_id' => $widget->id,
+                    'title' => $list['title'],
+                    'instruction' => $list['instruction'],
+                    'tables' => $list['tables'],
+                ]);
             }
 
+            $this->dashboard->name = $response['content']['dashboard_name'];
+            $this->dashboard->save();
+
+            return $this->result(false, '', ['dashboard_name' => $this->dashboard->name]);
+        } catch (Throwable $e) {
+            return $this->result(true, $e->getMessage());
         }
+    }
 
-        foreach ($generateWidgets as $list) {
-            $widget = $this->widgets->where('name', $list['widget_name'])->first();
+    public function generateContentToWidgets(): array
+    {
+        try {
+            $widgets_dash = DashboardWidget::query()->with('widget')
+                ->where('dashboard_id', $this->dashboard->id)->get()
+                ->values();
 
-            if (!$widget) {
-                continue;
+            $results = [];
+            $hasErrors = false;
+
+            foreach ($widgets_dash as $index => $widget) {
+                $widget_tables = $widget->tables ?? [];
+                $tables_scheme = $this->connectionProviderRouter->getSchema($widget_tables, [
+                    'count_rows',
+                    'columns',
+                    'relations' => [
+                        'column' => [
+                            'type',
+                            'nullable',
+                            'key',
+                            'default',
+                        ],
+                        'relation' => [
+                            'column',
+                            'table',
+                            'confidence',
+                            'match_rate',
+                        ],
+                    ],
+                ]);
+
+                $widgetResult = $this->generateContentWidget($widget, $index, $tables_scheme);
+
+                if (!empty($widgetResult['errors'])) {
+                    $hasErrors = true;
+                }
+
+                $results[] = $widgetResult;
             }
 
-            DashboardWidget::query()->create([
-                'dashboard_id' => $this->dashboard->id,
-                'widget_id' => $widget->id,
-                'title' => $list['title'],
-                'instruction' => $list['instruction'],
-                'tables' => json_encode($list['tables']),
-            ]);
+            return $this->result(
+                $hasErrors,
+                $hasErrors ? 'Some widgets failed to generate' : '',
+                ['widgets' => $results]
+            );
+        } catch (Throwable $e) {
+            return $this->result(true, $e->getMessage());
         }
-
-        $task->status_id = $this->tasks_statuses['completed'];
-        $task->save();
-        $task->load('status');
-        event(new \App\Events\MessageTasksChanged($this->message, $task));
-
-        $this->dashboard->name = $this->plan['dashboard_name'];
-        $this->dashboard->status = "generating_widgets";
-        $this->dashboard->save();
-        event(new DashboardWidgetChanged($this->dashboard));
     }
 
-    public function generateContentToWidgets()
+    public function generateContentWidget($dashboard_widget, $position, $tables_scheme): array
     {
-        $widgets_dash = DashboardWidget::query()->with('widget')
-            ->where('dashboard_id', $this->dashboard->id)->get()
-            ->values();
+        try {
+            $type = $this->dataSource->type->name;
 
-        $results = [];
+            $codeTemplater = new CodeTemplater($this->dataSource->id, $this->token);
+            $codeTemplate = $codeTemplater->generateFullScript();
+            $schemeStr = json_encode($tables_scheme, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
 
-        $task = AiChatTask::query()->create([
-            'chat_id' => $this->chat->id,
-            'message_id' => $this->message->id,
-            'task_id' => $this->tasks['generate_widgets_dashboard'],
-            'status_id' => $this->tasks_statuses['in_progress'],
-        ]);
-        $task->load(['status', 'task']);
+            $mainBody = $this->dashboardGeneratorAi->generateContentWidget(
+                $dashboard_widget,
+                $schemeStr,
+                $codeTemplate
+            );
 
-        event(new \App\Events\MessageTasksChanged($this->message, $task));
+            $path = $this->storage.'/dashboard/widgets/'.$dashboard_widget->id.'/generated_script.py';
 
-        foreach ($widgets_dash as $index => $widget) {
-            $widget_tables = json_decode($widget->tables, true) ?? [];
+            File::ensureDirectoryExists(dirname($path));
+            File::put($path, $mainBody);
 
-            $tables_scheme = $this->connectionProviderRouter->getSchema($widget_tables,[
-                'count_rows',
-                'columns',
-                'relations' => [
-                    'column' => [
-                        'type',
-                        'nullable',
-                        'key',
-                        'default',
-                    ],
+            $dashboard_widget->code_path = $path;
+            $dashboard_widget->status = 'active';
+            $dashboard_widget->position = $position;
+            $dashboard_widget->save();
+            event(new DashboardWidgetChanged($this->dashboard));
 
-                    'relation' => [
-                        'column',
-                        'table',
-                        'confidence',
-                        'match_rate',
-                    ],
-                ],
-            ]);
-            $results[] = $this->generateContentWidget($widget, $index, $tables_scheme);
+            return $this->result(false, '', ['widget' => $dashboard_widget]);
+        } catch (Throwable $e) {
+            $dashboard_widget->status = 'failed';
+            $dashboard_widget->position = $position;
+            $dashboard_widget->save();
+
+
+            return $this->result(true, $e->getMessage(), ['widget' => $dashboard_widget]);
         }
-
-        $task->status_id = $this->tasks_statuses['completed'];
-        $task->save();
-        $task->load('status');
-        event(new \App\Events\MessageTasksChanged($this->message, $task));
-
-        $this->dashboard->status = "completed";
-        $this->dashboard->save();
-        event(new DashboardWidgetChanged($this->dashboard));
-
-        return $results;
-    }
-
-    public function generateContentWidget($dashboard_widget, $position, $tables_scheme)
-    {
-        $type = $this->dataSource->type->name;
-
-        $codeTemplater = new CodeTemplater($this->dataSource->id, $this->token);
-        $codeTemplate = $codeTemplater->generateFullScript();
-        $schemeStr = json_encode($tables_scheme,JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-
-
-        $mainBody = $this->dashboardGeneratorAi->generateContentWidget(
-            $dashboard_widget,
-            $schemeStr,
-            $type,
-            $codeTemplate
-        );
-
-        $path = $this->storage.'/dashboard/widgets/'.$dashboard_widget->id.'/generated_script.py';
-
-        File::ensureDirectoryExists(dirname($path));
-
-        File::put($path, $mainBody);
-
-        $dashboard_widget->code_path = $path;
-        $dashboard_widget->status = 'active';
-        $dashboard_widget->position = $position;
-        $dashboard_widget->save();
-
-        event(new DashboardWidgetChanged($this->dashboard));
-
-        return $dashboard_widget;
     }
 }

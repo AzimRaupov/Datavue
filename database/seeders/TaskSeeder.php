@@ -15,6 +15,22 @@ class TaskSeeder extends Seeder
     {
         $tasks = [
             [
+                'name'=>'generating_widget_instructions',
+                'description'=>'generating_widget_instructions'
+            ],
+            [
+                'name'=>'determine_data_source_groups',
+                'description'=>'determine_data_source_groups'
+            ],
+            [
+                'name'=>'data_source_grouping',
+                'description'=>'data_source_grouping'
+            ],
+            [
+                'name'=>'review_and_correction_widgets',
+                'description'=>'review_and_correction_widgets'
+            ],
+            [
              'name'=>'dashboard_creating_plan',
              'description'=>'dashboard_creating_plan',
             ],

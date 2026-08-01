@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\DashboardStatus;
 use App\Models\User;
 use Database\Seeders\Widgets\BarChartSeeder;
 use Database\Seeders\Widgets\DonutChartSeeder;
@@ -37,6 +38,7 @@ class DatabaseSeeder extends Seeder
             TaskStatusSeeder::class,
             BarChartSeeder::class,
             DataSourceTypesSeeder::class,
+            DashboardStatusesSeeder::class
         ]);
 
     }
