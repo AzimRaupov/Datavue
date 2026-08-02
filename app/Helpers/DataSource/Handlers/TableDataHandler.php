@@ -63,13 +63,13 @@ class TableDataHandler
 
     private function createDuckdbDatabase(string $sqlPath): array
     {
-        $path = "/home/azim/projects/Datavue/app/Helpers/DataSource/sql_to_duck.py";
+        $path = base_path('app/Helpers/DataSource/sql_to_duck.py');
 
         $runner = new PythonRunner(
             $path,
             [
                 '--sql'  => $sqlPath,
-                '--path' => $this->dbFilePath, // без повторного /data.duckdb
+                '--path' => $this->dbFilePath,
             ]
         );
 
@@ -85,7 +85,6 @@ class TableDataHandler
             'raw' => $result,
         ];
     }
-
     private function process(): void
     {
         if (!file_exists($this->filePath)) {
