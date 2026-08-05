@@ -8,6 +8,10 @@ const logo = '/logos/logo.png'
 
 const { t, locale } = useI18n()
 
+if (localStorage.getItem('lang')) {
+    locale.value = localStorage.getItem('lang')
+}
+
 const user = JSON.parse(localStorage.getItem('user') || 'null')
 const languageToggleRef = ref(null)
 const userToggleRef = ref(null)
@@ -316,7 +320,7 @@ onBeforeUnmount(() => {
                             data-bs-auto-close="outside"
                             aria-expanded="false"
                         >
-                            ТҶ
+                            {{ locale === 'ru' ? 'RU' : locale === 'tj' ? 'ТҶ' : 'EN' }}
                         </a>
                         <div class="dropdown-menu dropdown-menu-arrow dropdown-menu-end">
                         <a class="dropdown-item" href="#" @click.prevent="changeLanguage('ru')">

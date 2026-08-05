@@ -9,6 +9,7 @@ use Database\Seeders\Widgets\DonutChartSeeder;
 use Database\Seeders\Widgets\MiniCountersSeeder;
 use Database\Seeders\Widgets\MultiSeriesTrendSeeder;
 use Database\Seeders\Widgets\PieChartSeeder;
+use Database\Seeders\Widgets\RadarSeeder;
 use Database\Seeders\Widgets\ScatterPlotSeeder;
 use Database\Seeders\Widgets\TableSeeder;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
@@ -38,7 +39,8 @@ class DatabaseSeeder extends Seeder
             TaskStatusSeeder::class,
             BarChartSeeder::class,
             DataSourceTypesSeeder::class,
-            DashboardStatusesSeeder::class
+            DashboardStatusesSeeder::class,
+            RadarSeeder::class,
         ]);
 
     }

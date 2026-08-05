@@ -98,6 +98,10 @@ class ReviewWidgetsDashboard
             'instruction' => $widget->instruction,
             'code' => $fullCode,
             'errors' => $errorsStr,
+            'outIsArr' => is_array($runResult['output']),
+            'output' => is_string($runResult['output'])
+                ? $runResult['output']
+                : null,
             'tables_scheme' => $schemeStr,
             'widget_scheme' => $widget->widget->scheme,
             'widget_scheme_description' => $widget->widget->scheme_description,
@@ -134,7 +138,11 @@ class ReviewWidgetsDashboard
                 dataSource: $dataSource
             );
 
-            $rawOutput = $runResult['output'][0] ?? null;
+            $rawOutput = $runResult['output'] ?? null;
+
+            if (is_array($rawOutput)) {
+                $rawOutput = implode("\n", $rawOutput);
+            }
             $type = $widget->widget->name ?? null;
 
             $decoded = null;

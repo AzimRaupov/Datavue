@@ -5,7 +5,9 @@ namespace App\Helpers\DataSource\Handlers;
 use App\Helpers\PythonRunner;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use Throwable;
 
 class TableDataHandler
@@ -20,7 +22,32 @@ class TableDataHandler
 
     private array $allowedExtensions = ['csv', 'xlsx', 'xls'];
 
-    public function __construct(string $filePath, string $outputPath,$dbFilePath)
+    /**
+     * Сколько первых строк листа просматриваем в поисках начала данных.
+     * Если реальные данные начинаются позже (например, огромная шапка
+     * с несколькими блоками пояснений), увеличьте это значение.
+     */
+    private int $headerSearchWindow = 25;
+
+    /**
+     * Минимальная доля непустых ячеек в строке, чтобы вообще
+     * рассматривать её как заголовок или как данные.
+     */
+    private float $minNonNullRatio = 0.3;
+
+    /**
+     * Порог доли текстовых ячеек, начиная с которого строка считается
+     * "похожей на заголовок".
+     */
+    private float $headerTextRatioThreshold = 0.5;
+
+    /**
+     * Порог доли числовых ячеек, начиная с которого строка считается
+     * "похожей на данные".
+     */
+    private float $dataNumericRatioThreshold = 0.3;
+
+    public function __construct(string $filePath, string $outputPath, $dbFilePath)
     {
         ini_set('memory_limit', '2G');
         set_time_limit(300);
@@ -85,6 +112,7 @@ class TableDataHandler
             'raw' => $result,
         ];
     }
+
     private function process(): void
     {
         if (!file_exists($this->filePath)) {
@@ -124,7 +152,7 @@ class TableDataHandler
 
             $tableName = $this->makeUniqueTableName($this->sanitizeIdentifier($sheetName), $usedNames);
 
-            $header = array_shift($rows); // Первая строка — заголовки
+            $header = array_shift($rows); // Первая строка — заголовки (уже собранные readExcel/readCsv)
             $columns = $this->normalizeColumnNames($header);
 
             if (empty($columns)) {
@@ -219,16 +247,207 @@ class TableDataHandler
                 continue;
             }
 
+            // Разворачиваем объединённые ячейки (заголовки-группы,
+            // "растянутые" по горизонтали/вертикали значения и т.п.),
+            // чтобы дальнейший анализ строк видел реальные значения,
+            // а не null рядом с одной заполненной ячейкой.
+            $rows = $this->expandMergedCells($sheet, $rows);
+
             $rows = $this->trimEmptyTrailingColumns($rows);
 
             if (empty($rows)) {
                 continue;
             }
 
-            $result[$sheet->getTitle()] = $rows;
+            $rows = array_values($rows);
+
+            [$headerRow, $dataRows] = $this->extractHeaderAndData($rows);
+
+            if (empty($headerRow)) {
+                continue;
+            }
+
+            $result[$sheet->getTitle()] = array_merge([$headerRow], $dataRows);
         }
 
         return $result;
+    }
+
+    /**
+     * Копирует значение "мастер"-ячейки объединённого диапазона
+     * во все остальные ячейки этого диапазона. Работает для любых
+     * merge-блоков — заголовков, растянутых по вертикали подписей и т.д.
+     *
+     * $rows — массив со сквозной нумерацией 0..N, где индекс строки/
+     * столбца соответствует смещению от A1 (т.к. диапазон чтения
+     * всегда начинается с A1).
+     */
+    private function expandMergedCells(Worksheet $sheet, array $rows): array
+    {
+        foreach ($sheet->getMergeCells() as $mergeRange) {
+            [$start, $end] = Coordinate::rangeBoundaries($mergeRange);
+
+            $startCol = $start[0] - 1;
+            $startRow = $start[1] - 1;
+            $endCol = $end[0] - 1;
+            $endRow = $end[1] - 1;
+
+            $masterValue = $rows[$startRow][$startCol] ?? null;
+
+            if ($masterValue === null || trim((string) $masterValue) === '') {
+                continue;
+            }
+
+            for ($r = $startRow; $r <= $endRow; $r++) {
+                if (!isset($rows[$r])) {
+                    continue;
+                }
+
+                for ($c = $startCol; $c <= $endCol; $c++) {
+                    if ($r === $startRow && $c === $startCol) {
+                        continue;
+                    }
+
+                    if (array_key_exists($c, $rows[$r])) {
+                        $rows[$r][$c] = $masterValue;
+                    }
+                }
+            }
+        }
+
+        return $rows;
+    }
+
+    private function extractHeaderAndData(array $rows): array
+    {
+        $searchWindow = min(count($rows), $this->headerSearchWindow);
+
+        $firstDataRowIndex = null;
+
+        for ($i = 0; $i < $searchWindow; $i++) {
+            if ($this->looksLikeDataRow($rows[$i])) {
+                $firstDataRowIndex = $i;
+                break;
+            }
+        }
+
+        // Не удалось уверенно найти начало данных в пределах окна поиска —
+        // откатываемся к простому и предсказуемому старому поведению:
+        // первая строка листа — заголовок.
+        if ($firstDataRowIndex === null) {
+            $header = array_shift($rows);
+
+            return [$this->buildCompoundHeaderRow([$header ?? []]), $rows];
+        }
+
+        $headerRowIndices = [];
+        $i = $firstDataRowIndex - 1;
+
+        while ($i >= 0 && $this->looksLikeHeaderRow($rows[$i])) {
+            array_unshift($headerRowIndices, $i);
+            $i--;
+        }
+
+        if (empty($headerRowIndices)) {
+
+            $headerRowIndices = [max(0, $firstDataRowIndex - 1)];
+        }
+
+        $headerRows = array_map(static fn ($idx) => $rows[$idx], $headerRowIndices);
+
+        $headerRow = $this->buildCompoundHeaderRow($headerRows);
+        $dataRows = array_slice($rows, $firstDataRowIndex);
+
+        return [$headerRow, $dataRows];
+    }
+    
+    private function looksLikeHeaderRow(array $row): bool
+    {
+        $stats = $this->rowStats($row);
+
+        return $stats['non_null'] > 0
+            && $stats['non_null_ratio'] >= $this->minNonNullRatio
+            && $stats['text_ratio'] >= $this->headerTextRatioThreshold
+            && $stats['distinct'] >= 2;
+    }
+
+    /**
+     * Строка похожа на строку данных: заметная часть ячеек заполнена
+     * и заметная доля из них — числа.
+     */
+    private function looksLikeDataRow(array $row): bool
+    {
+        $stats = $this->rowStats($row);
+
+        return $stats['non_null'] > 0
+            && $stats['non_null_ratio'] >= $this->minNonNullRatio
+            && $stats['numeric_ratio'] >= $this->dataNumericRatioThreshold;
+    }
+
+    private function rowStats(array $row): array
+    {
+        $total = count($row);
+        $nonNull = 0;
+        $numeric = 0;
+        $text = 0;
+        $distinctValues = [];
+
+        foreach ($row as $cell) {
+            if ($cell === null) {
+                continue;
+            }
+
+            $value = trim((string) $cell);
+
+            if ($value === '') {
+                continue;
+            }
+
+            $nonNull++;
+            $distinctValues[$value] = true;
+
+            if (is_numeric($value)) {
+                $numeric++;
+            } else {
+                $text++;
+            }
+        }
+
+        return [
+            'non_null' => $nonNull,
+            'non_null_ratio' => $total > 0 ? $nonNull / $total : 0,
+            'numeric_ratio' => $nonNull > 0 ? $numeric / $nonNull : 0,
+            'text_ratio' => $nonNull > 0 ? $text / $nonNull : 0,
+            'distinct' => count($distinctValues),
+        ];
+    }
+
+
+    private function buildCompoundHeaderRow(array $headerRows): array
+    {
+        $numCols = 0;
+
+        foreach ($headerRows as $row) {
+            $numCols = max($numCols, count($row));
+        }
+
+        $header = [];
+
+        for ($c = 0; $c < $numCols; $c++) {
+            $parts = [];
+
+            foreach ($headerRows as $row) {
+                $value = trim((string) ($row[$c] ?? ''));
+
+                if ($value !== '' && !in_array($value, $parts, true)) {
+                    $parts[] = $value;
+                }
+            }
+
+            $header[] = implode(' ', $parts);
+        }
+
+        return $header;
     }
 
     private function trimEmptyTrailingColumns(array $rows): array

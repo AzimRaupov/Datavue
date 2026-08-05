@@ -12,6 +12,8 @@ import Pusher from "pusher-js";
 
 window.Pusher = Pusher;
 
+const isExporting = ref(false);
+
 const echo = new Echo({
     broadcaster: "reverb",
     key: import.meta.env.VITE_REVERB_APP_KEY,
@@ -411,6 +413,7 @@ body.chat-page .page {
 
             </div>
         </div>
+
 
         <div class="chat-backdrop" :class="{ 'd-none': !chatOpen }" @click="closeChat"></div>
 

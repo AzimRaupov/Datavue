@@ -232,6 +232,11 @@ class DashboardGenerator
                 ->pluck('name')
                 ->toArray();
 
+            // Роли таблиц: ['users' => 'fact', 'orders' => 'dimension', ...]
+            $tableRoles = $this->selectedTables
+                ->pluck('role', 'name')
+                ->toArray();
+
             $widgets = json_encode($widgetsList, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
 
             $scheme = $this->connectionProviderRouter->getSchema(
@@ -251,6 +256,11 @@ class DashboardGenerator
                     ],
                 ]
             );
+
+            foreach ($scheme as $tableName => &$tableSchema) {
+                $tableSchema['role'] = $tableRoles[$tableName] ?? null;
+            }
+            unset($tableSchema);
 
             $schemeStr = json_encode($scheme, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
             $response = $this->dashboardGeneratorAi->generateWidgets($schemeStr, $widgets, $text);
@@ -280,7 +290,6 @@ class DashboardGenerator
             return $this->result(true, $e->getMessage());
         }
     }
-
     public function generateContentToWidgets(): array
     {
         try {

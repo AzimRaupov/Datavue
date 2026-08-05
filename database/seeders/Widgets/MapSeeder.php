@@ -3,13 +3,12 @@
 namespace Database\Seeders\Widgets;
 
 use App\Models\Widget;
+use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
-class PieChartSeeder extends Seeder
+class MapSeeder extends Seeder
 {
-    /**
-     * Run the database seeds.
-     */
+
     public function run(): void
     {
         $schemeData = [
@@ -26,8 +25,8 @@ class PieChartSeeder extends Seeder
         Widget::query()->updateOrCreate(
             ['name' => 'pie-chart'],
             [
-                'name' => 'pie-chart',
-                'description' => 'Круговая диаграмма. Каждый сектор представляет категорию и её долю от общего значения.',
+                'name' => 'map',
+                'description' => 'КАрта мира можно паказат чтото по странам',
                 'scheme' => json_encode(
                     $schemeData,
                     JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT
@@ -47,4 +46,7 @@ TEXT,
             ]
         );
     }
+
+
+
 }

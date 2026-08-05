@@ -3,6 +3,7 @@ import NProgress from 'nprogress';
 import 'nprogress/nprogress.css';
 
 import DashboardPage from '../pages/DashboardPage.vue';
+import ProjectDashboardShow from '../pages/project/dashboard/ShowPage.vue';
 import ChatPage from '../pages/ChatPage.vue';
 import Profile from "../pages/settings/Profile.vue";
 const routes = [
@@ -21,6 +22,11 @@ const routes = [
         name: 'settings.profile',
         component: Profile
     },
+    {
+        path:'/project/dashboard/:dashboard',
+        name: 'project.dashboard.show',
+        component: ProjectDashboardShow
+    }
 
 ];
 

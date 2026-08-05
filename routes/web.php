@@ -18,6 +18,11 @@ Route::get('/test2',function() {
 });
 
 Route::get('/test',function(){
+
+    dispatch(new \App\Jobs\ReviewWidgetsDashboardJob(149,20,63));
+
+//            $r=new \App\Helpers\Widget\ReviewWidgetsDashboard(20,5);
+//     $result=$r->handle();
 //    $task_list = Task::query()->where('name', 're_generate_dashboard')
 //        ->orWhere('name', 'response_in_chat')
 //        ->select('name', 'description')
