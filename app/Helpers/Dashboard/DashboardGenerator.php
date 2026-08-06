@@ -6,6 +6,7 @@ use App\Events\DashboardWidgetChanged;
 use App\Helpers\Ai\DashboardAi;
 use App\Helpers\DataSource\CodeTemplater;
 use App\Helpers\DataSource\ConnectionProviderRouter;
+use App\Helpers\DataSource\SchemaOptions;
 use App\Models\AiChat;
 use App\Models\AiChatMessage;
 use App\Models\Dashboard;
@@ -68,7 +69,9 @@ class DashboardGenerator
             $this->chat->id
         );
 
-        $this->widgets = Widget::all();
+        // Только виджеты, реально готовые к использованию (подключённые на фронте) —
+        // см. Widget::is_ai_selectable (например 'map' пока исключён).
+        $this->widgets = Widget::query()->where('is_ai_selectable', true)->get();
         $this->dashboard = Dashboard::query()->create([
             'chat_id' => $chat_id,
             'company_id' => $this->chat->company_id,
@@ -153,20 +156,7 @@ class DashboardGenerator
 
             $scheme = $this->connectionProviderRouter->getSchema(
                 tables: $tables,
-                options: [
-                    'count_rows',
-                    'columns',
-                    'relations' => [
-                        'column' => [
-                            'type',
-                            'nullable',
-                            'key',
-                        ],
-                        'relation' => [
-                            'table',
-                        ],
-                    ],
-                ]
+                options: SchemaOptions::basic()
             );
             $schemeStr = json_encode($scheme, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
 
@@ -221,10 +211,14 @@ class DashboardGenerator
         try {
             $text = $this->message->message;
 
+            // data_shape (scheme_description) добавлен, чтобы ИИ видел не только человекочитаемое
+            // описание виджета, но и реальную форму данных (сколько рядов, нужны ли равные по длине
+            // массивы и т.п.) уже на этапе выбора типа виджета, а не только позже при генерации кода.
             $widgetsList = $this->widgets->map(function ($widget) {
                 return [
                     'name' => $widget->name,
                     'description' => $widget->description,
+                    'data_shape' => $widget->scheme_description,
                 ];
             });
 
@@ -241,20 +235,7 @@ class DashboardGenerator
 
             $scheme = $this->connectionProviderRouter->getSchema(
                 tables: $tables,
-                options: [
-                    'count_rows',
-                    'columns',
-                    'relations' => [
-                        'column' => [
-                            'type',
-                            'nullable',
-                            'key',
-                        ],
-                        'relation' => [
-                            'table',
-                        ],
-                    ],
-                ]
+                options: SchemaOptions::basic()
             );
 
             foreach ($scheme as $tableName => &$tableSchema) {
@@ -290,7 +271,17 @@ class DashboardGenerator
             return $this->result(true, $e->getMessage());
         }
     }
-    public function generateContentToWidgets(): array
+    /**
+     * $onWidgetDone(DashboardWidget $widget, array $widgetResult, int $index, int $total) вызывается
+     * после генерации каждого отдельного виджета — используется вызывающим кодом (Job), чтобы
+     * пушить прогресс на фронт по мере готовности виджетов.
+     *
+     * Провал отдельного виджета НЕ считается ошибкой всего шага (errors=true) — виджет просто
+     * помечается 'failed' внутри generateContentWidget() и позже может быть исправлен на этапе
+     * ReviewWidgetsDashboard. errors=true здесь означает падение самого шага целиком (например,
+     * не удалось получить список виджетов дашборда), а не отказ конкретного виджета.
+     */
+    public function generateContentToWidgets(?callable $onWidgetDone = null): array
     {
         try {
             $widgets_dash = DashboardWidget::query()->with('widget')
@@ -298,43 +289,31 @@ class DashboardGenerator
                 ->values();
 
             $results = [];
-            $hasErrors = false;
+            $total = $widgets_dash->count();
+            $failed = 0;
 
             foreach ($widgets_dash as $index => $widget) {
                 $widget_tables = $widget->tables ?? [];
-                $tables_scheme = $this->connectionProviderRouter->getSchema($widget_tables, [
-                    'count_rows',
-                    'columns',
-                    'relations' => [
-                        'column' => [
-                            'type',
-                            'nullable',
-                            'key',
-                            'default',
-                        ],
-                        'relation' => [
-                            'column',
-                            'table',
-                            'confidence',
-                            'match_rate',
-                        ],
-                    ],
-                ]);
+                $tables_scheme = $this->connectionProviderRouter->getSchema($widget_tables, SchemaOptions::detailed());
 
                 $widgetResult = $this->generateContentWidget($widget, $index, $tables_scheme);
 
                 if (!empty($widgetResult['errors'])) {
-                    $hasErrors = true;
+                    $failed++;
                 }
 
                 $results[] = $widgetResult;
+
+                if ($onWidgetDone) {
+                    $onWidgetDone($widget, $widgetResult, $index, $total);
+                }
             }
 
-            return $this->result(
-                $hasErrors,
-                $hasErrors ? 'Some widgets failed to generate' : '',
-                ['widgets' => $results]
-            );
+            return $this->result(false, '', [
+                'widgets' => $results,
+                'total' => $total,
+                'failed' => $failed,
+            ]);
         } catch (Throwable $e) {
             return $this->result(true, $e->getMessage());
         }

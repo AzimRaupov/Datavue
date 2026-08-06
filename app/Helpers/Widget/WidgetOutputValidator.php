@@ -18,6 +18,7 @@ class WidgetOutputValidator
             'multi-series-trend' => $this->validateSeriesWithLabels($data, 'labels'),
             'bar'                => $this->validateSeriesWithLabels($data, 'categories'),
             'scatter-plot'       => $this->validateSeriesWithLabels($data, 'categories'),
+            'radar'              => $this->validateSeriesWithLabels($data, 'categories'),
             'pie-chart'          => $this->validatePieLike($data),
             'donut-chart'        => $this->validatePieLike($data),
             'mini-counters'      => $this->validateMiniCounters($data),

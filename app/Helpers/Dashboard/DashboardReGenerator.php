@@ -3,10 +3,10 @@
 namespace App\Helpers\Dashboard;
 
 use App\Events\DashboardWidgetChanged;
-use App\Helpers\Ai\AIService;
 use App\Helpers\Ai\DashboardAi;
 use App\Helpers\DataSource\CodeTemplater;
 use App\Helpers\DataSource\ConnectionProviderRouter;
+use App\Helpers\DataSource\SchemaOptions;
 use App\Models\AiChat;
 use App\Models\AiChatMessage;
 use App\Models\AiChatTask;
@@ -18,13 +18,11 @@ use App\Models\DataSourceTable;
 use App\Models\Task;
 use App\Models\TaskStatus;
 use App\Models\Widget;
-use App\Helpers\DuckDB;
-use Faker\Provider\Text;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use phpDocumentor\Reflection\DocBlock\Tags\Formatter;
 use Throwable;
 
 class DashboardReGenerator
@@ -91,7 +89,9 @@ class DashboardReGenerator
             ->orderBy('position')
             ->get();
 
-        $this->widgets = Widget::all();
+        // Только виджеты, реально готовые к использованию (подключённые на фронте) —
+        // см. Widget::is_ai_selectable (например 'map' пока исключён).
+        $this->widgets = Widget::query()->where('is_ai_selectable', true)->get();
 
         $this->storage = storage_path(
             'app/company/'.
@@ -144,7 +144,9 @@ class DashboardReGenerator
         );
 
         $groups = json_encode($this->groups->select('id', 'name'), JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-        $widgets = json_encode($this->widgets->select('name', 'description'), JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        // scheme_description добавлен, чтобы ИИ видел форму данных виджета уже на этапе
+        // выбора widget_name для add/update_struct, а не только позже в generateInstruction().
+        $widgets = json_encode($this->widgets->select('name', 'description', 'scheme_description'), JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
 
         $data = [
             'dashboard_name' => $this->dashboard->name,
@@ -155,27 +157,6 @@ class DashboardReGenerator
         ];
 
         $resultDefine = $this->dashboardReGeneratorAi->defineChanges($data);
-
-
-//        $resultDefine=[
-//  "total_tokens" => 5799,
-//  "content" => [
-//    "dashboard_new_name" => "Аналитика клиентов и продаж",
-//    "groups_tables" =>[
-//      45
-//    ],
-//    "operations" => [
-//      [
-//        "widget_id" => null,
-//        "operation_type" => "add",
-//        "widget_name" => "bar",
-//        "title" => "Клиенты по странам",
-//        "position" => 6,
-//        "operation_description" => "Бар-чарт: количество клиентов по странам. Источник данных: таблица customers. Для каждой страны посчитать COUNT(*) записей и привести результат к целому числу; ось X — названия стран (country), ось Y — количество клиентов (COUNT). ◀"
-//      ]
-//    ]
-//  ]
-//];
 
         $operations = $resultDefine['content']['operations'] ?? null;
         $this->selectedGroupsTables= $resultDefine['content']['groups_tables'] ?? null;
@@ -249,20 +230,7 @@ class DashboardReGenerator
             ->whereIn('data_source_group_id', $this->selectedGroupsTables)
             ->pluck('name')
             ->toArray();
-        $schema = $this->connectionProviderRouter->getSchema($tables,[
-            'count_rows',
-            'columns',
-            'relations' => [
-                'column' => [
-                    'type',
-                    'nullable',
-                    'key',
-                ],
-                'relation' => [
-                    'table',
-                ],
-            ],
-        ]);
+        $schema = $this->connectionProviderRouter->getSchema($tables, SchemaOptions::basic());
 
         $this->prepareAiPayload();
         $widgets = json_encode($this->widgets->select('name','description' ,'scheme_description'), JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
@@ -453,27 +421,28 @@ class DashboardReGenerator
 
         $this->finalWidgets = $final;
 
-        $this->newDashboard = Dashboard::query()->create([
-            'chat_id' => $this->chat->id,
-            'name' => $this->dashboard->name,
-            'company_id' => $this->chat->company_id,
-            'status' => 'empty'
-        ]);
+        DB::transaction(function () {
+            $this->newDashboard = Dashboard::query()->create([
+                'chat_id' => $this->chat->id,
+                'name' => $this->dashboard->name,
+                'company_id' => $this->chat->company_id,
+                'status' => 'empty'
+            ]);
 
-        foreach ($this->finalWidgets as $item) {
-            $this->persistWidget($this->newDashboard, $item);
-        }
+            foreach ($this->finalWidgets as $item) {
+                $this->persistWidget($this->newDashboard, $item);
+            }
+        });
 
         $task->status_id = $this->tasks_statuses["completed"];
         $task->save();
         $task->load('status');
         event(new \App\Events\MessageTasksChanged($this->message, $task, $this->newDashboard->id));
 
-
-        $this->generateInstruction();
-        $this->generatingWidgets();
-        $this->reGeneratingWidgets();
-
+        // Генерация инструкций/кода виджетов (AI-вызовы, запись файлов) намеренно вынесена
+        // из этого метода наружу — см. DashboardReGeneratorJob::handle(), который вызывает
+        // generateInstruction()/generatingWidgets()/reGeneratingWidgets() явно и оборачивает
+        // их в общий try/catch с корректной обработкой ошибок.
         return $this->newDashboard;
     }
 
@@ -526,20 +495,7 @@ class DashboardReGenerator
             $fullCode .= $this->codeTemplate->getFooter();
             $scheme = $this->connectionProviderRouter->getSchema(
                 $dashboard_widget->tables,
-                [
-                    'count_rows',
-                    'columns',
-                    'relations' => [
-                        'column' => [
-                            'type',
-                            'nullable',
-                            'key',
-                        ],
-                        'relation' => [
-                            'table',
-                        ],
-                    ],
-                ]
+                SchemaOptions::basic()
             );
 
             $schemeStr = json_encode(
@@ -621,20 +577,7 @@ class DashboardReGenerator
 
                 $scheme = $this->connectionProviderRouter->getSchema(
                     $dashboard_widget->tables,
-                    [
-                        'count_rows',
-                        'columns',
-                        'relations' => [
-                            'column' => [
-                                'type',
-                                'nullable',
-                                'key',
-                            ],
-                            'relation' => [
-                                'table',
-                            ],
-                        ],
-                    ]
+                    SchemaOptions::basic()
                 );
                 $schemeStr = json_encode(
                     $scheme,
@@ -724,6 +667,17 @@ class DashboardReGenerator
     private function persistWidget(Dashboard $dashboard, array $item): DashboardWidget
     {
         $widget = Widget::query()->where('name', $item['widget_name'])->first();
+
+        if (!$widget) {
+            // ИИ мог вернуть несуществующее имя виджета (галлюцинация) — логируем, чтобы
+            // это не потерялось молча: dashboard_widget будет создан с widget_id=null и
+            // сразу помечен failed вместо того, чтобы выглядеть валидным виджетом без типа.
+            Log::warning('DashboardReGenerator: unknown widget_name from AI, widget_id will be null', [
+                'widget_name' => $item['widget_name'] ?? null,
+                'dashboard_id' => $dashboard->id,
+            ]);
+            $item['status'] = 'failed';
+        }
 
         $codePath = null;
         if (!empty($item['python_code'])) {

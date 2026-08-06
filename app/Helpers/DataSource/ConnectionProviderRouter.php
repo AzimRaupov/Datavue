@@ -14,6 +14,7 @@ class ConnectionProviderRouter
     public $dataSource;
     public $types;
     public $selectedProvider;
+    private array $schemaCache = [];
 
     public function __construct($dataSourceId){
 
@@ -59,7 +60,15 @@ class ConnectionProviderRouter
     }
     public function getSchema(array $tables = [], array $options = [])
     {
-        return $this->selectedProvider->getSchema($tables, $options);
+        // Схема (особенно с count_rows) может запрашиваться много раз подряд для одних
+        // и тех же таблиц (по разу на виджет) — кэшируем в рамках жизни роутера.
+        $cacheKey = md5(json_encode([$tables, $options]));
+
+        if (array_key_exists($cacheKey, $this->schemaCache)) {
+            return $this->schemaCache[$cacheKey];
+        }
+
+        return $this->schemaCache[$cacheKey] = $this->selectedProvider->getSchema($tables, $options);
     }
     public function showColumns($tableName)
     {

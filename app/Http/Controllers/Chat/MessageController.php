@@ -53,18 +53,24 @@ class MessageController extends Controller
             'chat_id' => $chat->id,
             'message' => $request->message,
         ]);
-        $dashboard_count = Dashboard::query()->where('chat_id',$chat->id)->count();
-        if($dashboard_count>0) {
-            $task_list = Task::query()->where('name', 're_generate_dashboard')
-                ->orWhere('name', 'response_in_chat')
-                ->select('name', 'description')
-                ->get();
+        // "response_in_chat" должен быть доступен ВСЕГДА — иначе ИИ вынужден
+        // выбирать между генерацией/перегенерацией дашборда даже для обычного
+        // приветствия или вопроса, т.к. этой опции просто нет в списке.
+        // "generate_dashboard" тоже доступен всегда — пользователь может
+        // попросить новый дашборд по другой теме, даже если для этого чата уже
+        // есть один. "re_generate_dashboard" осмысленен, только если дашборд
+        // (хотя бы один) уже существует — иначе регенерировать нечего.
+        $taskNames = ['response_in_chat', 'generate_dashboard'];
+
+        $dashboard_count = Dashboard::query()->where('chat_id', $chat->id)->count();
+        if ($dashboard_count > 0) {
+            $taskNames[] = 're_generate_dashboard';
         }
-        else{
-            $task_list = Task::query()->where('name', 'generate_dashboard')
-                ->select('name', 'description')
-                ->get();
-        }
+
+        $task_list = Task::query()
+            ->whereIn('name', $taskNames)
+            ->select('name', 'description')
+            ->get();
 
 
         dispatch(new RouterTaskJob($message->id,$chat->id,$task_list->toArray(),$request->dashboard_id,$user->id));

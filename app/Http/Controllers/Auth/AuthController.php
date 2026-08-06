@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Company;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 
 class AuthController extends Controller
@@ -21,40 +22,55 @@ class AuthController extends Controller
         }
 
         return response()->json([
-            'user' => $user->load([
-                'company',
-                'roles',
-                'permissions',
-            ]),
+            'user' => $this->userPayload($user),
         ]);
     }
 
+    /**
+     * Регистрация компании: создаётся сама компания и её первый пользователь,
+     * который становится владельцем и получает роль company_admin —
+     * то есть полные права на всё внутри своей компании.
+     */
     public function register(Request $request)
     {
         $data = $request->validate([
+            'company_name' => 'required|string|max:255',
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email',
             'password' => 'required|min:6|confirmed',
         ]);
-        $company = Company::query()->create([
-            'name'=> 'Azim',
-            'is_active'=>1
-        ]);
 
-        $user = User::create([
-            'name' => $data['name'],
-            'email' => $data['email'],
-            'company_id' => $company->id,
-            'password' => Hash::make($data['password']),
-            'role'=>'company'
-        ]);
+        $result = DB::transaction(function () use ($data) {
+            $company = Company::query()->create([
+                'name' => $data['company_name'],
+                'is_active' => true,
+            ]);
+
+            $user = User::create([
+                'name' => $data['name'],
+                'email' => $data['email'],
+                'company_id' => $company->id,
+                'password' => Hash::make($data['password']),
+                'is_active' => true,
+            ]);
+
+            // Владелец компании — защищён от удаления и понижения в правах.
+            $company->owner_id = $user->id;
+            $company->save();
+
+            $user->assignRole('company_admin');
+
+            return [$company, $user];
+        });
+
+        [, $user] = $result;
 
         $token = $user->createToken('api')->plainTextToken;
 
         return response()->json([
-            'user' => $user->load('company'),
-            'token' => $token
-        ]);
+            'user' => $this->userPayload($user),
+            'token' => $token,
+        ], 201);
     }
     public function login(Request $request)
     {
@@ -71,11 +87,33 @@ class AuthController extends Controller
             ], 401);
         }
 
+        // Отключённый сотрудник не должен входить, хотя его учётка сохранена.
+        if (!$user->is_active) {
+            return response()->json([
+                'message' => 'Учётная запись отключена. Обратитесь к администратору компании.',
+            ], 403);
+        }
+
         $token = $user->createToken('api')->plainTextToken;
 
         return response()->json([
-            'user' => $user->load('company'),
+            'user' => $this->userPayload($user),
             'token' => $token
+        ]);
+    }
+
+    /**
+     * Единый формат пользователя для фронта: вместе с компанией, ролями и
+     * плоским списком прав — по нему интерфейс решает, что показывать.
+     */
+    private function userPayload(User $user): array
+    {
+        $user->load('company');
+
+        return array_merge($user->toArray(), [
+            'roles' => $user->getRoleNames(),
+            'permissions' => $user->getAllPermissions()->pluck('name'),
+            'is_company_owner' => $user->isCompanyOwner(),
         ]);
     }
 

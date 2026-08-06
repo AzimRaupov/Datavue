@@ -234,6 +234,12 @@ onMounted(async () => {
                 console.log('--- РЕАЛТАЙМ ИЗМЕНЕНИЕ ЗАДАЧИ ПОЙМАНО! ---', e);
                 applyTaskUpdate(e);
 
+                // Длинный ответ агента не помещается в лимит сокета и не был
+                // отправлен целиком — забираем его обычным запросом.
+                if (e.answer_truncated) {
+                    fetchMessages();
+                }
+
                 if (e.dashboard_id) {
                     router.push({
                         name: 'company.chat',

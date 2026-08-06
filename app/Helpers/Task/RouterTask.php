@@ -3,16 +3,19 @@
 namespace App\Helpers\Task;
 
 use App\Events\MessageTasksChanged;
+use App\Helpers\Ai\ChatAgentAi;
 use App\Helpers\Ai\DefineTaskAi;
+use App\Helpers\Chat\ChatContext;
 use App\Jobs\DashboardGeneratorJob;
 use App\Jobs\DashboardReGeneratorJob;
 use App\Models\AiChat;
 use App\Models\AiChatMessage;
 use App\Models\AiChatTask;
-use App\Models\DashboardWidget;
 use App\Models\DataSource;
 use App\Models\Task;
 use App\Models\TaskStatus;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class RouterTask
 {
@@ -24,12 +27,13 @@ class RouterTask
     public $statuses;
     public $tasks;
     public $task_list;
-    public $widgets;
     public $dashboardId;
     public $resultDefine;
     public $userId;
     public $dataSource;
-    public function __construct($currentMessageId, $chatId,$task_list,$dashboardId,$userId)
+    public ChatContext $context;
+
+    public function __construct($currentMessageId, $chatId, $task_list, $dashboardId, $userId)
     {
         $this->userId = $userId;
         $this->chat = AiChat::query()->find($chatId);
@@ -49,9 +53,12 @@ class RouterTask
             ->select('message', 'answer')
             ->get();
         $this->task_list = $task_list;
-        $this->dataSource= DataSource::query()->where('chat_id',$chatId)->first();
-        $this->widgets = DashboardWidget::query()->where('dashboard_id', $this->dashboardId)
-            ->select('title','instruction')->get();
+        $this->dataSource = DataSource::query()->where('chat_id', $chatId)->first();
+
+        // Полный контекст (дашборд, виджеты, группы таблиц, каталог виджетов).
+        // ChatContext сам находит актуальный дашборд, если фронт не передал id —
+        // раньше в этом случае модель вообще не видела виджетов.
+        $this->context = new ChatContext($chatId, $dashboardId);
     }
 
     public function define()
@@ -64,19 +71,23 @@ class RouterTask
                 'status_id' => $this->statuses['in_progress'],
             ]);
             $this->current_task->load(['status', 'task']);
-            event(new MessageTasksChanged($this->currentMessage, $this->current_task,null));
+            event(new MessageTasksChanged($this->currentMessage, $this->current_task, null));
 
-            $define_task = new DefineTaskAi($this->messages, $this->currentMessage->message,$this->task_list);
+            $define_task = new DefineTaskAi($this->messages, $this->currentMessage->message, $this->task_list);
 
-            $data=[
-                'dashboard_widgets'=>$this->widgets->toArray(),
-            ];
-            $this->resultDefine = $define_task->defineTask($data);
+            $this->resultDefine = $define_task->defineTask($this->context->toArray());
 
+            $this->currentMessage->tokens_used = $this->resultDefine['total_tokens'] ?? 0;
 
+            // Для "response_in_chat" роутер намеренно возвращает пустой message —
+            // содержательный ответ готовит ChatAgentAi, у которого есть доступ
+            // к данным. Пустым значением затирать ничего не нужно.
+            $routerMessage = trim((string) ($this->resultDefine['content']['message'] ?? ''));
 
-             $this->currentMessage->tokens_used = $this->resultDefine['total_tokens'];
-            $this->currentMessage->answer = $this->resultDefine['content']['message'];
+            if ($routerMessage !== '') {
+                $this->currentMessage->answer = $routerMessage;
+            }
+
             $this->currentMessage->status = 'generating';
             $this->currentMessage->save();
 
@@ -84,15 +95,14 @@ class RouterTask
             $this->current_task->save();
             $this->current_task->load(['status', 'task']);
 
-            event(new MessageTasksChanged($this->currentMessage, $this->current_task,null));
+            event(new MessageTasksChanged($this->currentMessage, $this->current_task, null));
 
             $this->redirectToTask();
 
+        } catch (Throwable $e) {
 
-        } catch (\Throwable $e) {
-
-            \Log::error($e->getMessage());
-            \Log::error($e->getTraceAsString());
+            Log::error($e->getMessage());
+            Log::error($e->getTraceAsString());
 
             if ($this->current_task) {
                 $this->current_task->status_id = $this->statuses['failed'];
@@ -105,22 +115,155 @@ class RouterTask
                 ?? 'Не удалось обработать запрос. Попробуйте ещё раз.';
             $this->currentMessage->save();
 
-            event(new MessageTasksChanged($this->currentMessage, $this->current_task));
+            // Broadcast в обработчике ошибок не должен подменять исходную
+            // причину сбоя своей собственной — иначе настоящая ошибка теряется.
+            $this->broadcastSafely($this->currentMessage, $this->current_task, null);
 
             throw $e;
         }
     }
+
     public function redirectToTask()
     {
-        $task = $this->resultDefine['content']['task_name'];
-        if($task=="re_generate_dashboard"){
-            dispatch(new DashboardReGeneratorJob($this->currentMessage->chat_id,$this->dashboardId,$this->currentMessage->id,$this->resultDefine['content']['task_instruction']));
-        }
-        else if($task=="generate_dashboard"){
-            $this->chat->title = $this->resultDefine['content']['task_title'];
-            $this->chat->save();
-            dispatch(new DashboardGeneratorJob($this->currentMessage->id,$this->chat->id,$this->userId,$this->dataSource->id));
+        $task = $this->resultDefine['content']['task_name'] ?? null;
 
+        // Фронт мог не передать dashboard_id — берём актуальный дашборд чата.
+        $dashboardId = $this->dashboardId ?? $this->context->dashboard?->id;
+
+        if ($task === 're_generate_dashboard') {
+            if (!$dashboardId) {
+                // Регенерировать нечего — значит на самом деле нужен новый дашборд.
+                Log::warning('RouterTask: re_generate_dashboard without dashboard, falling back to generate', [
+                    'message_id' => $this->currentMessage->id,
+                ]);
+                $task = 'generate_dashboard';
+            } else {
+                dispatch(new DashboardReGeneratorJob(
+                    $this->currentMessage->chat_id,
+                    $dashboardId,
+                    $this->currentMessage->id,
+                    $this->resultDefine['content']['task_instruction'] ?? $this->currentMessage->message
+                ));
+
+                return;
+            }
+        }
+
+        if ($task === 'generate_dashboard') {
+            if (!$this->dataSource) {
+                // Без источника данных строить нечего — честно говорим об этом
+                // в чате вместо падения джоба с фатальной ошибкой.
+                $this->respondInChat('К этому чату не подключён источник данных, поэтому я не могу построить дашборд. Подключите базу данных или загрузите файл — и я сразу соберу аналитику.');
+
+                return;
+            }
+
+            $title = trim((string) ($this->resultDefine['content']['task_title'] ?? ''));
+
+            if ($title !== '') {
+                $this->chat->title = $title;
+                $this->chat->save();
+            }
+
+            dispatch(new DashboardGeneratorJob(
+                $this->currentMessage->id,
+                $this->chat->id,
+                $this->userId,
+                $this->dataSource->id
+            ));
+
+            return;
+        }
+
+        if ($task !== 'response_in_chat') {
+            Log::warning('RouterTask: unexpected task_name from DefineTaskAi, answering in chat', [
+                'task_name' => $task,
+                'message_id' => $this->currentMessage->id,
+            ]);
+        }
+
+        $this->respondInChat();
+    }
+
+    /**
+     * Готовит содержательный ответ пользователю через ChatAgentAi.
+     *
+     * $forcedMessage используется, когда ответ известен заранее и обращаться
+     * к модели незачем (например, не подключён источник данных).
+     */
+    private function respondInChat(?string $forcedMessage = null): void
+    {
+        $task = null;
+
+        if (isset($this->tasks['response_in_chat'])) {
+            $task = AiChatTask::query()->create([
+                'chat_id' => $this->currentMessage->chat_id,
+                'message_id' => $this->currentMessage->id,
+                'task_id' => $this->tasks['response_in_chat'],
+                'status_id' => $this->statuses['in_progress'],
+            ]);
+            $task->load(['status', 'task']);
+            event(new MessageTasksChanged($this->currentMessage, $task, null));
+        }
+
+        try {
+            if ($forcedMessage !== null) {
+                $answer = $forcedMessage;
+            } else {
+                $agent = new ChatAgentAi(
+                    $this->context,
+                    $this->messages,
+                    $this->currentMessage->message
+                );
+
+                $result = $agent->answer();
+
+                $answer = $result['message'];
+                $this->currentMessage->tokens_used =
+                    (int) ($this->currentMessage->tokens_used ?? 0) + (int) $result['total_tokens'];
+            }
+
+            $this->currentMessage->answer = $answer;
+            $this->currentMessage->status = 'answered';
+            $this->currentMessage->save();
+
+            if ($task) {
+                $task->status_id = $this->statuses['completed'];
+            }
+        } catch (Throwable $e) {
+            Log::error('RouterTask: chat agent failed: '.$e->getMessage());
+            Log::error($e->getTraceAsString());
+
+            $this->currentMessage->answer = $this->currentMessage->answer
+                ?: 'Не удалось подготовить ответ. Попробуйте переформулировать вопрос.';
+            $this->currentMessage->status = 'failed';
+            $this->currentMessage->save();
+
+            if ($task) {
+                $task->status_id = $this->statuses['failed'];
+            }
+        }
+
+        if ($task) {
+            $task->save();
+            $task->load(['status', 'task']);
+        }
+
+        // Ответ уже сохранён в БД. Если сокет по какой-то причине не принял
+        // событие, это не повод помечать сообщение неудачным и терять ответ —
+        // клиент получит его при следующей загрузке сообщений.
+        $this->broadcastSafely($this->currentMessage, $task, null);
+    }
+
+    private function broadcastSafely($message, $task, $dashboardId): void
+    {
+        try {
+            event(new MessageTasksChanged($message, $task, $dashboardId));
+        } catch (Throwable $e) {
+            Log::warning('RouterTask: broadcast failed, state is saved in DB', [
+                'message_id' => $message->id ?? null,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 }

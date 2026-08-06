@@ -204,7 +204,13 @@
 import { ref, reactive, computed, onMounted, inject } from 'vue';
 import { useRouter } from 'vue-router';
 import api from '../../api.js';
-import { bootstrap } from "@tabler/core/";
+// ВАЖНО: импортировать именно из 'bootstrap', а не из '@tabler/core/'.
+// Пакет '@tabler/core/' — это отдельная сборка, внутри которой лежит СВОЯ
+// копия Bootstrap. Подключение её вторым экземпляром приводило к тому, что
+// data-api Bootstrap регистрировался дважды, и каждый клик по
+// [data-bs-toggle="dropdown"] срабатывал два раза: меню открывалось и тут же
+// закрывалось. Здесь нужен только Modal — берём его из общего экземпляра.
+import { Modal } from "bootstrap";
 
 const router = useRouter();
 
@@ -335,7 +341,7 @@ function handleDataFile(event) {
 
 function closeModalAndWait(modalEl) {
     return new Promise((resolve) => {
-        const bsModal = bootstrap.Modal.getInstance(modalEl);
+        const bsModal = Modal.getInstance(modalEl);
 
         if (!bsModal) {
             resolve();

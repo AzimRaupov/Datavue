@@ -1,7 +1,10 @@
 <template>
     <div class="card">
         <div class="card-body">
-            <div ref="chartRef"></div>
+            <div
+                ref="chartRef"
+                class="radar-chart"
+            ></div>
         </div>
     </div>
 </template>
@@ -12,6 +15,7 @@ import {
     onMounted,
     onBeforeUnmount,
     watch,
+    nextTick,
 } from "vue"
 
 import ApexCharts from "apexcharts"
@@ -34,38 +38,109 @@ let chart = null
 
 
 const renderChart = async () => {
+    await nextTick()
+
     if (!chartRef.value) {
         return
     }
 
-    // Если старый график существует — удаляем его
+    // Удаляем старый график
     if (chart) {
         chart.destroy()
         chart = null
     }
 
-    // Нормализуем series
-    const series = props.series.map((item) => ({
+    // --------------------------------
+    // Categories
+    // --------------------------------
+
+    const categories = props.categories.map(String)
+
+    // --------------------------------
+    // Raw series
+    // --------------------------------
+
+    const rawSeries = props.series.map((item) => ({
         name: item.name ?? "",
+
         data: Array.isArray(item.data)
-            ? item.data.map(Number)
+            ? item.data.map((value) => {
+                const number = Number(value)
+
+                return Number.isFinite(number)
+                    ? number
+                    : 0
+            })
             : [],
     }))
 
-    // Нормализуем categories
-    const categories = props.categories.map(String)
-
-    // Если данных нет — ничего не рисуем
-    if (!series.length || !categories.length) {
+    // Нет данных
+    if (!categories.length || !rawSeries.length) {
         return
     }
+
+    // --------------------------------
+    // Нормализация данных
+    //
+    // Каждый показатель получает
+    // собственную шкалу 0-100.
+    //
+    // Например:
+    //
+    // buyPrice        66
+    // MSRP            150
+    // quantityInStock 9997
+    //
+    // превращается примерно в:
+    //
+    // buyPrice        70
+    // MSRP            100
+    // quantityInStock 100
+    // --------------------------------
+
+    const maxByCategory = categories.map((_, categoryIndex) => {
+        const values = rawSeries
+            .map((item) => item.data[categoryIndex] ?? 0)
+            .filter((value) => Number.isFinite(value))
+
+        if (!values.length) {
+            return 0
+        }
+
+        return Math.max(...values)
+    })
+
+    const series = rawSeries.map((item) => ({
+        name: item.name,
+
+        data: categories.map((_, categoryIndex) => {
+            const value = item.data[categoryIndex] ?? 0
+            const max = maxByCategory[categoryIndex]
+
+            if (!max || max <= 0) {
+                return 0
+            }
+
+            return Number(
+                ((value / max) * 100).toFixed(2)
+            )
+        }),
+    }))
+
+    // --------------------------------
+    // ApexCharts options
+    // --------------------------------
 
     const options = {
         series,
 
         chart: {
             type: "radar",
-            height: 400,
+
+            height: 450,
+
+            width: "100%",
+
             fontFamily: "inherit",
 
             animations: {
@@ -75,11 +150,8 @@ const renderChart = async () => {
             toolbar: {
                 show: false,
             },
-        },
 
-        title: {
-            text: "",
-            align: "left",
+            parentHeightOffset: 0,
         },
 
         xaxis: {
@@ -93,13 +165,21 @@ const renderChart = async () => {
                     fontSize: "13px",
                     fontWeight: 400,
                 },
+
+                offsetX: 0,
+                offsetY: 0,
             },
         },
 
         yaxis: {
             min: 0,
             max: 100,
-            stepSize: 20,
+
+            tickAmount: 5,
+
+            labels: {
+                show: false,
+            },
         },
 
         colors: [
@@ -121,10 +201,14 @@ const renderChart = async () => {
 
         plotOptions: {
             radar: {
-                size: 130,
+                size: 150,
+
+                offsetX: 0,
+                offsetY: 0,
 
                 polygons: {
                     strokeColors: "#d9dee4",
+
                     strokeWidth: 1,
 
                     connectorColors: "#d9dee4",
@@ -143,12 +227,21 @@ const renderChart = async () => {
             size: 4,
 
             strokeWidth: 1,
+
             strokeColors: "#ffffff",
+
+            hover: {
+                size: 6,
+            },
         },
 
         legend: {
             show: series.length > 1,
+
             position: "bottom",
+
+            horizontalAlign: "center",
+
             offsetY: 12,
 
             labels: {
@@ -169,6 +262,27 @@ const renderChart = async () => {
 
         tooltip: {
             theme: "dark",
+
+            y: {
+                formatter: (value, { seriesIndex, dataPointIndex }) => {
+                    const originalValue =
+                        rawSeries?.[seriesIndex]?.data?.[dataPointIndex]
+
+                    if (
+                        originalValue !== undefined &&
+                        Number.isFinite(Number(originalValue))
+                    ) {
+                        return Number(originalValue).toLocaleString(
+                            undefined,
+                            {
+                                maximumFractionDigits: 2,
+                            }
+                        )
+                    }
+
+                    return value
+                },
+            },
         },
 
         responsive: [
@@ -193,6 +307,10 @@ const renderChart = async () => {
                             },
                         },
                     },
+
+                    legend: {
+                        offsetY: 5,
+                    },
                 },
             },
         ],
@@ -207,24 +325,38 @@ const renderChart = async () => {
 }
 
 
+// --------------------------------
+// Mounted
+// --------------------------------
+
 onMounted(() => {
     renderChart()
 })
 
+
+// --------------------------------
+// Watch props
+// --------------------------------
 
 watch(
     () => [
         props.categories,
         props.series,
     ],
+
     () => {
         renderChart()
     },
+
     {
         deep: true,
     }
 )
 
+
+// --------------------------------
+// Destroy
+// --------------------------------
 
 onBeforeUnmount(() => {
     if (chart) {
@@ -233,3 +365,12 @@ onBeforeUnmount(() => {
     }
 })
 </script>
+
+<style scoped>
+.radar-chart {
+    width: 100%;
+    min-width: 0;
+    display: flex;
+    justify-content: center;
+}
+</style>

@@ -1,6 +1,5 @@
 <script setup>
-import { onBeforeUnmount, onMounted, nextTick, ref } from 'vue'
-import { Dropdown } from 'bootstrap'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const logo = '/logos/logo.png'
@@ -13,45 +12,21 @@ if (localStorage.getItem('lang')) {
 }
 
 const user = JSON.parse(localStorage.getItem('user') || 'null')
-const languageToggleRef = ref(null)
-const userToggleRef = ref(null)
-const dropdownInstances = []
 
+// Пункт «Сотрудники» показываем только тем, кому он доступен на бэкенде,
+// чтобы пользователь не упирался в 403 из интерфейса.
+const canViewUsers = computed(() => (user?.permissions ?? []).includes('view users'))
+
+// Выпадающие меню работают на штатном data-api Bootstrap (data-bs-toggle="dropdown").
+// Раньше здесь была своя реализация через Dropdown.getOrCreateInstance(), потому что
+// штатная не срабатывала: на страницу попадали ДВЕ копии Bootstrap (см. CreateForm.vue),
+// data-api регистрировался дважды, и каждый клик обрабатывался два раза — меню
+// открывалось и тут же закрывалось. Дубликат устранён, ручная логика больше не нужна
+// и только конфликтовала со штатной.
 const changeLanguage = (lang) => {
     locale.value = lang
     localStorage.setItem('lang', lang)
-    const instance = languageToggleRef.value
-        ? Dropdown.getInstance(languageToggleRef.value)
-        : null
-
-    instance?.hide()
 }
-
-const toggleDropdown = (event) => {
-    event.preventDefault()
-    const current = Dropdown.getOrCreateInstance(event.currentTarget)
-
-    dropdownInstances
-        .filter((instance) => instance !== current)
-        .forEach((instance) => instance.hide())
-
-    current.toggle()
-}
-
-onMounted(async () => {
-    await nextTick()
-
-    ;[languageToggleRef.value, userToggleRef.value]
-        .filter(Boolean)
-        .forEach((el) => {
-            const instance = Dropdown.getOrCreateInstance(el)
-            dropdownInstances.push(instance)
-        })
-})
-
-onBeforeUnmount(() => {
-    dropdownInstances.forEach((instance) => instance.dispose())
-})
 </script>
 <template>
     <header class="navbar navbar-expand-md d-print-none">
@@ -310,14 +285,11 @@ onBeforeUnmount(() => {
                     <!-- BEGIN LANGUAGE SELECTOR -->
                     <div class="nav-item dropdown d-none d-md-flex">
                         <a
-                            ref="languageToggleRef"
                             href="#"
                             class="nav-link px-0"
                             data-bs-toggle="dropdown"
-                            @click.stop.prevent="toggleDropdown"
                             tabindex="-1"
                             aria-label="Select language"
-                            data-bs-auto-close="outside"
                             aria-expanded="false"
                         >
                             {{ locale === 'ru' ? 'RU' : locale === 'tj' ? 'ТҶ' : 'EN' }}
@@ -341,11 +313,9 @@ onBeforeUnmount(() => {
                     <!-- BEGIN USER MENU -->
                 <div class="nav-item dropdown">
                     <a
-                        ref="userToggleRef"
                         href="#"
                         class="nav-link d-flex lh-1 p-0 px-2"
                         data-bs-toggle="dropdown"
-                        @click.stop.prevent="toggleDropdown"
                         aria-label="Open user menu"
                         aria-expanded="false"
                     >
@@ -408,6 +378,22 @@ onBeforeUnmount(() => {
                             Analytics</a
                         >
                         <div class="dropdown-divider"></div>
+                        <router-link
+                            v-if="canViewUsers"
+                            class="dropdown-item"
+                            :to="{ name: 'settings.users' }"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                                 fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                 stroke-linejoin="round" aria-hidden="true" focusable="false"
+                                 class="icon dropdown-item-icon icon-2">
+                                <path d="M9 7m-4 0a4 4 0 1 0 8 0a4 4 0 1 0 -8 0" />
+                                <path d="M3 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+                                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                                <path d="M21 21v-2a4 4 0 0 0 -3 -3.85" />
+                            </svg>
+                            Сотрудники
+                        </router-link>
                         <a class="dropdown-item" href="./settings.html">Settings &amp; Privacy</a>
                         <a class="dropdown-item" href="#">Help</a>
                         <a class="dropdown-item" href="./sign-in.html">{{ t('header.logout') }}</a>

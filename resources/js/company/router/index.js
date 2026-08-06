@@ -6,6 +6,7 @@ import DashboardPage from '../pages/DashboardPage.vue';
 import ProjectDashboardShow from '../pages/project/dashboard/ShowPage.vue';
 import ChatPage from '../pages/ChatPage.vue';
 import Profile from "../pages/settings/Profile.vue";
+import Users from "../pages/settings/Users.vue";
 const routes = [
     {
         path: '/',
@@ -21,6 +22,11 @@ const routes = [
         path:'/settings/profile',
         name: 'settings.profile',
         component: Profile
+    },
+    {
+        path:'/settings/users',
+        name: 'settings.users',
+        component: Users
     },
     {
         path:'/project/dashboard/:dashboard',

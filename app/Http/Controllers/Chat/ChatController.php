@@ -47,17 +47,67 @@ class ChatController extends Controller
 
         $chat = AiChat::query()
             ->where('id', $id)
-            ->where('company_id', $user->company->id)
+            ->where('company_id', $user->company_id)
             ->with([
                 'dashboards' => function ($query) {
                     $query->select('id', 'name', 'chat_id');
                 },
 
                 ])
-            ->first();
+            ->firstOrFail();
 
-        return $chat;
+        return response()->json($chat);
 
+    }
+
+    /**
+     * Переименование чата. Маршрут объявлен через apiResource, но метода
+     * не существовало — запрос падал с ошибкой 500.
+     */
+    public function update(Request $request, $id)
+    {
+        $chat = $this->findForCompany($request, $id);
+
+        $data = $request->validate([
+            'title' => 'required|string|max:255',
+        ]);
+
+        $chat->title = $data['title'];
+        $chat->save();
+
+        return response()->json($chat);
+    }
+
+    /**
+     * Удаление чата вместе со всем, что к нему привязано.
+     * Маршрут тоже был объявлен, но метода не было.
+     */
+    public function destroy(Request $request, $id)
+    {
+        $chat = $this->findForCompany($request, $id);
+
+        DB::transaction(function () use ($chat) {
+            foreach ($chat->dashboards as $dashboard) {
+                $dashboard->widgets()->delete();
+                $dashboard->delete();
+            }
+
+            AiChatTask::query()->where('chat_id', $chat->id)->delete();
+            AiChatMessage::query()->where('chat_id', $chat->id)->delete();
+            DataSource::query()->where('chat_id', $chat->id)->delete();
+            UploadedFile::query()->where('chat_id', $chat->id)->delete();
+
+            $chat->delete();
+        });
+
+        return response()->json(['message' => 'Чат удалён.']);
+    }
+
+    private function findForCompany(Request $request, $id): AiChat
+    {
+        return AiChat::query()
+            ->where('company_id', $request->user()->company_id)
+            ->findOrFail($id);
     }
 
     public function store(StoreRequest $request)

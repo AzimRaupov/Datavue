@@ -6,5 +6,5 @@ use Illuminate\Database\Eloquent\Model;
 
 class Widget extends Model
 {
-    protected $fillable = ['name', 'description', 'scheme','scheme_description'];
+    protected $fillable = ['name', 'description', 'scheme', 'scheme_description', 'is_ai_selectable'];
 }

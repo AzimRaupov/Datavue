@@ -171,28 +171,28 @@ function restoreScrollableAreas(restoreList) {
     });
 }
 
-// --- ЭКСПОРТ В PDF (html2canvas + jsPDF, полностью на клиенте) ---
-async function exportToPdf() {
-    if (!exportArea.value) return;
-    if (isExportingPdf.value) return;
-
-    isExportingPdf.value = true;
-    exportErrorMsg.value = null;
-
-    let restoreList = [];
+/**
+ * Разворачивает скроллящиеся блоки и рендерит exportArea в canvas через
+ * html2canvas. Общая точка для PDF и Word — оба экспорта должны видеть
+ * дашборд как растровую картинку, а не как живой DOM с SVG от ApexCharts
+ * (см. комментарий в exportToWord, почему это важно).
+ */
+async function renderDashboardCanvas() {
+    const restoreList = expandScrollableAreas(exportArea.value);
 
     try {
-        // Разворачиваем все скроллящиеся/обрезанные блоки, чтобы попал весь контент
-        restoreList = expandScrollableAreas(exportArea.value);
-
         // Ждём кадр, чтобы браузер применил стили и графики успели перерисоваться
         await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 50)));
 
-        const canvas = await withTimeout(
+        return await withTimeout(
             html2canvas(exportArea.value, {
-                scale: window.devicePixelRatio > 1 ? 2 : 1.5,
+                // На дашбордах с десятками виджетов html2canvas и так рендерит
+                // долго и блокирует вкладку; retina-scale x2 удваивал время почти
+                // без заметной пользы на итоговой картинке, поэтому ограничиваем 1.5.
+                scale: Math.min(window.devicePixelRatio || 1, 1.5),
                 useCORS: true,
                 allowTaint: false,
+                logging: false,
                 imageTimeout: 15000, // не ждать битые/медленные картинки бесконечно
                 backgroundColor: "#ffffff",
                 windowWidth: exportArea.value.scrollWidth,
@@ -202,10 +202,24 @@ async function exportToPdf() {
                 scrollX: 0,
                 scrollY: 0,
             }),
-            30000,
+            45000,
             "рендер дашборда"
         );
+    } finally {
+        restoreScrollableAreas(restoreList);
+    }
+}
 
+// --- ЭКСПОРТ В PDF (html2canvas + jsPDF, полностью на клиенте) ---
+async function exportToPdf() {
+    if (!exportArea.value) return;
+    if (isExportingPdf.value) return;
+
+    isExportingPdf.value = true;
+    exportErrorMsg.value = null;
+
+    try {
+        const canvas = await renderDashboardCanvas();
         const imgData = canvas.toDataURL("image/png");
 
         const pdf = new jsPDF({
@@ -222,12 +236,17 @@ async function exportToPdf() {
         console.error("Ошибка экспорта в PDF:", err);
         exportErrorMsg.value = "Не удалось экспортировать в PDF. Попробуйте ещё раз.";
     } finally {
-        restoreScrollableAreas(restoreList);
         isExportingPdf.value = false;
     }
 }
 
-// --- ЭКСПОРТ В WORD (генерация .doc прямо в браузере, без библиотек) ---
+// --- ЭКСПОРТ В WORD ---
+// ВАЖНО: раньше сюда шёл живой innerHTML дашборда (включая SVG от ApexCharts).
+// ApexCharts рисует атрибуты вида "data:realIndex"/"data:collapsed" — валидные
+// для HTML5, но с двоеточием, которое строгий XML/OOXML-парсер Word трактует
+// как необъявленный namespace-префикс, и Word показывал файл как повреждённый.
+// Теперь дашборд рендерится в PNG (тем же html2canvas, что и PDF) и вставляется
+// одной картинкой — сырого SVG в документе больше нет.
 async function exportToWord() {
     if (!exportArea.value) return;
     if (isExportingWord.value) return;
@@ -235,15 +254,10 @@ async function exportToWord() {
     isExportingWord.value = true;
     exportErrorMsg.value = null;
 
-    let restoreList = [];
-
     try {
-        // Разворачиваем скроллящиеся блоки — иначе в innerHTML попадут
-        // инлайн-стили с overflow:hidden/max-height и Word обрежет контент так же
-        restoreList = expandScrollableAreas(exportArea.value);
-        await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 30)));
-
-        const contentHtml = exportArea.value.innerHTML;
+        const canvas = await renderDashboardCanvas();
+        const imgData = canvas.toDataURL("image/png");
+        const dashboardName = currentDashboard.value.name ?? "Dashboard";
 
         const htmlDocument = `
             <html xmlns:o="urn:schemas-microsoft-com:office:office"
@@ -251,7 +265,7 @@ async function exportToWord() {
                   xmlns="http://www.w3.org/TR/REC-html40">
             <head>
                 <meta charset="utf-8">
-                <title>${currentDashboard.value.name ?? "Dashboard"}</title>
+                <title>${dashboardName}</title>
                 <!--[if gte mso 9]>
                 <xml>
                     <w:WordDocument>
@@ -262,15 +276,13 @@ async function exportToWord() {
                 <![endif]-->
                 <style>
                     body { font-family: Arial, sans-serif; }
-                    table { border-collapse: collapse; width: 100%; }
-                    td, th { border: 1px solid #ccc; padding: 6px; }
-                    h1, h3 { color: #1a1a1a; }
-                    * { overflow: visible !important; max-height: none !important; }
+                    h1 { color: #1a1a1a; }
+                    img { width: 100%; }
                 </style>
             </head>
             <body>
-                <h1>${currentDashboard.value.name ?? ""}</h1>
-                ${contentHtml}
+                <h1>${dashboardName}</h1>
+                <img src="${imgData}" alt="${dashboardName}" />
             </body>
             </html>
         `;
@@ -294,7 +306,6 @@ async function exportToWord() {
         console.error("Ошибка экспорта в Word:", err);
         exportErrorMsg.value = "Не удалось экспортировать в Word. Попробуйте ещё раз.";
     } finally {
-        restoreScrollableAreas(restoreList);
         isExportingWord.value = false;
     }
 }

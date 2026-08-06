@@ -13,6 +13,7 @@ const messages = {
             determine_data_source_groups: 'Определение групп',
             generating_widget_instructions: 'Планирование виджетов',
             review_and_correction_widgets: 'Проверка виджетов',
+            response_in_chat: 'Подготовка ответа',
         },
 
         chatPage: {
@@ -38,6 +39,7 @@ const messages = {
             determine_data_source_groups: 'Finding groups',
             generating_widget_instructions: 'Planning widgets',
             review_and_correction_widgets: 'Checking widgets',
+            response_in_chat: 'Preparing answer',
         },
 
         chatPage: {
@@ -63,6 +65,7 @@ const messages = {
             determine_data_source_groups: 'Муайянкунии гурӯҳҳо',
             generating_widget_instructions: 'Банақшагирии виҷетҳо',
             review_and_correction_widgets: 'Санҷиши виҷетҳо',
+            response_in_chat: 'Омодасозии ҷавоб',
         },
 
         chatPage: {

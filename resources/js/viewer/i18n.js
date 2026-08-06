@@ -13,6 +13,7 @@ const messages = {
             page_login: 'Вход',
             page_register: 'Регистрация',
 
+            input_company_name: 'Название компании',
             input_name: 'Имя',
             input_email: 'Адрес электронной почты',
             input_password: 'Пароль',
@@ -35,6 +36,7 @@ const messages = {
             page_login: 'Login',
             page_register: 'Sign Up',
 
+            input_company_name: 'Company name',
             input_name: 'Name',
             input_email: 'Email address',
             input_password: 'Password',
@@ -57,6 +59,7 @@ const messages = {
             page_login: 'Воридшавӣ',
             page_register: 'Бақайдгирӣ',
 
+            input_company_name: 'Номи ширкат',
             input_name: 'Ном',
             input_email: 'Суроғаи почтаи электронӣ',
             input_password: 'Парол',
