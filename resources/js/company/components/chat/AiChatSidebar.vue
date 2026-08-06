@@ -5,6 +5,7 @@ import api from '../../api.js';
 import Echo from 'laravel-echo';
 import Pusher from 'pusher-js';
 import { useI18n } from 'vue-i18n'
+import MarkdownText from './MarkdownText.vue';
 
 window.Pusher = Pusher;
 const { t, locale } = useI18n()
@@ -313,7 +314,7 @@ onUnmounted(() => {
                             >
                                 <transition name="fade" mode="out-in">
                                     <div v-if="message.answer" key="answer" class="lh-base text-dark">
-                                        {{ message.answer }}
+                                        <MarkdownText :text="message.answer" />
                                     </div>
                                     <div v-else-if="isFailed(message)" key="failed" class="lh-base text-danger d-flex align-items-center gap-2 py-1">
                                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>

@@ -2,10 +2,13 @@
 
 namespace App\Helpers\DataSource\Providers;
 
+use App\Helpers\DataSource\Concerns\ManagesRemoteConnection;
 use Illuminate\Support\Facades\DB;
 
 class MysqlConnectionRemoteProvider
 {
+    use ManagesRemoteConnection;
+
     public string $host;
     public int|string $port;
     public string $username;
@@ -450,6 +453,19 @@ class MysqlConnectionRemoteProvider
 
         foreach ($foreignKeys as $foreignKey) {
 
+            /*
+            | information_schema отдаёт связи по всей схеме, но считать
+            | match_rate можно только для таблиц, которые реально попали
+            | в анализ — иначе запрос упадёт на несуществующей таблице.
+            */
+
+            if (
+                !isset($schema[$foreignKey['from_table']]) ||
+                !isset($schema[$foreignKey['to_table']])
+            ) {
+                continue;
+            }
+
             $matchRate = $this->calculateMatchRate(
                 $foreignKey['from_table'],
                 $foreignKey['from_column'],
@@ -497,6 +513,41 @@ class MysqlConnectionRemoteProvider
                     $schema[$fromTable]['columns']
                     as $fromColumn => $fromColumnData
                 ) {
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | У колонки уже есть связь
+                    |--------------------------------------------------------------------------
+                    |
+                    | В схему уходит одна связь на колонку (ключ — имя колонки),
+                    | поэтому каждая следующая найденная связь просто затирала
+                    | предыдущую. Настоящий FOREIGN KEY добавляется до эвристики,
+                    | значит он и должен побеждать.
+                    */
+
+                    if (
+                        $this->columnHasRelation(
+                            $relations,
+                            $fromTable,
+                            $fromColumn
+                        )
+                    ) {
+                        continue;
+                    }
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | Собственный PRIMARY KEY — не внешний ключ
+                    |--------------------------------------------------------------------------
+                    |
+                    | Значения id почти всегда совпадают с id любой другой
+                    | таблицы, и эвристика выдавала ложную связь. Реальная
+                    | связь по PK (1:1) уже пришла бы из FOREIGN KEY.
+                    */
+
+                    if (($fromColumnData['key'] ?? '') === 'PRI') {
+                        continue;
+                    }
 
                     foreach (
                         $schema[$toTable]['columns']
@@ -561,24 +612,6 @@ class MysqlConnectionRemoteProvider
                             continue;
                         }
 
-                        /*
-                        |--------------------------------------------------------------------------
-                        | Не дублируем FOREIGN KEY
-                        |--------------------------------------------------------------------------
-                        */
-
-                        if (
-                            $this->relationExists(
-                                $relations,
-                                $fromTable,
-                                $fromColumn,
-                                $toTable,
-                                $toColumn
-                            )
-                        ) {
-                            continue;
-                        }
-
                         $confidence = 'medium';
 
                         if ($matchRate >= 95) {
@@ -598,6 +631,13 @@ class MysqlConnectionRemoteProvider
                             'match_rate' => $matchRate,
                             'type' => 'data_match',
                         ];
+
+                        /*
+                        | Одна связь на колонку — дальше по этой колонке
+                        | искать нечего.
+                        */
+
+                        continue 2;
                     }
                 }
             }
@@ -795,23 +835,19 @@ class MysqlConnectionRemoteProvider
     }
 
     /**
-     * Проверяет, существует ли уже такая связь
+     * Проверяет, найдена ли уже связь для этой колонки
      */
-    private function relationExists(
+    private function columnHasRelation(
         array $relations,
         string $fromTable,
-        string $fromColumn,
-        string $toTable,
-        string $toColumn
+        string $fromColumn
     ): bool {
 
         foreach ($relations as $relation) {
 
             if (
                 $relation['from_table'] === $fromTable &&
-                $relation['from_column'] === $fromColumn &&
-                $relation['to_table'] === $toTable &&
-                $relation['to_column'] === $toColumn
+                $relation['from_column'] === $fromColumn
             ) {
                 return true;
             }
@@ -841,19 +877,13 @@ class MysqlConnectionRemoteProvider
      */
     private function connection()
     {
-        config([
-            'database.connections.remote_database' => [
-                'driver' => 'mysql',
-                'host' => $this->host,
-                'port' => $this->port,
-                'database' => $this->database,
-                'username' => $this->username,
-                'password' => $this->password,
-            ],
+        return $this->remoteConnection([
+            'driver' => 'mysql',
+            'host' => $this->host,
+            'port' => $this->port,
+            'database' => $this->database,
+            'username' => $this->username,
+            'password' => $this->password,
         ]);
-
-        return DB::connection(
-            'remote_database'
-        );
     }
 }

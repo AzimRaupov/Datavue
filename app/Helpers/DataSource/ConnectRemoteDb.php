@@ -2,10 +2,12 @@
 
 namespace App\Helpers\DataSource;
 
-use Illuminate\Support\Facades\DB;
+use App\Helpers\DataSource\Concerns\ManagesRemoteConnection;
 
 class ConnectRemoteDb
 {
+    use ManagesRemoteConnection;
+
     public $host;
     public $port;
     public $database;
@@ -32,18 +34,14 @@ class ConnectRemoteDb
 
     private function connection()
     {
-        config([
-            'database.connections.remote_database' => [
-                'driver' => $this->database_name,
-                'host' => $this->host,
-                'port' => $this->port,
-                'database' => $this->database,
-                'username' => $this->username,
-                'password' => $this->password,
-            ],
+        return $this->remoteConnection([
+            'driver' => $this->database_name,
+            'host' => $this->host,
+            'port' => $this->port,
+            'database' => $this->database,
+            'username' => $this->username,
+            'password' => $this->password,
         ]);
-
-        return DB::connection('remote_database');
     }
 
     public function check()

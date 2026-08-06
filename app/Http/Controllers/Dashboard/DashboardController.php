@@ -35,7 +35,10 @@ class DashboardController extends Controller
                         'title',
                         'position',
                         'status'
-                    )->orderBy('position');
+                        // orderBy('id') — не косметика: у виджетов может совпасть
+                        // position, и без второго ключа MySQL волен возвращать их
+                        // в разном порядке при каждом запросе.
+                    )->orderBy('position')->orderBy('id');
                 },
                 'widgets.widget' => function ($query) {
                     $query->select('id', 'name');

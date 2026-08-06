@@ -12,6 +12,8 @@ class RouterTaskJob implements ShouldQueue
     use Queueable;
 
     public $currentMessageId;
+    public $timeout = 600;
+
     public $chatId;
     public $task_list;
     public $dashboardId;

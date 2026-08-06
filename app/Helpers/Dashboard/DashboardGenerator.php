@@ -247,6 +247,12 @@ class DashboardGenerator
             $response = $this->dashboardGeneratorAi->generateWidgets($schemeStr, $widgets, $text);
             $generateWidgets = $response['content']['widgets'];
 
+            // position проставляем сразу при создании, в том порядке, в котором
+            // виджеты вернул ИИ. Раньше он оставался дефолтным (0) до генерации
+            // контента, и фронт, сортирующий по position, тасовал плейсхолдеры
+            // после каждого готового виджета.
+            $position = 0;
+
             foreach ($generateWidgets as $list) {
                 $widget = $this->widgets->where('name', $list['name'])->first();
 
@@ -260,6 +266,7 @@ class DashboardGenerator
                     'title' => $list['title'],
                     'instruction' => $list['instruction'],
                     'tables' => $list['tables'],
+                    'position' => $position++,
                 ]);
             }
 
@@ -284,8 +291,13 @@ class DashboardGenerator
     public function generateContentToWidgets(?callable $onWidgetDone = null): array
     {
         try {
+            // Порядок обхода фиксируем явно: без orderBy MySQL мог отдать виджеты
+            // в произвольном порядке, и индекс не совпадал с их позицией на дашборде.
             $widgets_dash = DashboardWidget::query()->with('widget')
-                ->where('dashboard_id', $this->dashboard->id)->get()
+                ->where('dashboard_id', $this->dashboard->id)
+                ->orderBy('position')
+                ->orderBy('id')
+                ->get()
                 ->values();
 
             $results = [];
@@ -296,7 +308,7 @@ class DashboardGenerator
                 $widget_tables = $widget->tables ?? [];
                 $tables_scheme = $this->connectionProviderRouter->getSchema($widget_tables, SchemaOptions::detailed());
 
-                $widgetResult = $this->generateContentWidget($widget, $index, $tables_scheme);
+                $widgetResult = $this->generateContentWidget($widget, $tables_scheme);
 
                 if (!empty($widgetResult['errors'])) {
                     $failed++;
@@ -319,7 +331,7 @@ class DashboardGenerator
         }
     }
 
-    public function generateContentWidget($dashboard_widget, $position, $tables_scheme): array
+    public function generateContentWidget($dashboard_widget, $tables_scheme): array
     {
         try {
             $type = $this->dataSource->type->name;
@@ -341,14 +353,12 @@ class DashboardGenerator
 
             $dashboard_widget->code_path = $path;
             $dashboard_widget->status = 'active';
-            $dashboard_widget->position = $position;
             $dashboard_widget->save();
             event(new DashboardWidgetChanged($this->dashboard));
 
             return $this->result(false, '', ['widget' => $dashboard_widget]);
         } catch (Throwable $e) {
             $dashboard_widget->status = 'failed';
-            $dashboard_widget->position = $position;
             $dashboard_widget->save();
 
 

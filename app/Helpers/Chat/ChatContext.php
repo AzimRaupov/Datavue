@@ -24,7 +24,19 @@ class ChatContext
 {
     /** Ограничения, чтобы промпт не разрастался на больших базах. */
     private const MAX_GROUPS = 25;
-    private const MAX_TABLES_PER_GROUP = 40;
+
+    /**
+     * Сколько имён таблиц показывать в обзоре группы.
+     *
+     * В контекст уходит только «витрина» группы — по ней агент понимает, о чём
+     * группа, и запрашивает её состав инструментом. Раньше сюда выгружались все
+     * таблицы всех групп: на источнике в 300 таблиц это несколько тысяч строк
+     * промпта ещё до того, как агент вообще понял, о чём спрашивают.
+     */
+    private const PREVIEW_TABLES_PER_GROUP = 8;
+
+    /** Потолок на размер ответа инструмента «таблицы групп». */
+    public const MAX_TABLES_PER_REQUEST = 120;
 
     public ?DataSource $dataSource = null;
 
@@ -56,6 +68,7 @@ class ChatContext
                 ->where('dashboard_id', $this->dashboard->id)
                 ->with('widget')
                 ->orderBy('position')
+                ->orderBy('id')
                 ->get()
             : collect();
 
@@ -91,6 +104,66 @@ class ChatContext
         return $this->dashboard !== null;
     }
 
+    public function hasGroups(): bool
+    {
+        return $this->groups->isNotEmpty();
+    }
+
+    /**
+     * Сколько всего таблиц разложено по группам источника.
+     */
+    public function totalTablesCount(): int
+    {
+        return (int) $this->groups->sum(fn (DataSourceGroup $group) => $group->tables->count());
+    }
+
+    /**
+     * Состав выбранных групп — тот же приём, что и в генераторе дашборда:
+     * сначала модель выбирает группы, и только их таблицы попадают в промпт.
+     *
+     * @param  array<int|string>  $groupIds
+     * @return array{tables: array<int, array<string, mixed>>, unknown_groups: array<int, int>, truncated: bool}
+     */
+    public function tablesForGroups(array $groupIds): array
+    {
+        $requested = collect($groupIds)
+            ->map(fn ($id) => (int) $id)
+            ->filter()
+            ->unique()
+            ->values();
+
+        // Берём только группы этого источника — id из ответа модели доверять нельзя.
+        $known = $this->groups->whereIn('id', $requested->all())->keyBy('id');
+
+        $tables = $known
+            ->flatMap(fn (DataSourceGroup $group) => $group->tables->map(fn ($table) => [
+                'name' => $table->name,
+                'description' => $table->description,
+                'role' => $table->role,
+                'group' => $group->name,
+            ]))
+            ->values();
+
+        return [
+            'tables' => $tables->take(self::MAX_TABLES_PER_REQUEST)->all(),
+            'unknown_groups' => $requested->diff($known->keys())->values()->all(),
+            'truncated' => $tables->count() > self::MAX_TABLES_PER_REQUEST,
+        ];
+    }
+
+    /**
+     * Все известные имена таблиц источника — запасной путь, когда группировка
+     * ещё не выполнялась и выбирать не из чего.
+     */
+    public function allTableNames(): array
+    {
+        return $this->groups
+            ->flatMap(fn (DataSourceGroup $group) => $group->tables->pluck('name'))
+            ->unique()
+            ->values()
+            ->all();
+    }
+
     /**
      * Компактное представление контекста для подстановки в промпт.
      */
@@ -106,18 +179,18 @@ class ChatContext
             ],
 
             'data_groups' => $this->groups->map(fn (DataSourceGroup $group) => [
+                'id' => $group->id,
                 'name' => $group->name,
                 'description' => $group->description,
-                'tables' => $group->tables
-                    ->take(self::MAX_TABLES_PER_GROUP)
-                    ->map(fn ($table) => [
-                        'name' => $table->name,
-                        'description' => $table->description,
-                        'role' => $table->role,
-                    ])
+                'tables_count' => $group->tables->count(),
+                'tables_preview' => $group->tables
+                    ->take(self::PREVIEW_TABLES_PER_GROUP)
+                    ->pluck('name')
                     ->values()
                     ->all(),
             ])->values()->all(),
+
+            'data_groups_total_tables' => $this->totalTablesCount(),
 
             'current_dashboard' => $this->dashboard ? [
                 'id' => $this->dashboard->id,

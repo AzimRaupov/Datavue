@@ -87,6 +87,7 @@ class DashboardReGenerator
         $this->dashboardWidgets = DashboardWidget::query()
             ->where('dashboard_id', $dashboardId)
             ->orderBy('position')
+            ->orderBy('id')
             ->get();
 
         // Только виджеты, реально готовые к использованию (подключённые на фронте) —
