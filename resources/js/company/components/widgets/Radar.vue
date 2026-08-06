@@ -201,7 +201,7 @@ const renderChart = async () => {
 
         plotOptions: {
             radar: {
-                size: 150,
+                size: 110,
 
                 offsetX: 0,
                 offsetY: 0,
