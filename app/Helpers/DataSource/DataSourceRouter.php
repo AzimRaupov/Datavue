@@ -3,6 +3,7 @@
 namespace App\Helpers\DataSource;
 
 use App\Helpers\DataSource\Handlers\MySqlDataHandler;
+use App\Helpers\DataSource\Handlers\SqliteDataHandler;
 use App\Helpers\DataSource\Handlers\TableDataHandler;
 use App\Models\AiChat;
 use App\Models\AiChatTask;
@@ -33,6 +34,17 @@ class DataSourceRouter
 
     private const SUPPORTED_TABLE_TYPES = ['csv', 'xls', 'xlsx'];
 
+    /** Готовые базы SQLite: конвертировать нечего, файл уже является источником. */
+    private const SUPPORTED_SQLITE_TYPES = ['db', 'sqlite', 'sqlite3'];
+
+    /**
+     * Тип источника, к которому привёл разбор файла.
+     *
+     * Контроллер раньше жёстко сохранял локальный источник как duckdb, из-за чего
+     * загруженный .sqlite регистрировался чужим типом и не открывался.
+     */
+    public string $resolvedTypeName = 'duckdb';
+
     /**
      * Create a new job instance.
      */
@@ -45,7 +57,13 @@ class DataSourceRouter
 
         $this->storage = storage_path('app/company/' . $this->user->company->id . '/chats/' . $this->chat->id);
         $this->outputPath = $this->storage . '/extracted_data';
-        $this->dbFilePath = $this->outputPath . '/data.duckdb';
+        $this->dbFilePath = in_array(
+            strtolower((string) $this->uploadFile->file_type),
+            self::SUPPORTED_SQLITE_TYPES,
+            true
+        )
+            ? $this->outputPath . '/data.sqlite'
+            : $this->outputPath . '/data.duckdb';
 
         if (!is_dir($this->outputPath)) {
             mkdir($this->outputPath, 0775, true);
@@ -107,6 +125,7 @@ class DataSourceRouter
                 'extraction' => $extraction,
                 // null для table-хендлера, массив с host/port/... для mysql-дампа
                 'connection' => $result['connection'] ?? null,
+                'type_name'  => $this->resolvedTypeName,
             ];
 
         } catch (\Throwable $e) {
@@ -144,7 +163,18 @@ class DataSourceRouter
             );
         }
 
+        if (in_array($this->uploadFile->file_type, self::SUPPORTED_SQLITE_TYPES, true)) {
+            $this->resolvedTypeName = 'sqlite';
+
+            return new SqliteDataHandler(
+                $this->uploadFile->file_path,
+                $this->dbFilePath
+            );
+        }
+
         if (in_array($this->uploadFile->file_type, self::SUPPORTED_TABLE_TYPES, true)) {
+            $this->resolvedTypeName = 'duckdb';
+
             return new TableDataHandler(
                 $this->uploadFile->file_path,
                 $this->outputPath,

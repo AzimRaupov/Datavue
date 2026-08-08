@@ -37,11 +37,25 @@ public function rules(): array
             'password' => 'nullable|string',
         ];
     } else {
+        /*
+        | Готовые базы SQLite (.db/.sqlite/.sqlite3) проверяем по расширению:
+        | у них нет устойчивого MIME-типа, и правило mimes их отбраковывало.
+        | Содержимое подтверждается отдельно — SqliteDataHandler читает
+        | сигнатуру в начале файла и отказывается работать с подделкой.
+        */
         $rules += [
-            'data_file' => 'required|file|mimes:csv,txt,xlx,xls,xlsx,pdf,doc,docx,sql',
+            'data_file' => [
+                'required',
+                'file',
+                'extensions:csv,txt,xlx,xls,xlsx,pdf,doc,docx,sql,db,sqlite,sqlite3',
+            ],
         ];
 
-        if ($this->file('data_file')?->getClientOriginalExtension() === 'sql') {
+        $extension = strtolower((string) $this->file('data_file')?->getClientOriginalExtension());
+
+        // Для дампа .sql тип источника выбирает пользователь: по файлу не понять,
+        // в какую СУБД его импортировать.
+        if ($extension === 'sql') {
             $rules += [
                 'type_id' => 'required|integer|exists:data_source_types,id',
             ];

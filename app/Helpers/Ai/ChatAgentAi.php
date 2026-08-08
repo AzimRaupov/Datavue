@@ -2,6 +2,7 @@
 
 namespace App\Helpers\Ai;
 
+use App\Helpers\Ai\DashboardAi;
 use App\Helpers\Chat\ChatContext;
 use App\Helpers\DataSource\ConnectionProviderRouter;
 use App\Helpers\DataSource\ReadOnlyQueryRunner;
@@ -46,6 +47,17 @@ class ChatAgentAi
 
     private int $totalTokens = 0;
 
+    /**
+     * Замечание об ответе без запроса делается один раз за ответ.
+     *
+     * Проверка механическая — она видит цифры, но не отличает число из данных
+     * от числа из контекста («6 виджетов на дашборде»). Одного напоминания
+     * достаточно, чтобы модель сходила в базу там, где это нужно; если она
+     * настаивает на своём — значит числа и правда из контекста, и повторный
+     * отказ просто сжёг бы все шаги.
+     */
+    private bool $groundingWarned = false;
+
     public function __construct(
         private ChatContext $context,
         private $history,
@@ -69,6 +81,7 @@ class ChatAgentAi
      */
     public function answer(): array
     {
+        $this->preselectGroups();
 
         $toolLog = [];
 
@@ -103,7 +116,7 @@ class ChatAgentAi
                 $message = trim((string) ($content['message'] ?? ''));
 
                 $rejection = ($message !== '' && $this->queryRunner)
-                    ? $this->answerRejectionReason($message)
+                    ? $this->answerRejectionReason($message, $toolLog)
                     : null;
 
                 if ($rejection !== null) {
@@ -218,7 +231,7 @@ TEXT;
      * Возвращается агенту как результат "инструмента" — так он получает шанс
      * доделать работу вместо того, чтобы пользователь увидел заглушку.
      */
-    private function answerRejectionReason(string $message): ?string
+    private function answerRejectionReason(string $message, array $toolLog): ?string
     {
         if ($this->looksLikeDeferredAnswer($message)) {
             return 'Ты описал намерение выполнить запрос вместо того, чтобы его выполнить. '
@@ -233,7 +246,38 @@ TEXT;
                 .'Если получить его невозможно — прямо напиши, почему, и не подставляй заглушку.';
         }
 
+        if (!$this->groundingWarned && $this->statesFiguresWithoutQuery($message, $toolLog)) {
+            $this->groundingWarned = true;
+
+            return 'Ты привёл конкретные значения, не выполнив ни одного запроса к данным. '
+                .'Числа и списки о содержимом базы берутся ТОЛЬКО из результата action="query" — '
+                .'знание похожих баз не считается фактом об этой. '
+                .'Выполни запрос и ответь по его результату. '
+                .'Если число взято из контекста (например количество виджетов дашборда), '
+                .'а не из данных — прямо напиши, что это из настроек дашборда.';
+        }
+
         return null;
+    }
+
+    /**
+     * Ответ содержит конкретику по данным, но ни один запрос не выполнялся.
+     *
+     * Модель узнаёт распространённые учебные базы и охотно отвечает по памяти:
+     * на вопрос о клиентах по странам она выдала правдоподобный, но неверный
+     * список, не сходив в базу. Ответ без запроса под ним доверия не заслуживает.
+     */
+    private function statesFiguresWithoutQuery(string $message, array $toolLog): bool
+    {
+        foreach ($toolLog as $entry) {
+            // Достаточно одного успешного запроса: его результат — уже основание.
+            if (($entry['tool'] ?? null) === 'query' && is_array($entry['result'] ?? null)) {
+                return false;
+            }
+        }
+
+        // Числа в ответе — признак утверждения о данных. Без запроса взяться им неоткуда.
+        return (bool) preg_match('/\d/', $message);
     }
 
     /**
@@ -277,6 +321,60 @@ TEXT;
         }
 
         return false;
+    }
+
+    /**
+     * Заранее отбирает группы таблиц под вопрос пользователя.
+     *
+     * Тот же шаг, с которого начинается генерация дашборда: по названиям и
+     * описаниям групп модель выбирает нужные, и в промпт агента попадает состав
+     * только этих групп. Раньше агент получал «витрину» из восьми имён по каждой
+     * группе и должен был сам догадаться вызвать инструмент — с моделью попроще
+     * он этого часто не делал и отвечал наугад.
+     *
+     * Шаг пропускается, когда таблиц немного: сужать там нечего, а лишний вызов
+     * модели стоит денег и времени.
+     */
+    private function preselectGroups(): void
+    {
+        if (!$this->context->hasGroups() || !$this->context->hasDataSource()) {
+            return;
+        }
+
+        if ($this->context->totalTablesCount() <= self::MAX_SCHEMA_TABLES) {
+            // Источник маленький — раскрываем все группы сразу.
+            $this->context->focusOnGroups(
+                $this->context->groupsForSelection()->pluck('id')->all()
+            );
+
+            return;
+        }
+
+        try {
+            $response = (new DashboardAi($this->context->dataSource))->defineGroups(
+                groups: $this->context->groupsForSelection(),
+                text: $this->currentMessage
+            );
+
+            $this->totalTokens += (int) ($response['total_tokens'] ?? 0);
+
+            $groupIds = $response['content']['groups'] ?? [];
+
+            if (is_array($groupIds) && $groupIds) {
+                $this->context->focusOnGroups($groupIds);
+            }
+
+            Log::info('ChatAgentAi: groups preselected', [
+                'requested' => $groupIds,
+                'applied' => $this->context->focusedGroupIds(),
+            ]);
+        } catch (Throwable $e) {
+            // Отбор — вспомогательный шаг. Если он не удался, агент по-прежнему
+            // может раскрыть нужные группы инструментом "tables".
+            Log::warning('ChatAgentAi: group preselection failed', [
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
@@ -326,6 +424,35 @@ TEXT;
         ];
     }
 
+    /**
+     * Список таблиц источника для проверки «не запрашивай схему всего».
+     *
+     * Обычно берётся из групп. Но если группировка не выполнялась, список
+     * оказывался пустым, проверка «таблиц больше 12» не срабатывала — и агент
+     * спокойно вытягивал схему всех таблиц источника. Поэтому при пустых
+     * группах спрашиваем список у самого источника.
+     *
+     * @return array<int, string>
+     */
+    private function knownTables(): array
+    {
+        $tables = $this->context->allTableNames();
+
+        if ($tables || !$this->router) {
+            return $tables;
+        }
+
+        try {
+            return $this->router->showTables();
+        } catch (Throwable $e) {
+            Log::warning('ChatAgentAi: table list is unavailable', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return [];
+        }
+    }
+
     private function runSchemaTool($tables): array
     {
         $tables = is_array($tables) ? array_values(array_filter(array_map('strval', $tables))) : [];
@@ -338,7 +465,7 @@ TEXT;
             ];
         }
 
-        $knownTables = $this->context->allTableNames();
+        $knownTables = $this->knownTables();
 
         // Пустой список раньше означал «схему всех таблиц». На источнике из
         // сотен таблиц это гарантированно выходит за лимит контекста, поэтому
@@ -468,7 +595,7 @@ TEXT;
 
 Пояснение к контексту:
 - "current_dashboard.widgets" — виджеты, которые пользователь СЕЙЧАС видит на экране; "what_it_shows" описывает, какие данные виджет отображает.
-- "data_groups" — смысловые группы таблиц источника: id, описание, сколько в группе таблиц и несколько имён для примера. Это ОБЗОР, а не полный список — полный состав группы получают инструментом "tables" по её id.
+- "data_groups" — смысловые группы таблиц источника. У групп, отобранных под твой вопрос, состав уже раскрыт в поле "tables" (имя таблицы, описание, роль) — им инструмент не нужен, работай с ними сразу. У остальных групп видны только id, название и число таблиц: если нужного не нашлось среди раскрытых, состав такой группы получают инструментом "tables" по её id.
 - "data_groups_total_tables" — сколько всего таблиц в источнике.
 - "available_widget_types" — типы визуализаций, которые платформа умеет строить. Рекомендовать можно ТОЛЬКО их.
 
@@ -509,11 +636,11 @@ id берутся из "data_groups" контекста. Это способ с�
 ========================
 - Вопрос о том, что уже есть на дашборде, или просьба порекомендовать виджеты → как правило, достаточно контекста, отвечай сразу (action="answer").
 - Вопрос о конкретных числах, значениях, топах, динамике («сколько», «какой самый», «есть ли у меня данные по X») → идёшь по воронке и отвечаешь по фактам:
-  1. по названиям и описаниям групп выбираешь 1-3 подходящие → action="tables";
-  2. из полученных таблиц берёшь нужные → action="schema";
+  1. в раскрытых группах ("tables") находишь подходящие таблицы. Если там нужного нет — action="tables" по id другой группы;
+  2. по найденным таблицам → action="schema", чтобы узнать реальные колонки и связи;
   3. по реальным колонкам пишешь SQL → action="query";
   4. отвечаешь.
-- Шаги воронки можно пропускать, если нужное уже известно: имена таблиц видны в "tables_preview" или уже получены на прошлом шаге.
+- Первый шаг обычно уже сделан за тебя: группы под этот вопрос отобраны, их таблицы перед глазами. Начинай сразу со "schema" по нужной таблице.
 - Не используй инструменты без необходимости: если ответ уже есть в контексте, просто отвечай.
 
 ЖЁСТКОЕ ПРАВИЛО: в ответе не бывает заполнителей. Никаких «= N», «**X**»,

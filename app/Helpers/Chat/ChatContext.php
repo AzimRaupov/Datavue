@@ -7,6 +7,7 @@ use App\Models\DashboardWidget;
 use App\Models\DataSource;
 use App\Models\DataSourceGroup;
 use App\Models\Widget;
+use Illuminate\Support\Collection;
 
 /**
  * Единый сборщик контекста чата для AI.
@@ -25,18 +26,19 @@ class ChatContext
     /** Ограничения, чтобы промпт не разрастался на больших базах. */
     private const MAX_GROUPS = 25;
 
-    /**
-     * Сколько имён таблиц показывать в обзоре группы.
-     *
-     * В контекст уходит только «витрина» группы — по ней агент понимает, о чём
-     * группа, и запрашивает её состав инструментом. Раньше сюда выгружались все
-     * таблицы всех групп: на источнике в 300 таблиц это несколько тысяч строк
-     * промпта ещё до того, как агент вообще понял, о чём спрашивают.
-     */
-    private const PREVIEW_TABLES_PER_GROUP = 8;
-
     /** Потолок на размер ответа инструмента «таблицы групп». */
     public const MAX_TABLES_PER_REQUEST = 120;
+
+    /**
+     * Группы, отобранные под текущий вопрос.
+     *
+     * Пусто — значит отбор не проводился, и все группы показываются одинаково,
+     * только заголовками. Состав таблиц раскрывается лишь у отобранных групп:
+     * так в модель уезжает десяток нужных таблиц, а не весь справочник.
+     *
+     * @var array<int, int>
+     */
+    private array $focusedGroupIds = [];
 
     public ?DataSource $dataSource = null;
 
@@ -111,6 +113,46 @@ class ChatContext
     }
 
     /**
+     * Раскрывает состав перечисленных групп — тот же приём, что в генераторе
+     * дашборда: сначала по названиям и описаниям выбираются нужные группы,
+     * и только их таблицы попадают в промпт.
+     *
+     * @param  array<int, int|string>  $groupIds
+     */
+    public function focusOnGroups(array $groupIds): void
+    {
+        $known = $this->groups->pluck('id');
+
+        $this->focusedGroupIds = collect($groupIds)
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $known->contains($id))
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    public function focusedGroupIds(): array
+    {
+        return $this->focusedGroupIds;
+    }
+
+    /**
+     * Группы в компактном виде для шага отбора: id, название, описание.
+     * Ровно то, что получает DashboardGenerator::defineGroups().
+     */
+    public function groupsForSelection(): Collection
+    {
+        return $this->groups->map(fn (DataSourceGroup $group) => [
+            'id' => $group->id,
+            'name' => $group->name,
+            'description' => $group->description,
+        ])->values();
+    }
+
+    /**
      * Сколько всего таблиц разложено по группам источника.
      */
     public function totalTablesCount(): int
@@ -179,17 +221,31 @@ class ChatContext
                 'note' => 'Источник данных к этому чату не подключён — построить дашборд невозможно.',
             ],
 
-            'data_groups' => $this->groups->map(fn (DataSourceGroup $group) => [
-                'id' => $group->id,
-                'name' => $group->name,
-                'description' => $group->description,
-                'tables_count' => $group->tables->count(),
-                'tables_preview' => $group->tables
-                    ->take(self::PREVIEW_TABLES_PER_GROUP)
-                    ->pluck('name')
-                    ->values()
-                    ->all(),
-            ])->values()->all(),
+            'data_groups' => $this->groups->map(function (DataSourceGroup $group) {
+                $entry = [
+                    'id' => $group->id,
+                    'name' => $group->name,
+                    'description' => $group->description,
+                    'tables_count' => $group->tables->count(),
+                ];
+
+                // Состав раскрываем только у групп, отобранных под этот вопрос.
+                // Остальные видны заголовками — агент может дозапросить их
+                // инструментом "tables", если отбор промахнулся.
+                if (in_array($group->id, $this->focusedGroupIds, true)) {
+                    $entry['tables'] = $group->tables
+                        ->take(self::MAX_TABLES_PER_REQUEST)
+                        ->map(fn ($table) => [
+                            'name' => $table->name,
+                            'description' => $table->description,
+                            'role' => $table->role,
+                        ])
+                        ->values()
+                        ->all();
+                }
+
+                return $entry;
+            })->values()->all(),
 
             'data_groups_total_tables' => $this->totalTablesCount(),
 

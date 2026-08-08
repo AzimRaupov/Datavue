@@ -35,7 +35,6 @@ const routes = [
         component: ProjectDashboardShow
     },
     {
-        // Галерея каталога виджетов на вымышленных данных
         path: '/widgets',
         name: 'company.widgets',
         component: AllWidgets

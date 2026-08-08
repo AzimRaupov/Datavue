@@ -187,10 +187,15 @@ class ChatController extends Controller
                             'path'            => null,
                         ]);
                     } else {
+                        // Тип берём тот, к которому привёл разбор файла: раньше здесь
+                        // стояла единица (duckdb), и загруженный .sqlite сохранялся
+                        // чужим типом — источник потом не открывался.
+                        $localTypeName = $handlerResult['type_name'] ?? 'duckdb';
+
                         DataSource::query()->create([
                             'company_id'      => $chat->company_id,
                             'chat_id'         => $chat->id,
-                            'type_id'         => 1,
+                            'type_id'         => $types[$localTypeName] ?? $types['duckdb'],
                             'extracted_id'    => $extraction->id,
                             'name'            => $upload->original_name,
                             'connection_type' => $connectionType,

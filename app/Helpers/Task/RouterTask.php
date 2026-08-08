@@ -6,6 +6,7 @@ use App\Events\MessageTasksChanged;
 use App\Helpers\Ai\ChatAgentAi;
 use App\Helpers\Ai\DefineTaskAi;
 use App\Helpers\Chat\ChatContext;
+use App\Helpers\DataSource\DataSourceGrouping;
 use App\Jobs\DashboardGeneratorJob;
 use App\Jobs\DashboardReGeneratorJob;
 use App\Models\AiChat;
@@ -186,6 +187,76 @@ class RouterTask
     }
 
     /**
+     * Гарантирует, что таблицы источника разложены по смысловым группам.
+     *
+     * Группировка — разовая операция на источник, но раньше она запускалась
+     * исключительно при генерации дашборда. Пользователь, который в новом чате
+     * сразу задаёт вопрос по данным, получал агента без групп: список таблиц
+     * в контекст не попадал, и сузить круг было нечем.
+     *
+     * Контекст после построения пересобирается — иначе агент продолжил бы
+     * работать со снимком, снятым до появления групп.
+     */
+    private function ensureDataSourceGrouped(): void
+    {
+        if (!$this->dataSource || $this->context->hasGroups()) {
+            return;
+        }
+
+        $task = null;
+
+        try {
+            $grouping = new DataSourceGrouping($this->dataSource->id);
+
+            if ($grouping->load()) {
+                return;
+            }
+
+            if (isset($this->tasks['data_source_grouping'])) {
+                $task = AiChatTask::query()->create([
+                    'chat_id' => $this->currentMessage->chat_id,
+                    'message_id' => $this->currentMessage->id,
+                    'task_id' => $this->tasks['data_source_grouping'],
+                    'status_id' => $this->statuses['in_progress'],
+                ]);
+                $task->load(['status', 'task']);
+                event(new MessageTasksChanged($this->currentMessage, $task, null));
+            }
+
+            $grouping->handle();
+            $grouping->save();
+
+            if ($task) {
+                $task->status_id = $this->statuses['completed'];
+                $task->save();
+                $task->load('status');
+                event(new MessageTasksChanged($this->currentMessage, $task, null));
+            }
+
+            $this->context = new ChatContext($this->currentMessage->chat_id, $this->dashboardId);
+
+            Log::info('RouterTask: data source grouped for chat answer', [
+                'data_source_id' => $this->dataSource->id,
+                'groups' => $this->context->groups->count(),
+            ]);
+        } catch (Throwable $e) {
+            // Без групп агент всё ещё может работать по именам таблиц напрямую,
+            // поэтому провал группировки не должен ронять ответ пользователю.
+            Log::warning('RouterTask: grouping before chat answer failed', [
+                'data_source_id' => $this->dataSource->id ?? null,
+                'error' => $e->getMessage(),
+            ]);
+
+            if ($task) {
+                $task->status_id = $this->statuses['failed'];
+                $task->save();
+                $task->load('status');
+                $this->broadcastSafely($this->currentMessage, $task, null);
+            }
+        }
+    }
+
+    /**
      * Готовит содержательный ответ пользователю через ChatAgentAi.
      *
      * $forcedMessage используется, когда ответ известен заранее и обращаться
@@ -210,6 +281,12 @@ class RouterTask
             if ($forcedMessage !== null) {
                 $answer = $forcedMessage;
             } else {
+                // В новом чате группировка ещё не выполнялась: её запускает только
+                // построение дашборда. Агент при этом оставался без единой таблицы
+                // в контексте и отвечал вслепую. Строим группы здесь — так же,
+                // как это делает DashboardGeneratorJob, и с тем же шагом в интерфейсе.
+                $this->ensureDataSourceGrouped();
+
                 $agent = new ChatAgentAi(
                     $this->context,
                     $this->messages,
