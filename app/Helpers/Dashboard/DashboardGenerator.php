@@ -17,7 +17,10 @@ use App\Models\DataSourceTable;
 use App\Models\Task;
 use App\Models\TaskStatus;
 use App\Models\Widget;
+use App\Models\WidgetType;
+use App\Helpers\Widget\WidgetCatalog;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Throwable;
 
@@ -71,7 +74,10 @@ class DashboardGenerator
 
         // Только виджеты, реально готовые к использованию (подключённые на фронте) —
         // см. Widget::is_ai_selectable (например 'map' пока исключён).
-        $this->widgets = Widget::query()->where('is_ai_selectable', true)->get();
+        $this->widgets = Widget::query()
+            ->where('is_ai_selectable', true)
+            ->with(['types', 'selectableTypes'])
+            ->get();
         $this->dashboard = Dashboard::query()->create([
             'chat_id' => $chat_id,
             'company_id' => $this->chat->company_id,
@@ -115,6 +121,83 @@ class DashboardGenerator
     private function result(bool $errors, string $message = '', array $extra = []): array
     {
         return array_merge(['errors' => $errors, 'message' => $message], $extra);
+    }
+
+    /**
+     * Первый шаг выбора виджетов: сузить каталог до нужных семейств.
+     *
+     * Отдельный дешёвый вызов вместо того, чтобы вываливать в основной промпт
+     * все 13 семейств со всеми вариантами. Ошибка на этом шаге не фатальна —
+     * WidgetCatalog всё равно добавит базовые семейства, а при пустом ответе
+     * отдаст каталог целиком.
+     *
+     * @return array<int, string>
+     */
+    private function defineWidgetFamilies(WidgetCatalog $catalog, array $scheme, string $text): array
+    {
+        // Для выбора семейства достаточно знать, какие есть таблицы и колонки:
+        // связи, типы и количество строк тут только раздували бы промпт.
+        $summary = [];
+
+        foreach ($scheme as $tableName => $tableSchema) {
+            $columns = array_keys($tableSchema['columns'] ?? []);
+            $relations = array_keys($tableSchema['relations'] ?? []);
+
+            $summary[$tableName] = array_values(array_merge($columns, $relations));
+        }
+
+        try {
+            $response = $this->dashboardGeneratorAi->defineWidgetFamilies(
+                $catalog->briefJson(),
+                json_encode($summary, JSON_UNESCAPED_UNICODE),
+                $text
+            );
+
+            $families = $response['content']['families'] ?? [];
+
+            if (!is_array($families)) {
+                $families = [];
+            }
+
+            Log::info('DashboardGenerator: widget families selected', [
+                'families' => $families,
+            ]);
+
+            return $families;
+        } catch (Throwable $e) {
+            // Шаг вспомогательный: если он упал, работаем по полному каталогу.
+            Log::warning('DashboardGenerator: widget family selection failed, using full catalog', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return [];
+        }
+    }
+
+    /**
+     * Сопоставляет выбранный ИИ тип с каталогом семейства.
+     *
+     * Модель может тип не указать или назвать несуществующий — виджет из-за этого
+     * ломаться не должен, поэтому в обоих случаях откатываемся на тип по умолчанию.
+     */
+    private function resolveWidgetType(Widget $widget, ?string $typeName): ?WidgetType
+    {
+        $typeName = is_string($typeName) ? trim($typeName) : '';
+
+        if ($typeName !== '') {
+            $type = $widget->selectableTypes->firstWhere('name', $typeName);
+
+            if ($type) {
+                return $type;
+            }
+
+            Log::warning('DashboardGenerator: unknown widget type from AI, falling back to default', [
+                'widget' => $widget->name,
+                'type' => $typeName,
+            ]);
+        }
+
+        return $widget->defaultType();
     }
 
     public function defineGroups(): array
@@ -211,17 +294,6 @@ class DashboardGenerator
         try {
             $text = $this->message->message;
 
-            // data_shape (scheme_description) добавлен, чтобы ИИ видел не только человекочитаемое
-            // описание виджета, но и реальную форму данных (сколько рядов, нужны ли равные по длине
-            // массивы и т.п.) уже на этапе выбора типа виджета, а не только позже при генерации кода.
-            $widgetsList = $this->widgets->map(function ($widget) {
-                return [
-                    'name' => $widget->name,
-                    'description' => $widget->description,
-                    'data_shape' => $widget->scheme_description,
-                ];
-            });
-
             $tables = $this->selectedTables
                 ->pluck('name')
                 ->toArray();
@@ -230,8 +302,6 @@ class DashboardGenerator
             $tableRoles = $this->selectedTables
                 ->pluck('role', 'name')
                 ->toArray();
-
-            $widgets = json_encode($widgetsList, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
 
             $scheme = $this->connectionProviderRouter->getSchema(
                 tables: $tables,
@@ -243,8 +313,15 @@ class DashboardGenerator
             }
             unset($tableSchema);
 
+            // Каталог виджетов отдаём в два приёма: сначала короткий список семейств,
+            // затем подробности только по выбранным. Иначе справочник занимает
+            // больше половины промпта и вытесняет схему таблиц пользователя.
+            $catalog = new WidgetCatalog($this->widgets);
+            $families = $this->defineWidgetFamilies($catalog, $scheme, $text);
+            $widgets = $catalog->detailedJson($families);
+
             $schemeStr = json_encode($scheme, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-            $response = $this->dashboardGeneratorAi->generateWidgets($schemeStr, $widgets, $text);
+            $response = $this->dashboardGeneratorAi->generateWidgets($schemeStr, $widgets, $text, $families);
             $generateWidgets = $response['content']['widgets'];
 
             // position проставляем сразу при создании, в том порядке, в котором
@@ -263,6 +340,7 @@ class DashboardGenerator
                 DashboardWidget::query()->create([
                     'dashboard_id' => $this->dashboard->id,
                     'widget_id' => $widget->id,
+                    'widget_type_id' => $this->resolveWidgetType($widget, $list['type'] ?? null)?->id,
                     'title' => $list['title'],
                     'instruction' => $list['instruction'],
                     'tables' => $list['tables'],
@@ -293,7 +371,7 @@ class DashboardGenerator
         try {
             // Порядок обхода фиксируем явно: без orderBy MySQL мог отдать виджеты
             // в произвольном порядке, и индекс не совпадал с их позицией на дашборде.
-            $widgets_dash = DashboardWidget::query()->with('widget')
+            $widgets_dash = DashboardWidget::query()->with('widget.types', 'widgetType')
                 ->where('dashboard_id', $this->dashboard->id)
                 ->orderBy('position')
                 ->orderBy('id')

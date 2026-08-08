@@ -66,7 +66,7 @@ class ChatContext
         $this->dashboardWidgets = $this->dashboard
             ? DashboardWidget::query()
                 ->where('dashboard_id', $this->dashboard->id)
-                ->with('widget')
+                ->with('widget.types', 'widgetType')
                 ->orderBy('position')
                 ->orderBy('id')
                 ->get()
@@ -91,7 +91,8 @@ class ChatContext
         // потом невозможно создать.
         $this->widgetTypes = Widget::query()
             ->where('is_ai_selectable', true)
-            ->get(['name', 'description']);
+            ->with('selectableTypes')
+            ->get(['id', 'name', 'description']);
     }
 
     public function hasDataSource(): bool
@@ -201,6 +202,7 @@ class ChatContext
                     'position' => $w->position,
                     'title' => $w->title,
                     'widget_type' => $w->widget?->name,
+                'widget_view' => $w->widgetType?->name,
                     'status' => $w->status,
                     'tables' => $w->tables,
                     'what_it_shows' => $w->instruction,
@@ -216,6 +218,13 @@ class ChatContext
             'available_widget_types' => $this->widgetTypes->map(fn (Widget $w) => [
                 'name' => $w->name,
                 'description' => $w->description,
+                // Варианты отрисовки внутри семейства — чтобы агент мог советовать
+                // не только «столбчатую диаграмму», но и «горизонтальную».
+                'types' => $w->selectableTypes->map(fn ($t) => [
+                    'type' => $t->name,
+                    'title' => $t->title,
+                    'when_to_use' => $t->description,
+                ])->values()->all(),
             ])->values()->all(),
         ];
     }

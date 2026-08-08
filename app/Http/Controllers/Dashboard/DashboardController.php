@@ -32,6 +32,7 @@ class DashboardController extends Controller
                         'id',
                         'dashboard_id', // обязательно для hasMany
                         'widget_id',
+                        'widget_type_id',
                         'title',
                         'position',
                         'status'
@@ -42,6 +43,14 @@ class DashboardController extends Controller
                 },
                 'widgets.widget' => function ($query) {
                     $query->select('id', 'name');
+                },
+                // Вариант отрисовки: фронт по options решает, рисовать круг или
+                // кольцо, вертикальные столбцы или горизонтальные.
+                'widgets.widget.types' => function ($query) {
+                    $query->select('id', 'widget_id', 'name', 'options', 'is_default');
+                },
+                'widgets.widgetType' => function ($query) {
+                    $query->select('id', 'widget_id', 'name', 'options');
                 },
             ])
             ->findOrFail($id);

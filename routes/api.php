@@ -7,6 +7,7 @@ use App\Http\Controllers\Dashboard\DashboardController;
 use App\Http\Controllers\DataSource\DataSourceConnectionController;
 use App\Http\Controllers\DataSource\DataSourceTypeController;
 use App\Http\Controllers\UploadFile\FileController;
+use App\Http\Controllers\Widget\WidgetCatalogController;
 use App\Http\Controllers\Widget\WidgetRunController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -57,6 +58,9 @@ Route::middleware(['auth:sanctum', 'active'])->prefix('company')->group(function
     Route::post('messages', [MessageController::class, 'store'])->middleware('permission:create chats');
 
     Route::post('get-widget-content/{id}', [WidgetRunController::class, 'run'])
+        ->middleware('permission:view dashboards');
+
+    Route::get('widgets/catalog', [WidgetCatalogController::class, 'index'])
         ->middleware('permission:view dashboards');
 
     Route::prefix('data_source')

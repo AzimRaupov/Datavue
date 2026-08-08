@@ -394,6 +394,18 @@ const changeLanguage = (lang) => {
                             </svg>
                             Сотрудники
                         </router-link>
+                        <router-link class="dropdown-item" :to="{ name: 'company.widgets' }">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                                 fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                 stroke-linejoin="round" aria-hidden="true" focusable="false"
+                                 class="icon dropdown-item-icon icon-2">
+                                <path d="M4 4h6v6h-6z" />
+                                <path d="M14 4h6v6h-6z" />
+                                <path d="M4 14h6v6h-6z" />
+                                <path d="M14 14h6v6h-6z" />
+                            </svg>
+                            Все виджеты
+                        </router-link>
                         <a class="dropdown-item" href="./settings.html">Settings &amp; Privacy</a>
                         <a class="dropdown-item" href="#">Help</a>
                         <a class="dropdown-item" href="./sign-in.html">{{ t('header.logout') }}</a>

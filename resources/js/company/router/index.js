@@ -7,6 +7,7 @@ import ProjectDashboardShow from '../pages/project/dashboard/ShowPage.vue';
 import ChatPage from '../pages/ChatPage.vue';
 import Profile from "../pages/settings/Profile.vue";
 import Users from "../pages/settings/Users.vue";
+import AllWidgets from "../pages/AllWidgets.vue";
 const routes = [
     {
         path: '/',
@@ -32,6 +33,12 @@ const routes = [
         path:'/project/dashboard/:dashboard',
         name: 'project.dashboard.show',
         component: ProjectDashboardShow
+    },
+    {
+        // Галерея каталога виджетов на вымышленных данных
+        path: '/widgets',
+        name: 'company.widgets',
+        component: AllWidgets
     }
 
 ];

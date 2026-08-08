@@ -29,7 +29,7 @@ class ReviewWidgetsDashboard
 
             $this->dashboard_widgets = DashboardWidget::query()
                 ->where('dashboard_id', $dashboardId)
-                ->with('widget')
+                ->with('widget.types', 'widgetType')
                 ->get();
         }
         if ($dataSourceId) {
@@ -69,7 +69,7 @@ class ReviewWidgetsDashboard
 
     public function reGenerate($widgetId, $runResult)
     {
-        $widget = DashboardWidget::query()->with('widget')->find($widgetId);
+        $widget = DashboardWidget::query()->with('widget.types', 'widgetType')->find($widgetId);
 
         $fullCode = $this->codeTemplate->getLibraries() . "\n";
         $fullCode .= $this->codeTemplate->getQueryTemplate() . "\n";
@@ -92,8 +92,8 @@ class ReviewWidgetsDashboard
                 ? $runResult['output']
                 : null,
             'tables_scheme' => $schemeStr,
-            'widget_scheme' => $widget->widget->scheme,
-            'widget_scheme_description' => $widget->widget->scheme_description,
+            'widget_scheme' => $widget->effectiveScheme(),
+            'widget_scheme_description' => $widget->effectiveSchemeDescription(),
         ];
 
         $response = $this->dashboardAi->reViewErrorsWidget($data);
@@ -135,7 +135,7 @@ class ReviewWidgetsDashboard
     {
         $this->reGenerate($widgetId, $runResult);
 
-        $widget = DashboardWidget::query()->with('widget')->find($widgetId);
+        $widget = DashboardWidget::query()->with('widget.types', 'widgetType')->find($widgetId);
 
         if (!$widget) {
             return;
@@ -185,6 +185,9 @@ class ReviewWidgetsDashboard
     private function runAndValidateWidget(DashboardWidget $widget): array
     {
         $widgetType = $widget->widget->name ?? null;
+        // Вариант отрисовки нужен валидатору: у bubble, polar-area и
+        // with-progress форма данных отличается от общей для семейства.
+        $widgetView = $widget->effectiveType()?->name;
 
         if (!$widget->code_path || !is_file($widget->code_path)) {
             return [
@@ -236,7 +239,7 @@ class ReviewWidgetsDashboard
             if (json_last_error() !== JSON_ERROR_NONE) {
                 $errors[] = "Ошибка парсинга JSON: " . json_last_error_msg();
             } else {
-                $errors = (new WidgetOutputValidator())->validate($widgetType, $decoded);
+                $errors = (new WidgetOutputValidator())->validate($widgetType, $decoded, $widgetView);
             }
         }
 

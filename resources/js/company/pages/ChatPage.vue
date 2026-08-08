@@ -1,7 +1,5 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from "vue";
-import DonutWidget from "../components/widgets/DonutWidget.vue";
-import MultiSeriesTrend from "../components/widgets/MultiSeriesTrend.vue";
 import MiniCounters from "../components/widgets/MiniCounters.vue";
 import AiChatSidebar from "../components/chat/AiChatSidebar.vue";
 import { useRoute, useRouter } from "vue-router";
@@ -820,9 +818,6 @@ body.chat-page .page {
     </div>
 </template>
 
-<style>
-:root {
-    --chart-scatter-color-0: color-mix(in srgb, transparent, var(--tblr-primary) 100%);
-    --chart-scatter-color-1: color-mix(in srgb, transparent, var(--tblr-pink) 100%);
-}
-</style>
+<!-- Цвета графиков переехали в resources/css/company/app.css: определённые
+     здесь, они существовали только на странице чата, а на странице дашборда
+     проекта тех же переменных не было. -->

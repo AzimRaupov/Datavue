@@ -155,6 +155,12 @@ TEXT;
         $codeTemplate
     )
     {
+        // Форма результата зависит от выбранного варианта отрисовки: bubble требует
+        // третье число на точку, polar-area — плоский список. Берём схему типа,
+        // а если он её не переопределяет — общую схему семейства.
+        $resultScheme = $dashboard_widget->effectiveScheme();
+        $resultSchemeDescription = $dashboard_widget->effectiveSchemeDescription();
+
         $system = <<<TEXT
 Ты — специализированный генератор аналитических Python-функций для DuckDb.
 
@@ -205,11 +211,11 @@ RUNTIME
 JSON-СХЕМА РЕЗУЛЬТАТА
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-{$dashboard_widget->widget->scheme}
+{$resultScheme}
 
 Описание схемы:
 
-{$dashboard_widget->widget->scheme_description}
+{$resultSchemeDescription}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ИНСТРУЦИЯ И ЗАДАЧА ВИДЖЕТА (Главный приоритет)

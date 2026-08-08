@@ -30,6 +30,18 @@ const props = defineProps({
         type: Array,
         default: () => [],
     },
+
+    // Тип "polar-area" использует другую форму данных: плоский список
+    // значений с подписями вместо рядов по осям.
+    labels: {
+        type: Array,
+        default: () => [],
+    },
+
+    options: {
+        type: Object,
+        default: () => ({}),
+    },
 })
 
 const chartRef = ref(null)
@@ -48,6 +60,41 @@ const renderChart = async () => {
     if (chart) {
         chart.destroy()
         chart = null
+    }
+
+    // --------------------------------
+    // Полярные секторы — своя форма данных и свой конфиг,
+    // общий с радаром здесь только контейнер
+    // --------------------------------
+
+    if (props.options.chartType === "polarArea") {
+        const values = props.series
+            .map((value) => Number(value))
+            .map((value) => (Number.isFinite(value) ? value : 0))
+
+        if (!values.length) {
+            return
+        }
+
+        chart = new ApexCharts(chartRef.value, {
+            chart: {
+                type: "polarArea",
+                height: 360,
+                fontFamily: "inherit",
+                animations: { enabled: false },
+                toolbar: { show: false },
+            },
+            series: values,
+            labels: (props.labels.length ? props.labels : props.categories).map(String),
+            stroke: { width: 1 },
+            fill: { opacity: 0.75 },
+            legend: { position: "bottom" },
+            tooltip: { theme: "dark" },
+            yaxis: { show: false },
+        })
+
+        chart.render()
+        return
     }
 
     // --------------------------------
@@ -183,20 +230,24 @@ const renderChart = async () => {
         },
 
         colors: [
-            "#206bc4",
-            "#2fb344",
-            "#d63939",
-            "#ae3ec9",
-            "#f59f00",
-            "#0ca678",
+            "var(--chart-color-1)",
+            "var(--chart-color-2)",
+            "var(--chart-color-3)",
+            "var(--chart-color-4)",
+            "var(--chart-color-5)",
+            "var(--chart-color-6)",
+            "var(--chart-color-7)",
+            "var(--chart-color-8)",
         ],
 
         stroke: {
             width: 2,
         },
 
+        // Тип "filled" заливает контур заметно сильнее — его берут,
+        // когда сущностей одна-две и перекрытия не мешают.
         fill: {
-            opacity: 0.15,
+            opacity: props.options.filled === true ? 0.4 : 0.15,
         },
 
         plotOptions: {
@@ -213,6 +264,8 @@ const renderChart = async () => {
 
                     connectorColors: "#d9dee4",
 
+                    // Фон сетки радара — чередование двух нейтральных тонов.
+                    // Это подложка, а не данные: цвета рядов сюда не идут.
                     fill: {
                         colors: [
                             "#f8f9fa",
@@ -342,6 +395,8 @@ watch(
     () => [
         props.categories,
         props.series,
+        props.labels,
+        props.options,
     ],
 
     () => {

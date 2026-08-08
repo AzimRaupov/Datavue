@@ -2,49 +2,58 @@
 
 namespace Database\Seeders\Widgets;
 
-use App\Models\Widget;
-use Illuminate\Database\Seeder;
-
-class PieChartSeeder extends Seeder
+class PieChartSeeder extends WidgetFamilySeeder
 {
-    /**
-     * Run the database seeds.
-     */
-    public function run(): void
+    protected function family(): array
     {
-        $schemeData = [
-            'series' => [
-                'number',
-                'number',
-            ],
-            'labels' => [
-                'string',
-                'string',
-            ],
-        ];
+        return [
+            'name' => 'pie',
+            'description' => 'Структура целого: доли категорий в общей сумме. '
+                .'Подходит, когда категорий немного (до 7-8) и важно показать соотношение частей, а не точные величины. '
+                .'Если категорий много или нужно сравнить абсолютные значения — берите "bar".',
 
-        Widget::query()->updateOrCreate(
-            ['name' => 'pie-chart'],
-            [
-                'name' => 'pie-chart',
-                'description' => 'Круговая диаграмма. Каждый сектор представляет категорию и её долю от общего значения.',
-                'scheme' => json_encode(
-                    $schemeData,
-                    JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT
-                ),
-                'scheme_description' => <<<TEXT
-series — массив числовых значений для секторов диаграммы.
-Каждое число определяет размер соответствующего сектора.
+            'scheme' => [
+                'series' => [12.5, 30],
+                'labels' => ['string', 'string'],
+            ],
 
-labels — массив названий категорий.
-Каждая метка соответствует значению из массива series по индексу.
+            'scheme_description' => <<<TEXT
+series — массив числовых значений долей (int или float).
+labels — массив названий категорий (строки).
 
 Правила:
-- количество элементов в labels должно совпадать с количеством элементов в series;
-- значения в series должны быть числами (int или float);
-- значения в labels должны быть строками.
+- количество элементов в labels равно количеству элементов в series;
+- значение из series[i] относится к категории labels[i];
+- значения должны быть неотрицательными: доля отрицательного размера не рисуется;
+- не подавайте больше 8 категорий — мелкие лучше свернуть в "Прочее".
 TEXT,
-            ]
-        );
+        ];
+    }
+
+    protected function types(): array
+    {
+        return [
+            [
+                'name' => 'pie',
+                'title' => 'Сплошной круг',
+                'description' => 'Классическая круговая диаграмма. Выбор по умолчанию, когда нужно просто показать доли.',
+                'options' => ['chartType' => 'pie'],
+                'is_default' => true,
+            ],
+            [
+                'name' => 'donut',
+                'title' => 'Кольцо',
+                'description' => 'Круг с отверстием в центре. Читается чуть легче сплошного круга и оставляет место '
+                    .'для общей суммы в центре — берите, когда важен и итог, и разбивка.',
+                'options' => ['chartType' => 'donut'],
+            ],
+            [
+                'name' => 'semi-donut',
+                'title' => 'Полукольцо',
+                'description' => 'Половина кольца. Занимает вдвое меньше высоты — берите, когда виджет стоит в узком '
+                    .'блоке рядом с другими или категорий всего 2-4.',
+                'options' => ['chartType' => 'donut', 'startAngle' => -90, 'endAngle' => 90],
+            ],
+        ];
     }
 }

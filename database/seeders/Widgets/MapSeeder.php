@@ -2,55 +2,45 @@
 
 namespace Database\Seeders\Widgets;
 
-use App\Models\Widget;
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
-use Illuminate\Database\Seeder;
-
-class MapSeeder extends Seeder
+class MapSeeder extends WidgetFamilySeeder
 {
-
-    public function run(): void
+    protected function family(): array
     {
-        $schemeData = [
-            'series' => [
-                12,
-                34,
-            ],
-            'labels' => [
-                'US',
-                'DE',
-            ],
-        ];
+        return [
+            'name' => 'map',
+            'description' => 'Картограмма мира: интенсивность цвета страны отражает величину метрики. '
+                .'Фронт под неё пока не доработан, поэтому виджет исключён из выбора ИИ (is_ai_selectable = false).',
 
-        Widget::query()->updateOrCreate(
-            ['name' => 'map'],
-            [
-                'name' => 'map',
-                'description' => 'Картограмма мира (choropleth): интенсивность цвета страны отражает величину метрики для этой страны. '
-                    . 'ВНИМАНИЕ: виджет пока не подключён на фронтенде (WidgetContainer.vue/Map.vue не читают данные виджета), '
-                    . 'поэтому is_ai_selectable=false — ИИ не должен предлагать его, пока фронт не доработан.',
-                'scheme' => json_encode(
-                    $schemeData,
-                    JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT
-                ),
-                'scheme_description' => <<<TEXT
-series — массив числовых значений, по одному на страну.
-Каждое число определяет интенсивность закраски соответствующей страны на карте.
+            'is_ai_selectable' => false,
 
-labels — массив двухбуквенных ISO 3166-1 alpha-2 кодов стран (например: US, DE, FR, RU).
-Каждый код соответствует значению из массива series по тому же индексу.
+            'scheme' => [
+                'series' => [
+                    ['code' => 'string', 'value' => 12],
+                ],
+            ],
+
+            'scheme_description' => <<<TEXT
+series — массив стран. Для каждого элемента:
+- code — код страны ISO 3166-1 alpha-2 (строка, например "US", "DE");
+- value — значение метрики для страны (int или float).
 
 Правила:
-- количество элементов в labels должно совпадать с количеством элементов в series;
-- значения в series должны быть числами (int или float);
-- значения в labels должны быть валидными двухбуквенными ISO-кодами стран, а не полными названиями.
+- страна, которой нет в данных, просто не подсвечивается;
+- коды стран должны быть получены из данных, а не угаданы по названию.
 TEXT,
-                // Пока фронт не подключён — не показывать ИИ при выборе типа виджета.
-                'is_ai_selectable' => false,
-            ]
-        );
+        ];
     }
 
-
-
+    protected function types(): array
+    {
+        return [
+            [
+                'name' => 'world',
+                'title' => 'Карта мира',
+                'description' => 'Все страны на одной карте, цвет по величине метрики.',
+                'options' => ['scope' => 'world'],
+                'is_default' => true,
+            ],
+        ];
+    }
 }

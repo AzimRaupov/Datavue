@@ -11,13 +11,9 @@ import { ref, onMounted, onBeforeUnmount, watch, nextTick } from "vue"
 import ApexCharts from "apexcharts"
 
 /**
- * Семейство "pie": структура целого.
+ * Семейство "radial": процент достижения цели.
  *
- * options.chartType — "pie" (сплошной круг) или "donut" (кольцо);
- * options.startAngle / options.endAngle — полукольцо (-90 / 90).
- *
- * Раньше кольцо было отдельным компонентом DonutWidget.vue, отличавшимся
- * ровно одной строкой конфига.
+ * options.multiple — несколько вложенных колец вместо одного индикатора.
  */
 const props = defineProps({
     labels: { type: Array, default: () => [] },
@@ -39,31 +35,42 @@ const renderChart = async () => {
 
     const series = props.series.map((value) => {
         const number = Number(value)
-        return Number.isFinite(number) ? number : 0
+        return Number.isFinite(number) ? Math.max(number, 0) : 0
     })
 
     if (!series.length) return
 
-    const chartType = props.options.chartType === "donut" ? "donut" : "pie"
-    const isSemi = props.options.startAngle !== undefined && props.options.endAngle !== undefined
+    const multiple = props.options.multiple === true && series.length > 1
 
     chart = new ApexCharts(chartRef.value, {
         chart: {
-            type: chartType,
+            type: "radialBar",
             fontFamily: "inherit",
-            height: 240,
-            sparkline: { enabled: true },
+            height: 260,
             animations: { enabled: false },
         },
         plotOptions: {
-            pie: {
-                // Полукольцо: рисуем только верхнюю половину и смещаем центр вниз,
-                // иначе фигура повиснет в верхней части карточки.
-                startAngle: isSemi ? props.options.startAngle : 0,
-                endAngle: isSemi ? props.options.endAngle : 360,
-                offsetY: isSemi ? 40 : 0,
-                donut: {
-                    size: chartType === "donut" ? "62%" : "0%",
+            radialBar: {
+                hollow: { size: multiple ? "40%" : "62%" },
+                track: { strokeWidth: "90%" },
+                dataLabels: {
+                    name: { fontSize: "13px" },
+                    value: {
+                        fontSize: "20px",
+                        formatter: (value) => `${Math.round(value)}%`,
+                    },
+                    // У одного индикатора подпись "total" не нужна: значение
+                    // и так стоит в центре. У нескольких — показываем среднее.
+                    total: multiple
+                        ? {
+                            show: true,
+                            label: "Среднее",
+                            formatter: () => {
+                                const sum = series.reduce((acc, value) => acc + value, 0)
+                                return `${Math.round(sum / series.length)}%`
+                            },
+                        }
+                        : { show: false },
                 },
             },
         },
@@ -80,13 +87,10 @@ const renderChart = async () => {
             "var(--chart-color-8)",
         ],
         legend: {
-            show: true,
+            show: multiple,
             position: "bottom",
-            offsetY: isSemi ? -20 : 12,
-            markers: { width: 10, height: 10, radius: 100 },
-            itemMargin: { horizontal: 8, vertical: 8 },
         },
-        tooltip: { theme: "dark", fillSeriesColor: false },
+        tooltip: { theme: "dark" },
     })
 
     chart.render()

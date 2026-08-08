@@ -18,6 +18,8 @@ use App\Models\DataSourceTable;
 use App\Models\Task;
 use App\Models\TaskStatus;
 use App\Models\Widget;
+use App\Models\WidgetType;
+use App\Helpers\Widget\WidgetCatalog;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
@@ -86,13 +88,17 @@ class DashboardReGenerator
 
         $this->dashboardWidgets = DashboardWidget::query()
             ->where('dashboard_id', $dashboardId)
+            ->with('widget.types', 'widgetType')
             ->orderBy('position')
             ->orderBy('id')
             ->get();
 
         // Только виджеты, реально готовые к использованию (подключённые на фронте) —
         // см. Widget::is_ai_selectable (например 'map' пока исключён).
-        $this->widgets = Widget::query()->where('is_ai_selectable', true)->get();
+        $this->widgets = Widget::query()
+            ->where('is_ai_selectable', true)
+            ->with(['types', 'selectableTypes'])
+            ->get();
 
         $this->storage = storage_path(
             'app/company/'.
@@ -137,6 +143,7 @@ class DashboardReGenerator
                     'title' => $widget->title,
                     'instruction' => $widget->instruction,
                     'widget_name' => $widget->widget?->name,
+                    'widget_type' => $widget->widgetType?->name,
                     'tables' => $widget->tables ?? [],
                 ])
                 ->values()
@@ -145,9 +152,9 @@ class DashboardReGenerator
         );
 
         $groups = json_encode($this->groups->select('id', 'name'), JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-        // scheme_description добавлен, чтобы ИИ видел форму данных виджета уже на этапе
-        // выбора widget_name для add/update_struct, а не только позже в generateInstruction().
-        $widgets = json_encode($this->widgets->select('name', 'description', 'scheme_description'), JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        // Здесь решается, ЧТО менять, поэтому каталог идёт без форм данных —
+        // они нужны только при написании инструкций и генерации кода.
+        $widgets = $this->widgetCatalogJson();
 
         $data = [
             'dashboard_name' => $this->dashboard->name,
@@ -187,6 +194,7 @@ class DashboardReGenerator
                     'title' => $widget->title,
                     'description' => $widget->instruction,
                     'widget_name' => $widget->widget?->name,
+                    'widget_type' => $widget->widgetType?->name,
                 ];
             })
             ->values()
@@ -201,7 +209,8 @@ class DashboardReGenerator
                     'old_instruction' => $entry['old_instruction'] ?? '',
                     'old_widget_name'=>$entry['old_widget_name'] ?? '',
                     'description_update' => $widget->instruction,
-                    'widget_name'=> $widget->widget?->name
+                    'widget_name'=> $widget->widget?->name,
+                    'widget_type'=> $widget->widgetType?->name
                 ];
             })
             ->values()
@@ -234,7 +243,10 @@ class DashboardReGenerator
         $schema = $this->connectionProviderRouter->getSchema($tables, SchemaOptions::basic());
 
         $this->prepareAiPayload();
-        $widgets = json_encode($this->widgets->select('name','description' ,'scheme_description'), JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        // Здесь пишутся инструкции виджетов, поэтому форма данных нужна:
+        // от неё зависит, что инструкция обязана описать (например третью
+        // метрику для пузырьков).
+        $widgets = (new WidgetCatalog($this->widgets))->detailedJson();
         $schemaStr = json_encode($schema, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
         $listAddWidgets = json_encode($this->addWidgetsPayload, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
         $listUpdateWidgets = json_encode($this->updateWidgetsPayload, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
@@ -614,7 +626,7 @@ class DashboardReGenerator
 
     public function updateWidget(array $operation): ?array
     {
-        $widgetDashboard = DashboardWidget::query()->with('widget')->find($operation['widget_id'] ?? null);
+        $widgetDashboard = DashboardWidget::query()->with('widget.types', 'widgetType')->find($operation['widget_id'] ?? null);
 
         if (!$widgetDashboard) {
             Log::error('DashboardReGenerator: dashboard widget not found for update_struct', [
@@ -623,10 +635,21 @@ class DashboardReGenerator
             return null;
         }
 
+        $currentFamily = $widgetDashboard->widget?->name;
+        $newFamily = $operation['widget_name'] ?? $currentFamily;
+
+        // Прежний вариант отрисовки имеет смысл только внутри своего семейства:
+        // при смене bar → pie тип "column" уже ничего не значит, и подставлять
+        // его нельзя — семейство само выберет вариант по умолчанию.
+        $carriedType = $newFamily === $currentFamily
+            ? $widgetDashboard->widgetType?->name
+            : null;
+
         return [
             'title' => $operation['title'] ?? $widgetDashboard->title,
             'instruction' => $operation['operation_description'] ?? ($widgetDashboard->instruction ?? ''),
-            'widget_name' => $operation['widget_name'] ?? $widgetDashboard->widget?->name,
+            'widget_name' => $newFamily,
+            'widget_type' => $operation['widget_type'] ?? $carriedType,
             'tables' => $operation['tables'] ?? ($widgetDashboard->tables ?? []),
             'python_code' => ($widgetDashboard->code_path && file_exists($widgetDashboard->code_path))
                 ? file_get_contents($widgetDashboard->code_path)
@@ -656,6 +679,7 @@ class DashboardReGenerator
             'title' => $operation['title'] ?? $dashboardWidget->title,
             'instruction' => $dashboardWidget->instruction,
             'widget_name' => $dashboardWidget->widget?->name,
+            'widget_type' => $dashboardWidget->widgetType?->name,
             'tables' => $dashboardWidget->tables ?? [],
             'python_code' => ($dashboardWidget->code_path && file_exists($dashboardWidget->code_path))
                 ? file_get_contents($dashboardWidget->code_path)
@@ -663,6 +687,47 @@ class DashboardReGenerator
             'position' => $operation['position'] ?? $dashboardWidget->position ?? 0,
             'status' => $dashboardWidget->status ?? 'active',
         ];
+    }
+
+    /**
+     * Каталог виджетов для промптов регенерации.
+     *
+     * Тот же компактный вид, что и при генерации: форма данных json-примером,
+     * без прозаических описаний схемы. Полный каталог занимал бы больше половины
+     * промпта и вытеснял описание текущих виджетов, которые как раз и правим.
+     */
+    private function widgetCatalogJson(): string
+    {
+        return (new WidgetCatalog($this->widgets))->compactJson();
+    }
+
+    /**
+     * Сопоставляет выбранный ИИ вариант отрисовки с каталогом семейства.
+     * Неизвестный или не указанный тип — не повод ломать виджет, берём вариант
+     * семейства по умолчанию.
+     */
+    private function resolveWidgetType(?Widget $widget, ?string $typeName): ?WidgetType
+    {
+        if (!$widget) {
+            return null;
+        }
+
+        $typeName = is_string($typeName) ? trim($typeName) : '';
+
+        if ($typeName !== '') {
+            $type = $widget->selectableTypes()->where('name', $typeName)->first();
+
+            if ($type) {
+                return $type;
+            }
+
+            Log::warning('DashboardReGenerator: unknown widget type from AI, falling back to default', [
+                'widget' => $widget->name,
+                'type' => $typeName,
+            ]);
+        }
+
+        return $widget->defaultType();
     }
 
     private function persistWidget(Dashboard $dashboard, array $item): DashboardWidget
@@ -688,9 +753,12 @@ class DashboardReGenerator
         $result = DashboardWidget::query()->create([
             'dashboard_id' => $dashboard->id,
             'widget_id' => $widget?->id,
+            'widget_type_id' => $this->resolveWidgetType($widget, $item['widget_type'] ?? null)?->id,
             'title' => $item['title'],
             'instruction' => $item['instruction'],
-            'tables' => json_encode($item['tables'] ?? [], JSON_UNESCAPED_UNICODE),
+            // Без json_encode: кодированием занимается модель. Ручной вызов
+            // здесь давал двойное кодирование, и tables читались строкой.
+            'tables' => $item['tables'] ?? [],
             'code_path' => $codePath,
             'position' => $item['position'],
             'status' => $item['status'] ?? 'draft',
@@ -740,6 +808,7 @@ class DashboardReGenerator
             'title' => $operation['title'] ?? $widgetName,
             'instruction' => $operation['operation_description'] ?? '',
             'widget_name' => $widgetName,
+            'widget_type' => $operation['widget_type'] ?? null,
             'tables' => $operation['tables'] ?? [],
             'python_code' => null, // генерация кода временно отключена
             'position' => $operation['position'] ?? null,

@@ -11,14 +11,14 @@ import { ref, onMounted, onBeforeUnmount, watch, nextTick } from "vue"
 import ApexCharts from "apexcharts"
 
 /**
- * Семейство "bar": сравнение метрики по категориям.
+ * Семейство "line": динамика во времени.
  *
- * options.horizontal — полосы вправо вместо столбцов вверх;
- * options.stacked    — ряды складываются друг на друга;
- * options.stackType  — "100%" для долей внутри категории.
+ * options.chartType — "line" или "area" (с заливкой);
+ * options.curve     — "smooth" | "straight" | "stepline";
+ * options.stacked   — накопительные области.
  */
 const props = defineProps({
-    categories: { type: Array, default: () => [] },
+    labels: { type: Array, default: () => [] },
     series: { type: Array, default: () => [] },
     options: { type: Object, default: () => ({}) },
 })
@@ -37,52 +37,42 @@ const renderChart = async () => {
 
     if (!props.series.length) return
 
-    const horizontal = props.options.horizontal === true
+    const chartType = props.options.chartType === "area" ? "area" : "line"
+    const curve = props.options.curve || "smooth"
     const stacked = props.options.stacked === true
-    const stackType = props.options.stackType
-
-    // Горизонтальным полосам нужно больше высоты и места слева под подписи —
-    // ради этого их и выбирают, когда названия категорий длинные.
-    const height = horizontal
-        ? Math.max(240, Math.min(560, props.categories.length * 28 + 80))
-        : 320
 
     chart = new ApexCharts(chartRef.value, {
         chart: {
-            type: "bar",
+            type: chartType,
             stacked,
-            stackType: stackType || undefined,
             fontFamily: "inherit",
-            height,
+            height: 280,
             parentHeightOffset: 0,
             toolbar: { show: false },
             animations: { enabled: false },
         },
-        plotOptions: {
-            bar: {
-                horizontal,
-                columnWidth: "50%",
-                barHeight: "70%",
-                borderRadius: 2,
-            },
-        },
         dataLabels: { enabled: false },
+        stroke: {
+            width: 2,
+            lineCap: "round",
+            curve,
+        },
+        // Заливка нужна только типам area; у линии она забивает сетку.
+        fill: chartType === "area"
+            ? { type: "gradient", gradient: { opacityFrom: 0.35, opacityTo: 0.05 } }
+            : { opacity: 1 },
         series: props.series,
+        labels: props.labels.map(String),
         tooltip: { theme: "dark" },
         grid: {
-            padding: {
-                top: -20,
-                right: 0,
-                left: horizontal ? 8 : -4,
-                bottom: -4,
-            },
+            padding: { top: -20, right: 0, left: -4, bottom: -4 },
             strokeDashArray: 4,
         },
         xaxis: {
+            type: "category",
             labels: { padding: 0 },
             tooltip: { enabled: false },
             axisBorder: { show: false },
-            categories: props.categories.map(String),
         },
         yaxis: {
             labels: { padding: 4 },
@@ -97,8 +87,6 @@ const renderChart = async () => {
             "var(--chart-color-7)",
             "var(--chart-color-8)",
         ],
-        // Легенда нужна только когда рядов больше одного — иначе она
-        // дублирует заголовок виджета.
         legend: {
             show: props.series.length > 1,
             position: "bottom",
@@ -109,7 +97,7 @@ const renderChart = async () => {
 }
 
 watch(
-    () => [props.series, props.categories, props.options],
+    () => [props.series, props.labels, props.options],
     renderChart,
     { deep: true }
 )

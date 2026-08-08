@@ -27,7 +27,11 @@
 
         <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table" style="margin-bottom: 0; width: 100%;">
+                <table
+                    class="table"
+                    :class="{ 'table-striped': isStriped, 'table-sm': isCompact }"
+                    style="margin-bottom: 0; width: 100%;"
+                >
                     <thead>
                     <tr>
                         <th v-for="(header, index) in tableData.headers" :key="index" style="padding: 0;">
@@ -66,7 +70,12 @@
                             v-for="(cell, cellIndex) in row"
                             :key="cellIndex"
                             class="format-number"
-                            style="padding: 1rem; font-size: 0.875rem; color: #334155; border-bottom: 1px solid #f1f5f9;"
+                            :style="{
+                                padding: cellPadding,
+                                fontSize: cellFontSize,
+                                color: '#334155',
+                                borderBottom: '1px solid #f1f5f9',
+                            }"
                         >
                             {{ cell }}
                         </td>
@@ -132,9 +141,21 @@ const props = defineProps({
         default: () => ({})
     },
 
+    // options.striped — подсветка чётных строк;
+    // options.compact — плотная вёрстка, строк на страницу больше.
+    options: {
+        type: Object,
+        default: () => ({})
+    },
 })
-console.log(props.table);
-const ITEMS_PER_PAGE = 5
+
+const isStriped = computed(() => props.options.striped === true)
+const isCompact = computed(() => props.options.compact === true)
+const cellPadding = computed(() => (isCompact.value ? "0.45rem 0.75rem" : "1rem"))
+const cellFontSize = computed(() => (isCompact.value ? "0.8rem" : "0.875rem"))
+
+// Плотный вид берут, когда строк много — показываем их больше за страницу.
+const ITEMS_PER_PAGE = computed(() => (isCompact.value ? 12 : 5))
 const currentPage = ref(1)
 const searchQuery = ref("")
 const sortColumn = ref(null)
@@ -195,22 +216,22 @@ const sortedRows = computed(() => {
 
 // 3. Пагинация (срез данных для текущей страницы)
 const paginatedRows = computed(() => {
-    const start = (currentPage.value - 1) * ITEMS_PER_PAGE
-    return sortedRows.value.slice(start, start + ITEMS_PER_PAGE)
+    const start = (currentPage.value - 1) * ITEMS_PER_PAGE.value
+    return sortedRows.value.slice(start, start + ITEMS_PER_PAGE.value)
 })
 
 // Расчет общего количества страниц
 const totalPages = computed(() => {
-    return Math.max(1, Math.ceil(filteredRows.value.length / ITEMS_PER_PAGE))
+    return Math.max(1, Math.ceil(filteredRows.value.length / ITEMS_PER_PAGE.value))
 })
 
 // Логика отображения информации о пагинации (Показано X-Y из Z)
 const shownStart = computed(() => {
-    return filteredRows.value.length ? (currentPage.value - 1) * ITEMS_PER_PAGE + 1 : 0
+    return filteredRows.value.length ? (currentPage.value - 1) * ITEMS_PER_PAGE.value + 1 : 0
 })
 
 const shownEnd = computed(() => {
-    return Math.min(currentPage.value * ITEMS_PER_PAGE, filteredRows.value.length)
+    return Math.min(currentPage.value * ITEMS_PER_PAGE.value, filteredRows.value.length)
 })
 
 // Массив номеров страниц для отображения кнопок (текущая +- 2 страницы)
