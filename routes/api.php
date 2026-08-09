@@ -5,6 +5,7 @@ use App\Http\Controllers\Chat\ChatController;
 use App\Http\Controllers\Chat\MessageController;
 use App\Http\Controllers\Dashboard\DashboardController;
 use App\Http\Controllers\DataSource\DataSourceConnectionController;
+use App\Http\Controllers\DataSource\DataSourceController;
 use App\Http\Controllers\DataSource\DataSourceTypeController;
 use App\Http\Controllers\UploadFile\FileController;
 use App\Http\Controllers\Widget\WidgetCatalogController;
@@ -36,6 +37,10 @@ Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/get-user', [AuthController::class, 'getUser'])->middleware('auth:sanctum');
 
+// Метод в контроллере был, а маршрута к нему не существовало — выйти из
+// аккаунта было невозможно, токен оставался действительным навсегда.
+Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
+
 
 Route::middleware(['auth:sanctum', 'active'])->prefix('company')->group(function () {
     // Права разделены на чтение и изменение: роль viewer видит дашборды и чаты,
@@ -50,6 +55,9 @@ Route::middleware(['auth:sanctum', 'active'])->prefix('company')->group(function
     Route::get('dashboards/{dashboard}', [DashboardController::class, 'show'])->middleware('permission:view dashboards');
     Route::post('dashboards', [DashboardController::class, 'store'])->middleware('permission:create dashboards');
     Route::match(['put', 'patch'], 'dashboards/{dashboard}', [DashboardController::class, 'update'])->middleware('permission:edit dashboards');
+    // Ручная смена типа отрисовки виджетов — пакетно, по кнопке «Сохранить».
+    Route::match(['put', 'patch'], 'dashboards/{dashboard}/widgets', [DashboardController::class, 'updateWidgets'])
+        ->middleware('permission:edit dashboards');
     Route::delete('dashboards/{dashboard}', [DashboardController::class, 'destroy'])->middleware('permission:delete dashboards');
 
     // Сообщения агенту — это работа с чатом, поэтому право на создание чата.
@@ -70,11 +78,48 @@ Route::middleware(['auth:sanctum', 'active'])->prefix('company')->group(function
             Route::get('types', [DataSourceTypeController::class, 'index'])
                 ->middleware('permission:view data sources');
 
+            // Источники данных компании. Просмотр отделён от изменения:
+            // роль viewer видит подключённые базы, но не трогает их.
+            Route::get('/', [DataSourceController::class, 'index'])
+                ->middleware('permission:view data sources');
+            Route::get('{id}', [DataSourceController::class, 'show'])
+                ->middleware('permission:view data sources')
+                ->whereNumber('id');
+
+            Route::middleware('permission:manage data sources')->group(function () {
+                Route::post('/', [DataSourceController::class, 'store']);
+
+                // Шаги мастера подключения источника: показать найденные
+                // таблицы и запустить их группировку по смыслу.
+                Route::get('{id}/tables', [DataSourceController::class, 'tables'])
+                    ->whereNumber('id');
+                // Обновление данных источника: перезалив файла или
+                // перечитывание Google-таблицы по сохранённой ссылке.
+                Route::post('{id}/refresh', [DataSourceController::class, 'refresh'])
+                    ->whereNumber('id');
+
+                Route::post('{id}/grouping', [DataSourceController::class, 'group'])
+                    ->whereNumber('id');
+                Route::get('{id}/grouping', [DataSourceController::class, 'groupingStatus'])
+                    ->whereNumber('id');
+
+                Route::match(['put', 'patch'], '{id}', [DataSourceController::class, 'update'])
+                    ->whereNumber('id');
+                Route::delete('{id}', [DataSourceController::class, 'destroy'])
+                    ->whereNumber('id');
+            });
+
             Route::post('{id}/connection', [DataSourceConnectionController::class, 'query'])
                 ->middleware('permission:manage data sources')
                 ->name('connection.query');
         });
 
+
+    // Расход ИИ видит любой сотрудник — это влияет на его работу.
+    // Менять потолок может только управляющий компанией.
+    Route::get('usage', [\App\Http\Controllers\Company\UsageController::class, 'show']);
+    Route::match(['put', 'patch'], 'usage', [\App\Http\Controllers\Company\UsageController::class, 'update'])
+        ->middleware('permission:manage company');
 
     Route::prefix('settings')->group(function () {
         // Управление сотрудниками доступно только тем, у кого есть на это право

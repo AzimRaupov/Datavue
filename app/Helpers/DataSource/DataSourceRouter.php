@@ -5,27 +5,28 @@ namespace App\Helpers\DataSource;
 use App\Helpers\DataSource\Handlers\MySqlDataHandler;
 use App\Helpers\DataSource\Handlers\SqliteDataHandler;
 use App\Helpers\DataSource\Handlers\TableDataHandler;
-use App\Models\AiChat;
-use App\Models\AiChatTask;
 use App\Models\DataSourceType;
 use App\Models\DataSourceExtraction;
-use App\Models\Task;
-use App\Models\TaskStatus;
 use App\Models\UploadedFile;
 use App\Models\User;
 use Illuminate\Support\Facades\Log;
 
+/**
+ * Разбирает загруженный файл и превращает его в готовый к запросам источник.
+ *
+ * Раньше класс работал «внутри чата»: путь хранения, имя импортируемой базы и
+ * запись о ходе работ — всё строилось вокруг chat_id. С разделением источников
+ * и чатов это стало неверным: файл загружают ДО того, как появится хоть один
+ * чат, и один разобранный файл обслуживает потом сразу несколько чатов.
+ * Поэтому здесь остались только компания и сам файл.
+ */
 class DataSourceRouter
 {
-    public AiChat $chat;
     public UploadedFile $uploadFile;
     public User $user;
     public ?DataSourceType $dataSourceType;
 
-    public AiChatTask $chat_task;
-
-    public array $tasks;
-    public array $tasks_status;
+    public int $companyId;
 
     public string $storage;
     public string $outputPath;
@@ -45,17 +46,18 @@ class DataSourceRouter
      */
     public string $resolvedTypeName = 'duckdb';
 
-    /**
-     * Create a new job instance.
-     */
-    public function __construct($chat_id, $upload_file_id, $user_id, $type_id = null)
+    public function __construct($company_id, $upload_file_id, $user_id, $type_id = null)
     {
         $this->user = User::query()->with('company')->findOrFail($user_id);
-        $this->chat = AiChat::query()->findOrFail($chat_id);
         $this->uploadFile = UploadedFile::query()->findOrFail($upload_file_id);
         $this->dataSourceType = $type_id ? DataSourceType::query()->find($type_id) : null;
+        $this->companyId = (int) $company_id;
 
-        $this->storage = storage_path('app/company/' . $this->user->company->id . '/chats/' . $this->chat->id);
+        // Ключ хранения — id загруженного файла: он уже уникален и известен до
+        // того, как источник получит собственный id.
+        $this->storage = storage_path(
+            'app/company/'.$this->companyId.'/sources/'.$this->uploadFile->id
+        );
         $this->outputPath = $this->storage . '/extracted_data';
         $this->dbFilePath = in_array(
             strtolower((string) $this->uploadFile->file_type),
@@ -69,29 +71,15 @@ class DataSourceRouter
             mkdir($this->outputPath, 0775, true);
         }
 
-        $this->tasks_status = TaskStatus::query()->pluck('id', 'name')->toArray();
-        $this->tasks = Task::query()->pluck('id', 'name')->toArray();
-
-        $this->chat_task = AiChatTask::create([
-            'chat_id'   => $this->chat->id,
-            'task_id'   => $this->tasks['data_processing'],
-            'status_id' => $this->tasks_status['start'],
-        ]);
-
-        $this->databaseName = 'data_source_' . $user_id . '_chat_' . $chat_id;
+        $this->databaseName = 'data_source_' . $this->companyId . '_upload_' . $this->uploadFile->id;
     }
 
     /**
-     * Execute the job.
-     *
      * @return array{success: bool, message: string, extraction: ?DataSourceExtraction}
      */
     public function handle(): array
     {
         try {
-            $this->chat_task->status_id = $this->tasks_status['in_progress'];
-            $this->chat_task->save();
-
             $dataHandler = $this->resolveHandler();
 
             if (!$dataHandler) {
@@ -110,14 +98,10 @@ class DataSourceRouter
 
             $extraction = DataSourceExtraction::create([
                 'file_id'       => $this->uploadFile->id,
-                'company_id'    => $this->chat->company_id,
-                'chat_id'       => $this->chat->id,
+                'company_id'    => $this->companyId,
                 'data_path'     => $this->dbFilePath,
                 'document_type' => $this->uploadFile->file_type,
             ]);
-
-            $this->chat_task->status_id = $this->tasks_status['done'] ?? $this->tasks_status['in_progress'];
-            $this->chat_task->save();
 
             return [
                 'success'    => true,
@@ -130,16 +114,13 @@ class DataSourceRouter
 
         } catch (\Throwable $e) {
 
-            $this->chat_task->status_id = $this->tasks_status['failed'];
-            $this->chat_task->save();
-
             Log::error('DataSourceRouter error', [
-                'chat_id' => $this->chat->id ?? null,
-                'file_id' => $this->uploadFile->id ?? null,
-                'error'   => $e->getMessage(),
-                'file'    => $e->getFile(),
-                'line'    => $e->getLine(),
-                'trace'   => $e->getTraceAsString(),
+                'company_id' => $this->companyId,
+                'file_id'    => $this->uploadFile->id ?? null,
+                'error'      => $e->getMessage(),
+                'file'       => $e->getFile(),
+                'line'       => $e->getLine(),
+                'trace'      => $e->getTraceAsString(),
             ]);
 
             return [
@@ -150,6 +131,7 @@ class DataSourceRouter
             ];
         }
     }
+
     private function resolveHandler()
     {
         if ($this->uploadFile->file_type === 'sql') {

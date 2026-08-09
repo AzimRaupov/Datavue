@@ -54,7 +54,9 @@ class RouterTask
             ->select('message', 'answer')
             ->get();
         $this->task_list = $task_list;
-        $this->dataSource = DataSource::query()->where('chat_id', $chatId)->first();
+        // Источник теперь принадлежит компании и привязан к чату полем
+        // ai_chats.data_source_id, а не наоборот.
+        $this->dataSource = $this->chat?->resolveDataSource(['type']);
 
         // Полный контекст (дашборд, виджеты, группы таблиц, каталог виджетов).
         // ChatContext сам находит актуальный дашборд, если фронт не передал id —

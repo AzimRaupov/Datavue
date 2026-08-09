@@ -37,6 +37,13 @@ class DashboardGeneratorJob implements ShouldQueue
 
     public function handle(): void
     {
+        \App\Helpers\Ai\AiUsageContext::set(
+            \App\Models\AiChat::query()->whereKey($this->chat_id)->value('company_id'),
+            $this->chat_id,
+            $this->message_id,
+            'generate_dashboard'
+        );
+
         try {
             $generator = new DashboardGenerator(
                 $this->chat_id,
@@ -299,6 +306,10 @@ class DashboardGeneratorJob implements ShouldQueue
             }
 
             throw $e;
+        } finally {
+            // Воркер живёт долго: не сбросив контекст, следующая задача
+            // записала бы расход на предыдущую компанию.
+            \App\Helpers\Ai\AiUsageContext::clear();
         }
     }
 }

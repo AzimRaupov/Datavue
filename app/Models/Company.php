@@ -17,6 +17,7 @@ class Company extends Model
         'name',
         'owner_id',
         'is_active',
+        'ai_token_limit',
     ];
 
     /**

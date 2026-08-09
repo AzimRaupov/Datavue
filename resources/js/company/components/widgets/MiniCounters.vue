@@ -1,7 +1,7 @@
 <template>
     <!-- Плитки: крупные карточки, вид по умолчанию для верхнего блока -->
-    <div v-if="layout === 'cards'" class="row g-2 row-cols-1 row-cols-md-2 row-cols-xxl-5">
-        <div v-for="(counter, index) in items" :key="index" class="col">
+    <div v-if="layout === 'cards'" class="row g-2">
+        <div v-for="(counter, index) in items" :key="index" :class="columnClass">
             <div class="card">
                 <div class="card-body">
                     <div class="row align-items-center">
@@ -27,8 +27,8 @@
     </div>
 
     <!-- С полосой выполнения: под каждым числом прогресс к плану -->
-    <div v-else-if="layout === 'progress'" class="row g-2 row-cols-1 row-cols-md-2 row-cols-xxl-4">
-        <div v-for="(counter, index) in items" :key="index" class="col">
+    <div v-else-if="layout === 'progress'" class="row g-2">
+        <div v-for="(counter, index) in items" :key="index" :class="columnClass">
             <div class="card">
                 <div class="card-body">
                     <div class="d-flex align-items-center justify-content-between">
@@ -108,6 +108,26 @@ const layout = computed(() => {
     const value = props.options.layout
 
     return ["cards", "inline", "progress"].includes(value) ? value : "cards"
+})
+
+/**
+ * Ширина колонки под количество счётчиков.
+ *
+ * Раньше стояли фиксированные row-cols-xxl-5 / row-cols-xxl-4: при двух
+ * счётчиках они жались влево, оставляя справа пустоту в три четверти ширины.
+ *
+ * Теперь до четырёх штук они делят ряд поровну и занимают его целиком,
+ * а начиная с пяти — переносятся по четыре в ряд (больше в ряд не ставим:
+ * числа становятся нечитаемо мелкими).
+ */
+const columnClass = computed(() => {
+    const count = items.value.length
+
+    if (count <= 1) return "col-12"
+    if (count === 2) return "col-12 col-md-6"
+    if (count === 3) return "col-12 col-md-4"
+
+    return "col-12 col-sm-6 col-xl-3"
 })
 
 // Иконка копирования одна на все три раскладки — рендер-функцией,

@@ -39,6 +39,19 @@ class DataSourceGrouping
      */
     private bool $generated = false;
 
+    /**
+     * Куда сообщать о ходе работы.
+     *
+     * Группировка большой схемы идёт минутами, и без обратной связи мастер
+     * подключения показывает пользователю неподвижный спиннер. Колбэк
+     * получает (код этапа, подпись, номер шага, всего шагов) и вызывается
+     * на границах этапов; null — работаем молча (например, из очереди
+     * генератора дашбордов, где прогресс никому не показывается).
+     *
+     * @var null|callable(string, string, int, int): void
+     */
+    private $onProgress = null;
+
     public function __construct(int $dataSourceId)
     {
         $this->dataSource = DataSource::findOrFail($dataSourceId);
@@ -49,6 +62,23 @@ class DataSourceGrouping
     }
 
     /**
+     * @param callable(string, string, int, int): void $callback
+     */
+    public function onProgress(callable $callback): static
+    {
+        $this->onProgress = $callback;
+
+        return $this;
+    }
+
+    private function reportProgress(string $stage, string $label, int $step, int $total): void
+    {
+        if ($this->onProgress) {
+            ($this->onProgress)($stage, $label, $step, $total);
+        }
+    }
+
+    /**
      * Основной метод
      */
     public function handle(): array
@@ -56,6 +86,8 @@ class DataSourceGrouping
         /**
          * Получаем схему базы данных
          */
+        $this->reportProgress('read_schema', 'Читаем структуру источника', 1, 3);
+
         $this->schema = $this->connectionProviderRouter->getSchema(
             tables: [],
             options: [
@@ -84,6 +116,8 @@ class DataSourceGrouping
          * Делим схему на части по бюджету токенов,
          * с учётом связей между таблицами
          */
+        $this->reportProgress('analyze_tables', 'Анализируем таблицы и связи', 2, 3);
+
         $this->generatedGroups = $this->startGrouping(
             scheme: $this->schema,
             tokenBudgetPerChunk: 6000
@@ -95,6 +129,8 @@ class DataSourceGrouping
          * чтобы getGroups()/getTables() просто отдавали
          * готовый результат без повторной генерации.
          */
+        $this->reportProgress('build_groups', 'Собираем смысловые группы', 3, 3);
+
         $this->groups = $this->buildGroups($this->generatedGroups);
         $this->tables = $this->buildTables($this->generatedGroups);
 
@@ -370,6 +406,21 @@ class DataSourceGrouping
                 'total_groups' => count($schemeGroups),
                 'tables_count' => count($group),
             ]);
+
+            // Самая долгая часть: по запросу к модели на каждую порцию схемы.
+            // Без отчёта отсюда мастер молчит всё это время.
+            if (count($schemeGroups) > 1) {
+                $this->reportProgress(
+                    'analyze_tables',
+                    sprintf(
+                        'Анализируем таблицы и связи (часть %d из %d)',
+                        $index + 1,
+                        count($schemeGroups)
+                    ),
+                    2,
+                    3
+                );
+            }
 
             $generatedGroups = $this->generateGrouping(
                 currentGroups: $generatedGroups,

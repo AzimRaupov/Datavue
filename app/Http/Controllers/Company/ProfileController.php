@@ -36,6 +36,13 @@ class ProfileController extends Controller
             }
 
             $user->password = Hash::make($data['password']);
+
+            // Старые токены после смены пароля обесцениваются: если учётку
+            // увели, смена пароля должна выбросить чужую сессию. Текущий токен
+            // сохраняем — иначе пользователь разлогинит сам себя.
+            $user->tokens()
+                ->where('id', '!=', $request->user()->currentAccessToken()?->id)
+                ->delete();
         }
 
         if (isset($data['name'])) {

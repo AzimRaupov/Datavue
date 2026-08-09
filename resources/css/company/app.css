@@ -4,11 +4,11 @@
     --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
     'Segoe UI Symbol', 'Noto Color Emoji';
 }
+
 html, body, #app {
     height: 100%;
     overflow-y: auto; /* или просто убрать overflow: hidden, если он где-то стоит */
 }
-
 
 #nprogress .bar {
     background: #3b82f6 !important;

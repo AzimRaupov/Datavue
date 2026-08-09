@@ -38,7 +38,17 @@ class RouterTaskJob implements ShouldQueue
     {
 
 
-        $router= new RouterTask($this->currentMessageId,$this->chatId,$this->task_list,$this->dashboardId,$this->userId);
-        $router->define();
+        $companyId = \App\Models\AiChat::query()->whereKey($this->chatId)->value('company_id');
+
+        \App\Helpers\Ai\AiUsageContext::run(
+            $companyId,
+            function () {
+                $router = new RouterTask($this->currentMessageId, $this->chatId, $this->task_list, $this->dashboardId, $this->userId);
+                $router->define();
+            },
+            chatId: $this->chatId,
+            messageId: $this->currentMessageId,
+            operation: 'route_task'
+        );
     }
 }

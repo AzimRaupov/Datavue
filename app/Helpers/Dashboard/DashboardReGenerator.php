@@ -84,7 +84,8 @@ class DashboardReGenerator
         $this->dashboard = Dashboard::findOrFail($dashboardId);
         $this->chat = AiChat::with('extractedData')->findOrFail($chatId);
         $this->message = AiChatMessage::find($messageId);
-        $this->dataSource = DataSource::query()->where('chat_id', $chatId)->with('type', 'extracted')->first();
+        // См. DashboardGenerator: источник ищется через чат, а не наоборот.
+        $this->dataSource = $this->chat?->resolveDataSource();
 
         $this->dashboardWidgets = DashboardWidget::query()
             ->where('dashboard_id', $dashboardId)

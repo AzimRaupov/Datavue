@@ -2,6 +2,7 @@
 
 namespace App\Helpers\Chat;
 
+use App\Models\AiChat;
 use App\Models\Dashboard;
 use App\Models\DashboardWidget;
 use App\Models\DataSource;
@@ -56,10 +57,13 @@ class ChatContext
         public int $chatId,
         public ?int $dashboardId = null
     ) {
-        $this->dataSource = DataSource::query()
-            ->where('chat_id', $chatId)
-            ->with('type')
-            ->first();
+        // Источник берём у чата: он принадлежит компании и переиспользуется
+        // несколькими чатами, поэтому искать его по data_sources.chat_id больше
+        // нельзя (см. AiChat::resolveDataSource — там же запасной путь для
+        // чатов, созданных до разделения источников и чатов).
+        $chat = AiChat::query()->find($chatId);
+
+        $this->dataSource = $chat?->resolveDataSource(['type']);
 
         $this->dashboard = $dashboardId
             ? Dashboard::query()->find($dashboardId)

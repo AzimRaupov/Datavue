@@ -1,6 +1,6 @@
 {
-  "_axios-CVIXTKXT.js": {
-    "file": "assets/axios-CVIXTKXT.js",
+  "_axios-xCwHzedv.js": {
+    "file": "assets/axios-xCwHzedv.js",
     "name": "axios"
   },
   "_fonts-DkuEHybc.css": {
@@ -55,19 +55,19 @@
     "file": "assets/instrument-sans-600-normal-DMks36a2.woff",
     "src": "_instrument-sans-600-normal-DMks36a2.woff"
   },
-  "_tabler-theme-BiyprUkK.css": {
-    "file": "assets/tabler-theme-BiyprUkK.css",
-    "src": "_tabler-theme-BiyprUkK.css"
-  },
-  "_tabler-theme-CmzxW3zw.js": {
-    "file": "assets/tabler-theme-CmzxW3zw.js",
+  "_tabler-theme-BXuc_01n.js": {
+    "file": "assets/tabler-theme-BXuc_01n.js",
     "name": "tabler-theme",
     "imports": [
-      "_axios-CVIXTKXT.js"
+      "_axios-xCwHzedv.js"
     ],
     "css": [
       "assets/tabler-theme-BiyprUkK.css"
     ]
+  },
+  "_tabler-theme-BiyprUkK.css": {
+    "file": "assets/tabler-theme-BiyprUkK.css",
+    "src": "_tabler-theme-BiyprUkK.css"
   },
   "node_modules/@tabler/core/dist/img/flags/gb.svg": {
     "file": "assets/gb-CRbpQNdj.svg",
@@ -81,24 +81,8 @@
     "file": "assets/tj-B6eGJCYd.svg",
     "src": "node_modules/@tabler/core/dist/img/flags/tj.svg"
   },
-  "node_modules/canvg/lib/index.es.js": {
-    "file": "assets/index.es-BkuuwUgx.js",
-    "name": "index.es",
-    "src": "node_modules/canvg/lib/index.es.js",
-    "isDynamicEntry": true,
-    "imports": [
-      "_axios-CVIXTKXT.js",
-      "resources/js/company/app.js"
-    ]
-  },
-  "node_modules/dompurify/dist/purify.es.mjs": {
-    "file": "assets/purify.es-adlwq8Pz.js",
-    "name": "purify.es",
-    "src": "node_modules/dompurify/dist/purify.es.mjs",
-    "isDynamicEntry": true
-  },
   "resources/css/admin/app.css": {
-    "file": "assets/app-DMQyiOGN.css",
+    "file": "assets/app-Bnmh5i_f.css",
     "name": "app",
     "names": [
       "app.css"
@@ -125,43 +109,38 @@
     "isEntry": true
   },
   "resources/js/admin/app.js": {
-    "file": "assets/app-D8rMI2hE.js",
+    "file": "assets/app-D4kt-9rj.js",
     "name": "app",
     "src": "resources/js/admin/app.js",
     "isEntry": true,
     "imports": [
-      "_axios-CVIXTKXT.js"
+      "_axios-xCwHzedv.js"
     ],
     "css": [
       "assets/app-CvFdc9Lz.css"
     ]
   },
   "resources/js/company/app.js": {
-    "file": "assets/app-6dSPnIBv.js",
+    "file": "assets/app-CEXV4hNt.js",
     "name": "app",
     "src": "resources/js/company/app.js",
     "isEntry": true,
     "imports": [
-      "_axios-CVIXTKXT.js",
-      "_tabler-theme-CmzxW3zw.js"
-    ],
-    "dynamicImports": [
-      "resources/js/company/app.js",
-      "node_modules/dompurify/dist/purify.es.mjs",
-      "node_modules/canvg/lib/index.es.js"
+      "_axios-xCwHzedv.js",
+      "_tabler-theme-BXuc_01n.js"
     ],
     "css": [
-      "assets/app-DTUmJQfZ.css"
+      "assets/app-C7BrssqM.css"
     ]
   },
   "resources/js/viewer/app.js": {
-    "file": "assets/app-Dl0jKkiO.js",
+    "file": "assets/app-BuFgmp-g.js",
     "name": "app",
     "src": "resources/js/viewer/app.js",
     "isEntry": true,
     "imports": [
-      "_axios-CVIXTKXT.js",
-      "_tabler-theme-CmzxW3zw.js"
+      "_axios-xCwHzedv.js",
+      "_tabler-theme-BXuc_01n.js"
     ],
     "css": [
       "assets/app-C60xQKEM.css"

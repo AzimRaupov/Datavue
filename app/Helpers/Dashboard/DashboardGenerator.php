@@ -59,7 +59,10 @@ class DashboardGenerator
         $this->chat = AiChat::query()->with('user', 'extractedData')->find($chat_id);
         $this->message = AiChatMessage::query()->find($message_id);
 
-        $this->dataSource = DataSource::query()->where('chat_id', $chat_id)->with('type', 'extracted')->first();
+        // Источник привязан к чату полем ai_chats.data_source_id: одна и та же
+        // база обслуживает несколько чатов, поэтому обратный поиск по
+        // data_sources.chat_id больше не работает.
+        $this->dataSource = $this->chat?->resolveDataSource();
 
         if (!$this->dataSource) {
             throw new RuntimeException("DataSource не найден для чата #{$chat_id}");

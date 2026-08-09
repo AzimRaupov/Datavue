@@ -17,6 +17,7 @@ class AiChat extends Model
     protected $fillable = [
         'user_id',
         'company_id',
+        'data_source_id',
         'title',
         'status',
     ];
@@ -33,6 +34,34 @@ class AiChat extends Model
     public function extractedData(): HasOne
     {
         return $this->hasOne(DataSourceExtraction::class, 'chat_id');
+    }
+
+    /**
+     * Источник данных, на котором заведён чат.
+     */
+    public function dataSource(): BelongsTo
+    {
+        return $this->belongsTo(DataSource::class, 'data_source_id');
+    }
+
+    /**
+     * Находит источник чата.
+     *
+     * Основной путь — data_source_id. Запасной, по старой связи
+     * data_sources.chat_id, оставлен ради чатов, созданных до разделения
+     * источников и чатов: у них новая колонка могла остаться пустой, если
+     * источник добавили в обход миграции.
+     */
+    public function resolveDataSource(array $with = ['type', 'extracted']): ?DataSource
+    {
+        if ($this->data_source_id) {
+            return DataSource::query()->with($with)->find($this->data_source_id);
+        }
+
+        return DataSource::query()
+            ->with($with)
+            ->where('chat_id', $this->id)
+            ->first();
     }
     public function dashboard(): HasOne
     {

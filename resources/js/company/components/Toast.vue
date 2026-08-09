@@ -87,26 +87,34 @@ defineExpose({ success, error, info, remove });
     pointer-events: none;
 }
 
+/*
+ * Цвета берутся из переменных Tabler, а не задаются напрямую: раньше здесь
+ * стояли #fff, #182433 и #8a97a8, из-за чего в тёмной теме всплывающие
+ * сообщения оставались светлыми с почти нечитаемым текстом. Через переменные
+ * они следуют за настройками темы, включая выбранный основной цвет и радиус.
+ */
 .toast-item {
     pointer-events: auto;
     display: flex;
     align-items: flex-start;
     gap: 10px;
     padding: 12px 14px;
-    border-radius: 10px;
-    background: #fff;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15), 0 2px 6px rgba(0, 0, 0, 0.08);
-    border-left: 4px solid #ccc;
+    border-radius: var(--tblr-border-radius);
+    background: var(--tblr-bg-surface);
+    color: var(--tblr-body-color);
+    box-shadow: var(--tblr-box-shadow);
+    border: var(--tblr-border-width) solid var(--tblr-border-color);
+    border-left: 4px solid var(--tblr-border-color);
 }
 
-.toast-item--success { border-left-color: #2fb344; }
-.toast-item--success .toast-item__icon { color: #2fb344; }
+.toast-item--success { border-left-color: var(--tblr-success); }
+.toast-item--success .toast-item__icon { color: var(--tblr-success); }
 
-.toast-item--error { border-left-color: #d63939; }
-.toast-item--error .toast-item__icon { color: #d63939; }
+.toast-item--error { border-left-color: var(--tblr-danger); }
+.toast-item--error .toast-item__icon { color: var(--tblr-danger); }
 
-.toast-item--info { border-left-color: #4299e1; }
-.toast-item--info .toast-item__icon { color: #4299e1; }
+.toast-item--info { border-left-color: var(--tblr-info); }
+.toast-item--info .toast-item__icon { color: var(--tblr-info); }
 
 .toast-item__icon {
     flex-shrink: 0;
@@ -115,9 +123,9 @@ defineExpose({ success, error, info, remove });
 
 .toast-item__message {
     flex: 1;
-    font-size: 14px;
-    line-height: 1.4;
-    color: #182433;
+    font-size: var(--tblr-body-font-size);
+    line-height: var(--tblr-body-line-height);
+    color: var(--tblr-body-color);
     word-break: break-word;
 }
 
@@ -125,15 +133,15 @@ defineExpose({ success, error, info, remove });
     flex-shrink: 0;
     background: none;
     border: none;
-    color: #8a97a8;
+    color: var(--tblr-secondary);
     cursor: pointer;
     padding: 2px;
     line-height: 0;
-    border-radius: 4px;
+    border-radius: var(--tblr-border-radius);
 }
 .toast-item__close:hover {
-    color: #182433;
-    background: rgba(0, 0, 0, 0.05);
+    color: var(--tblr-body-color);
+    background: var(--tblr-bg-surface-secondary);
 }
 
 .toast-fade-enter-active,

@@ -13,7 +13,9 @@
                 >
                     <span>{{ step.label }}</span>
                     <span>
-                        <span class="fw-medium text-dark">{{ step.fromPrev }}%</span>
+                        <!-- .text-dark фиксирует чёрный и не переключается
+                             вместе с темой — акцент даём весом шрифта. -->
+                        <span class="fw-bold">{{ step.fromPrev }}%</span>
                         <span class="ms-2">от первого этапа: {{ step.fromFirst }}%</span>
                     </span>
                 </div>

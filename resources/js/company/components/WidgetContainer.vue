@@ -61,6 +61,14 @@ const showWidget = computed(() => family.value && isReady.value && contentHasDat
 
 const widgetProps = computed(() => propsFor(familyName.value, contentWidget.value, typeOptions.value));
 
+/**
+ * Высоты столбцов в заглушке — фиксированные, а не случайные.
+ *
+ * При случайных значениях столбцы прыгали на каждой перерисовке, и заглушка
+ * мельтешила вместо того, чтобы спокойно показывать форму будущего графика.
+ */
+const PLACEHOLDER_BARS = [45, 70, 35, 85, 55, 95, 40, 65];
+
 async function getWidgetContent() {
     if (!widget.value?.id) return;
 
@@ -127,58 +135,106 @@ onMounted(async () => {
 
         <!-- Плейсхолдеры на время генерации: форма подсказывает, что появится -->
         <template v-else>
-            <div v-if="family.placeholder === 'counters'" class="row g-3">
-                <div class="col-6 col-md-3" v-for="n in 4" :key="n">
-                    <div class="border rounded-3 p-3 placeholder-glow">
-                        <span class="placeholder rounded-2 bg-primary d-block mb-2" style="width: 28px; height: 28px;"></span>
-                        <span class="placeholder col-6 bg-secondary d-block mb-2" style="height: 20px;"></span>
-                        <span class="placeholder col-8 bg-secondary d-block" style="height: 10px;"></span>
+            <div v-if="family.placeholder === 'counters'" class="row g-2">
+                <div class="col-6 col-xl-3" v-for="n in 4" :key="n">
+                    <div class="card">
+                        <div class="card-body placeholder-glow">
+                            <span class="placeholder col-7 bg-secondary d-block mb-2"
+                                  style="height: 10px;"></span>
+                            <span class="placeholder col-5 bg-secondary d-block"
+                                  style="height: 20px;"></span>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <div v-else-if="family.placeholder === 'table'" class="border rounded-3 p-3">
-                <table class="table align-middle placeholder-glow mb-0">
-                    <thead>
-                    <tr>
-                        <th v-for="n in 4" :key="n">
-                            <span class="placeholder col-8 bg-primary opacity-50"></span>
-                        </th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    <tr v-for="n in 6" :key="n">
-                        <td v-for="c in 4" :key="c">
-                            <span class="placeholder col-10 bg-secondary"></span>
-                        </td>
-                    </tr>
-                    </tbody>
-                </table>
+            <!-- Таблица: card-table, как у настоящего виджета -->
+            <div v-else-if="family.placeholder === 'table'" class="card">
+                <div class="card-header">
+                    <span class="placeholder bg-secondary col-3"></span>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-vcenter card-table placeholder-glow">
+                        <thead>
+                        <tr>
+                            <th v-for="n in 4" :key="n">
+                                <span class="placeholder col-8 bg-secondary"></span>
+                            </th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr v-for="n in 6" :key="n">
+                            <td v-for="c in 4" :key="c">
+                                <span class="placeholder col-10 bg-secondary"></span>
+                            </td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
-            <div v-else-if="family.placeholder === 'circle'" class="border rounded-3 p-4 d-flex flex-column align-items-center placeholder-glow">
-                <span class="placeholder rounded-circle bg-secondary mb-4" style="width: 160px; height: 160px;"></span>
-                <div class="d-flex flex-wrap justify-content-center gap-3 w-100" style="max-width: 320px;">
-                    <div class="d-flex align-items-center gap-2" v-for="n in 4" :key="n">
-                        <span class="placeholder rounded-circle bg-secondary" style="width: 10px; height: 10px;"></span>
-                        <span class="placeholder bg-secondary" style="width: 60px; height: 8px;"></span>
+            <!-- Круговые: кольцо и легенда сбоку, как рисует ApexCharts -->
+            <div v-else-if="family.placeholder === 'circle'" class="card">
+                <div class="card-body placeholder-glow">
+                    <div class="row align-items-center g-4">
+                        <div class="col-auto mx-auto">
+                            <div class="placeholder-donut placeholder"></div>
+                        </div>
+                        <div class="col">
+                            <div v-for="n in 4" :key="n" class="d-flex align-items-center gap-2 mb-2">
+                                <span class="placeholder rounded-circle bg-secondary flex-shrink-0"
+                                      style="width: 10px; height: 10px;"></span>
+                                <span class="placeholder bg-secondary" :class="`col-${[7, 5, 8, 6][n - 1]}`"></span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <div v-else-if="family.placeholder === 'bars'" class="border rounded-3 p-3 placeholder-glow">
-                <div class="d-flex align-items-end gap-2" style="height: 220px;">
-                    <span
-                        v-for="n in 8"
-                        :key="n"
-                        class="placeholder bg-secondary rounded-1 flex-fill"
-                        :style="{ height: (30 + (n % 5) * 12) + '%' }"
-                    ></span>
+            <!-- Столбцы: с осью значений и подписями категорий -->
+            <div v-else-if="family.placeholder === 'bars'" class="card">
+                <div class="card-body placeholder-glow">
+                    <div class="d-flex" style="height: 240px;">
+                        <div class="d-flex flex-column justify-content-between pe-2" style="width: 34px;">
+                            <span v-for="n in 5" :key="n" class="placeholder bg-secondary"
+                                  style="height: 7px;"></span>
+                        </div>
+                        <div class="flex-fill border-start border-bottom d-flex align-items-end gap-2 px-2 pb-0">
+                            <span
+                                v-for="n in 8"
+                                :key="n"
+                                class="placeholder bg-secondary rounded-top flex-fill"
+                                :style="{ height: PLACEHOLDER_BARS[n - 1] + '%' }"
+                            ></span>
+                        </div>
+                    </div>
+                    <div class="d-flex gap-2 mt-2" style="padding-left: 42px;">
+                        <span v-for="n in 8" :key="n" class="placeholder bg-secondary flex-fill"
+                              style="height: 7px;"></span>
+                    </div>
                 </div>
             </div>
 
-            <div v-else class="border rounded-3 p-3 placeholder-glow">
-                <span class="placeholder bg-secondary rounded-2 d-block" style="width: 100%; height: 240px;"></span>
+            <!-- Линейные и точечные: та же ось, но контур линии -->
+            <div v-else class="card">
+                <div class="card-body placeholder-glow">
+                    <div class="d-flex" style="height: 240px;">
+                        <div class="d-flex flex-column justify-content-between pe-2" style="width: 34px;">
+                            <span v-for="n in 5" :key="n" class="placeholder bg-secondary"
+                                  style="height: 7px;"></span>
+                        </div>
+                        <div class="flex-fill border-start border-bottom position-relative">
+                            <svg class="placeholder-line" viewBox="0 0 100 40" preserveAspectRatio="none"
+                                 aria-hidden="true">
+                                <polyline points="0,32 14,24 28,28 42,14 56,19 70,8 84,13 100,4" />
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="d-flex gap-2 mt-2" style="padding-left: 42px;">
+                        <span v-for="n in 6" :key="n" class="placeholder bg-secondary flex-fill"
+                              style="height: 7px;"></span>
+                    </div>
+                </div>
             </div>
         </template>
     </div>
@@ -188,3 +244,35 @@ onMounted(async () => {
         <pre style="font-size: 0.75rem; color: #666;">{{ JSON.stringify(contentWidget, null, 2) }}</pre>
     </div>
 </template>
+
+<style scoped>
+/*
+ * Заглушки повторяют форму настоящего виджета: кольцо для круговых,
+ * контур линии для линейных. Цвета берутся из переменных Tabler,
+ * поэтому заглушка следует за темой так же, как готовый виджет.
+ */
+.placeholder-donut {
+    width: 150px;
+    height: 150px;
+    border-radius: 50%;
+    /* Кольцо, а не круг: круговые виджеты по умолчанию рисуются донатом. */
+    -webkit-mask: radial-gradient(circle, transparent 52%, #000 53%);
+    mask: radial-gradient(circle, transparent 52%, #000 53%);
+}
+
+.placeholder-line {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.placeholder-line polyline {
+    fill: none;
+    stroke: var(--tblr-border-color);
+    stroke-width: 2;
+    vector-effect: non-scaling-stroke;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+</style>

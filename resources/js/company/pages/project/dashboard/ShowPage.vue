@@ -5,8 +5,6 @@ import api from "../../../api.js";
 import WidgetContainer from "../../../components/WidgetContainer.vue";
 import Echo from "laravel-echo";
 import Pusher from "pusher-js";
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
 
 window.Pusher = Pusher;
 
@@ -22,9 +20,83 @@ const widgets = ref([]);
 const error = ref(null);
 const isLoading = ref(false);
 const isRefreshing = ref(false);
-const isExportingPdf = ref(false);
-const isExportingWord = ref(false);
-const exportErrorMsg = ref(null);
+/**
+ * Ручная смена типа отрисовки виджета — см. ChatPage.vue.
+ * Выбор ограничен вариантами того же семейства: данные виджета
+ * посчитаны под его форму.
+ */
+const pendingTypes = ref({});
+const originalTypes = ref({});
+const savingTypes = ref(false);
+const saveTypesError = ref(null);
+
+const hasTypeChanges = computed(() => Object.keys(pendingTypes.value).length > 0);
+
+function typesOf(widget) {
+    return widget?.widget?.types ?? [];
+}
+
+function currentTypeId(widget) {
+    return widget.widget_type_id ?? widget.widget_type?.id ?? null;
+}
+
+function rememberOriginalTypes() {
+    const map = {};
+    for (const w of widgets.value) map[w.id] = currentTypeId(w);
+    originalTypes.value = map;
+    pendingTypes.value = {};
+}
+
+function onTypeChange(widget, typeId) {
+    const id = Number(typeId);
+    const type = typesOf(widget).find(t => t.id === id);
+    if (!type) return;
+
+    widget.widget_type_id = id;
+    widget.widget_type = type;
+
+    if (originalTypes.value[widget.id] === id) {
+        delete pendingTypes.value[widget.id];
+    } else {
+        pendingTypes.value[widget.id] = id;
+    }
+}
+
+async function saveWidgetTypes() {
+    if (savingTypes.value || !hasTypeChanges.value) return;
+
+    savingTypes.value = true;
+    saveTypesError.value = null;
+
+    try {
+        await api.patch(`/dashboards/${currentDashboard.value.id}/widgets`, {
+            widgets: Object.entries(pendingTypes.value).map(([id, widget_type_id]) => ({
+                id: Number(id),
+                widget_type_id,
+            })),
+        });
+        rememberOriginalTypes();
+    } catch (err) {
+        saveTypesError.value =
+            err.response?.data?.message || 'Не удалось сохранить изменения.';
+    } finally {
+        savingTypes.value = false;
+    }
+}
+
+function resetWidgetTypes() {
+    for (const w of widgets.value) {
+        const original = originalTypes.value[w.id];
+        if (original && currentTypeId(w) !== original) {
+            const type = typesOf(w).find(t => t.id === original);
+            if (type) {
+                w.widget_type_id = original;
+                w.widget_type = type;
+            }
+        }
+    }
+    pendingTypes.value = {};
+}
 
 const echo = new Echo({
     broadcaster: "reverb",
@@ -62,6 +134,7 @@ async function getCurrentDashboard() {
         const { data } = await api.get(`/dashboards/${dashboardId.value}`);
         currentDashboard.value = data;
         widgets.value = data.widgets ?? [];
+        rememberOriginalTypes();
     } catch (err) {
         console.error(err);
         error.value = "Не удалось загрузить дашборд";
@@ -84,6 +157,7 @@ async function refreshWidgets() {
 
         widgets.value = data.widgets ?? [];
         currentDashboard.value = data;
+        rememberOriginalTypes();
     } catch (err) {
         console.error("Не удалось обновить виджеты:", err);
     } finally {
@@ -96,24 +170,7 @@ async function onRefreshClick() {
     refreshToken.value = Date.now();
 }
 
-function sanitizeFileName(name) {
-    return (name || "dashboard").replace(/[\\/:*?"<>|]+/g, "_");
-}
 
-/**
- * Утилита с таймаутом: если промис не завершился за ms — кидаем ошибку,
- * чтобы UI никогда не "завис" навечно.
- */
-function withTimeout(promise, ms, label = "operation") {
-    let timer;
-    const timeout = new Promise((_, reject) => {
-        timer = setTimeout(
-            () => reject(new Error(`Превышено время ожидания: ${label}`)),
-            ms
-        );
-    });
-    return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
-}
 
 /**
  * Перед экспортом/печатью проходим по всем потомкам exportArea и снимаем
@@ -171,144 +228,9 @@ function restoreScrollableAreas(restoreList) {
     });
 }
 
-/**
- * Разворачивает скроллящиеся блоки и рендерит exportArea в canvas через
- * html2canvas. Общая точка для PDF и Word — оба экспорта должны видеть
- * дашборд как растровую картинку, а не как живой DOM с SVG от ApexCharts
- * (см. комментарий в exportToWord, почему это важно).
- */
-async function renderDashboardCanvas() {
-    const restoreList = expandScrollableAreas(exportArea.value);
-
-    try {
-        // Ждём кадр, чтобы браузер применил стили и графики успели перерисоваться
-        await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 50)));
-
-        return await withTimeout(
-            html2canvas(exportArea.value, {
-                // На дашбордах с десятками виджетов html2canvas и так рендерит
-                // долго и блокирует вкладку; retina-scale x2 удваивал время почти
-                // без заметной пользы на итоговой картинке, поэтому ограничиваем 1.5.
-                scale: Math.min(window.devicePixelRatio || 1, 1.5),
-                useCORS: true,
-                allowTaint: false,
-                logging: false,
-                imageTimeout: 15000, // не ждать битые/медленные картинки бесконечно
-                backgroundColor: "#ffffff",
-                windowWidth: exportArea.value.scrollWidth,
-                windowHeight: exportArea.value.scrollHeight,
-                width: exportArea.value.scrollWidth,
-                height: exportArea.value.scrollHeight,
-                scrollX: 0,
-                scrollY: 0,
-            }),
-            45000,
-            "рендер дашборда"
-        );
-    } finally {
-        restoreScrollableAreas(restoreList);
-    }
-}
-
-// --- ЭКСПОРТ В PDF (html2canvas + jsPDF, полностью на клиенте) ---
-async function exportToPdf() {
-    if (!exportArea.value) return;
-    if (isExportingPdf.value) return;
-
-    isExportingPdf.value = true;
-    exportErrorMsg.value = null;
-
-    try {
-        const canvas = await renderDashboardCanvas();
-        const imgData = canvas.toDataURL("image/png");
-
-        const pdf = new jsPDF({
-            orientation: canvas.width > canvas.height ? "landscape" : "portrait",
-            unit: "px",
-            format: [canvas.width, canvas.height],
-        });
-
-        pdf.addImage(imgData, "PNG", 0, 0, canvas.width, canvas.height);
-
-        const fileName = `${sanitizeFileName(currentDashboard.value.name)}.pdf`;
-        pdf.save(fileName);
-    } catch (err) {
-        console.error("Ошибка экспорта в PDF:", err);
-        exportErrorMsg.value = "Не удалось экспортировать в PDF. Попробуйте ещё раз.";
-    } finally {
-        isExportingPdf.value = false;
-    }
-}
-
-// --- ЭКСПОРТ В WORD ---
-// ВАЖНО: раньше сюда шёл живой innerHTML дашборда (включая SVG от ApexCharts).
-// ApexCharts рисует атрибуты вида "data:realIndex"/"data:collapsed" — валидные
-// для HTML5, но с двоеточием, которое строгий XML/OOXML-парсер Word трактует
-// как необъявленный namespace-префикс, и Word показывал файл как повреждённый.
-// Теперь дашборд рендерится в PNG (тем же html2canvas, что и PDF) и вставляется
-// одной картинкой — сырого SVG в документе больше нет.
-async function exportToWord() {
-    if (!exportArea.value) return;
-    if (isExportingWord.value) return;
-
-    isExportingWord.value = true;
-    exportErrorMsg.value = null;
-
-    try {
-        const canvas = await renderDashboardCanvas();
-        const imgData = canvas.toDataURL("image/png");
-        const dashboardName = currentDashboard.value.name ?? "Dashboard";
-
-        const htmlDocument = `
-            <html xmlns:o="urn:schemas-microsoft-com:office:office"
-                  xmlns:w="urn:schemas-microsoft-com:office:word"
-                  xmlns="http://www.w3.org/TR/REC-html40">
-            <head>
-                <meta charset="utf-8">
-                <title>${dashboardName}</title>
-                <!--[if gte mso 9]>
-                <xml>
-                    <w:WordDocument>
-                        <w:View>Print</w:View>
-                        <w:Zoom>100</w:Zoom>
-                    </w:WordDocument>
-                </xml>
-                <![endif]-->
-                <style>
-                    body { font-family: Arial, sans-serif; }
-                    h1 { color: #1a1a1a; }
-                    img { width: 100%; }
-                </style>
-            </head>
-            <body>
-                <h1>${dashboardName}</h1>
-                <img src="${imgData}" alt="${dashboardName}" />
-            </body>
-            </html>
-        `;
-
-        const blob = new Blob(["\ufeff", htmlDocument], {
-            type: "application/msword",
-        });
-
-        const url = window.URL.createObjectURL(blob);
-        const fileName = `${sanitizeFileName(currentDashboard.value.name)}.doc`;
-
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-
-        window.URL.revokeObjectURL(url);
-    } catch (err) {
-        console.error("Ошибка экспорта в Word:", err);
-        exportErrorMsg.value = "Не удалось экспортировать в Word. Попробуйте ещё раз.";
-    } finally {
-        isExportingWord.value = false;
-    }
-}
+// Экспорт в PDF и Word убран: он рендерил дашборд в картинку через
+// html2canvas, из-за чего в файл уходило изображение вместо текста.
+// Печать оставлена — она использует штатный вывод браузера.
 
 let printRestoreList = [];
 
@@ -338,8 +260,10 @@ function subscribeToDashboardChannel() {
     echo.channel(currentChannelName)
         .listen(".DashboardWidgetChanged", (e) => {
             console.log("--- РЕАЛТАЙМ ИЗМЕНЕНИЕ ДАШБОРДА ПОЙМАНО ---", e);
+
+            // См. ChatPage.vue: только структура. Данные перезапросит сам
+            // WidgetContainer, и только у виджетов с изменившимся updated_at.
             refreshWidgets();
-            refreshToken.value = Date.now();
         });
 }
 
@@ -404,18 +328,32 @@ onUnmounted(() => {
             <div class="container-xl">
                 <div class="row g-2 align-items-center">
                     <div class="col">
-                        <h1 v-if="currentDashboard?.name" class="page-title">
+                        <h2 v-if="currentDashboard?.name" class="page-title">
                             {{ currentDashboard.name }}
-                        </h1>
+                        </h2>
                     </div>
 
                     <div class="col-auto ms-auto d-print-none">
                         <div class="d-flex align-items-center gap-2 flex-wrap">
 
+                            <!-- Появляется, как только изменён тип хотя бы одного
+                                 виджета: превью меняется сразу, в базу — отсюда. -->
+                            <template v-if="hasTypeChanges">
+                                <button class="btn btn-link link-secondary" type="button"
+                                        :disabled="savingTypes" @click="resetWidgetTypes">
+                                    Отменить
+                                </button>
+                                <button class="btn btn-primary" type="button"
+                                        :class="{ 'btn-loading': savingTypes }"
+                                        :disabled="savingTypes" @click="saveWidgetTypes">
+                                    Сохранить
+                                </button>
+                            </template>
+
                             <!-- КНОПКА ОБНОВЛЕНИЯ -->
                             <button
                                 v-if="currentDashboard?.id"
-                                class="btn btn-outline-primary"
+                                class="btn"
                                 type="button"
                                 title="Обновить дашборд"
                                 @click="onRefreshClick"
@@ -440,74 +378,10 @@ onUnmounted(() => {
                                 {{ isRefreshing ? "Обновление..." : "Обновить" }}
                             </button>
 
-                            <!-- ЭКСПОРТ В PDF -->
-                            <button
-                                v-if="currentDashboard?.id"
-                                class="btn btn-outline-secondary"
-                                type="button"
-                                title="Экспорт в PDF"
-                                @click="exportToPdf"
-                                :disabled="isExportingPdf"
-                            >
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    width="18"
-                                    height="18"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                    class="icon me-2"
-                                    :class="{ 'icon-spin': isExportingPdf }"
-                                >
-                                    <path d="M14 3v4a1 1 0 0 0 1 1h4" />
-                                    <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2z" />
-                                    <path d="M9 9l1 0" />
-                                    <path d="M9 13l6 0" />
-                                    <path d="M9 17l6 0" />
-                                </svg>
-
-                                {{ isExportingPdf ? "Экспорт..." : "PDF" }}
-                            </button>
-
-                            <!-- ЭКСПОРТ В WORD -->
-                            <button
-                                v-if="currentDashboard?.id"
-                                class="btn btn-outline-secondary"
-                                type="button"
-                                title="Экспорт в Word"
-                                @click="exportToWord"
-                                :disabled="isExportingWord"
-                            >
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    width="18"
-                                    height="18"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                    class="icon me-2"
-                                    :class="{ 'icon-spin': isExportingWord }"
-                                >
-                                    <path d="M14 3v4a1 1 0 0 0 1 1h4" />
-                                    <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2z" />
-                                    <path d="M9 9l1 0" />
-                                    <path d="M9 13l6 0" />
-                                    <path d="M9 17l6 0" />
-                                </svg>
-
-                                {{ isExportingWord ? "Экспорт..." : "Word" }}
-                            </button>
-
                             <!-- ПЕЧАТЬ -->
                             <button
                                 v-if="currentDashboard?.id"
-                                class="btn btn-outline-secondary"
+                                class="btn"
                                 type="button"
                                 title="Печать"
                                 @click="printDashboard"
@@ -541,45 +415,31 @@ onUnmounted(() => {
         <div class="container-xl">
 
             <div
-                v-if="exportErrorMsg"
+                v-if="saveTypesError"
                 class="alert alert-danger d-print-none"
                 role="alert"
             >
-                {{ exportErrorMsg }}
+                {{ saveTypesError }}
             </div>
 
-            <div
-                v-if="error"
-                class="d-flex align-items-center justify-content-center"
-                style="min-height: 60vh;"
-            >
-                <div class="text-center">
-                    <img
-                        :src="empty_img"
-                        alt="chart"
-                        class="img-fluid d-block mx-auto mb-4"
-                        style="max-width: 270px; width: 100%;"
-                    >
-                    <h3 class="mb-2">{{ error }}</h3>
+            <!-- См. ChatPage.vue: пустые состояния на штатном .empty. -->
+            <div v-if="error" class="empty">
+                <div class="empty-img">
+                    <img :src="empty_img" alt="" height="128" />
                 </div>
+                <p class="empty-title">{{ error }}</p>
             </div>
 
-            <div
-                v-else-if="currentDashboard.status === 'generating_scheme'"
-                class="d-flex align-items-center justify-content-center"
-                style="min-height: 60vh;"
-            >
-                <div class="text-center">
-                    <img
-                        :src="generate_img"
-                        alt="generating"
-                        class="img-fluid d-block mx-auto mb-4"
-                        style="max-width: 270px; width: 100%;"
-                    >
-                    <div class="text-secondary mb-3">Генерация дашборда...</div>
-                    <div class="progress progress-sm">
-                        <div class="progress-bar progress-bar-indeterminate"></div>
-                    </div>
+            <div v-else-if="currentDashboard.status === 'generating_scheme'" class="empty">
+                <div class="empty-img">
+                    <img :src="generate_img" alt="" height="128" />
+                </div>
+                <p class="empty-title">Генерируем дашборд</p>
+                <p class="empty-subtitle text-secondary">
+                    Подбираем виджеты под ваш запрос.
+                </p>
+                <div class="progress progress-sm w-50">
+                    <div class="progress-bar progress-bar-indeterminate"></div>
                 </div>
             </div>
 
@@ -589,10 +449,23 @@ onUnmounted(() => {
                     <div
                         v-for="widget in widgets"
                         :key="widgetKey(widget)"
-                        class="row row-cards widgets-content"
+                        class="row row-cards widgets-content mb-3"
                     >
-                        <div class="col-12 mt-4">
-                            <h3 class="h3">{{ widget.title }}</h3>
+                        <div class="col-12">
+                            <div class="d-flex align-items-center mb-2">
+                                <h3 class="mb-0 flex-fill">{{ widget.title }}</h3>
+                                <select
+                                    v-if="typesOf(widget).length > 1"
+                                    class="form-select form-select-sm w-auto ms-2 d-print-none"
+                                    :value="currentTypeId(widget)"
+                                    :aria-label="`Тип виджета «${widget.title}»`"
+                                    @change="onTypeChange(widget, $event.target.value)"
+                                >
+                                    <option v-for="type in typesOf(widget)" :key="type.id" :value="type.id">
+                                        {{ type.title || type.name }}
+                                    </option>
+                                </select>
+                            </div>
 
                             <WidgetContainer
                                 :widget="widget"

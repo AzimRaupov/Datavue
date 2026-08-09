@@ -1,132 +1,91 @@
 <template>
+    <!--
+      Разметка на штатных компонентах Tabler: card-table, table-vcenter,
+      table-sort, pagination. Раньше здесь были инлайновые стили с
+      захардкоженными цветами (#1e293b, #e2e8f0, #64748b), из-за чего виджет
+      не реагировал на переключение темы и выпадал из общего вида — шрифты и
+      отступы у него были свои.
+    -->
     <div class="card">
-        <div class="card-header d-flex align-items-center justify-content-between py-3 px-4 bg-transparent border-bottom">
-            <h3 class="card-title m-0" style="font-size: 1.1rem; font-weight: 600; color: #1e293b;">
-                Таблица данных
-            </h3>
-            <div class="search-box" style="position: relative; max-width: 300px; width: 100%;">
-                <input
-                    v-model="searchQuery"
-                    type="text"
-                    class="table-search"
-                    placeholder="Поиск..."
-                    style="
-                        width: 100%;
-                        padding: 0.5rem 0.75rem;
-                        font-size: 0.875rem;
-                        border: 1px solid #e2e8f0;
-                        border-radius: 6px;
-                        outline: none;
-                        transition: border-color 0.2s, box-shadow 0.2s;
-                    "
-                    @focus="$event.target.style.borderColor='#a5b4fc'; $event.target.style.boxShadow='0 0 0 3px rgba(165, 180, 252, 0.2)'"
-                    @blur="$event.target.style.borderColor='#e2e8f0'; $event.target.style.boxShadow='none'"
-                >
+        <div class="card-header">
+            <h3 class="card-title">Таблица данных</h3>
+            <div class="card-actions">
+                <div class="input-icon">
+                    <span class="input-icon-addon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                             stroke-linejoin="round" class="icon">
+                            <path d="M10 10m-7 0a7 7 0 1 0 14 0a7 7 0 1 0 -14 0" />
+                            <path d="M21 21l-6 -6" />
+                        </svg>
+                    </span>
+                    <input v-model="searchQuery" type="text" class="form-control form-control-sm"
+                           placeholder="Поиск…" aria-label="Поиск по таблице" />
+                </div>
             </div>
         </div>
 
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table
-                    class="table"
-                    :class="{ 'table-striped': isStriped, 'table-sm': isCompact }"
-                    style="margin-bottom: 0; width: 100%;"
-                >
-                    <thead>
-                    <tr>
-                        <th v-for="(header, index) in tableData.headers" :key="index" style="padding: 0;">
-                            <button
-                                class="table-sort"
-                                style="
-                                        background: none;
-                                        border: none;
-                                        padding: 0.75rem 1rem;
-                                        font-weight: 600;
-                                        font-size: 0.85rem;
-                                        color: #64748b;
-                                        cursor: pointer;
-                                        text-align: left;
-                                        width: 100%;
-                                        display: flex;
-                                        align-items: center;
-                                        justify-content: space-between;
-                                    "
-                                @click="handleSort(index)"
-                            >
-                                {{ header }}
-                                <span
-                                    class="sort-icon"
-                                    :style="{ opacity: sortColumn === index ? '1' : '0.3', marginLeft: '0.5rem', fontSize: '0.7rem' }"
-                                >
-                                        {{ sortColumn === index ? (sortOrder === 'asc' ? '↑' : '↓') : '↕' }}
-                                    </span>
-                            </button>
-                        </th>
-                    </tr>
-                    </thead>
-                    <tbody class="table-tbody">
-                    <tr v-for="(row, rowIndex) in paginatedRows" :key="rowIndex" class="table-row">
-                        <td
-                            v-for="(cell, cellIndex) in row"
-                            :key="cellIndex"
-                            class="format-number"
-                            :style="{
-                                padding: cellPadding,
-                                fontSize: cellFontSize,
-                                color: '#334155',
-                                borderBottom: '1px solid #f1f5f9',
-                            }"
+        <div class="table-responsive">
+            <table
+                class="table table-vcenter card-table"
+                :class="{ 'table-striped': isStriped, 'table-sm': isCompact }"
+            >
+                <thead>
+                <tr>
+                    <th v-for="(header, index) in tableData.headers" :key="index">
+                        <!-- .table-sort сам рисует стрелку и её направление
+                             по классам asc/desc — свои значки не нужны. -->
+                        <button
+                            class="table-sort"
+                            :class="sortColumn === index ? (sortOrder === 'asc' ? 'asc' : 'desc') : ''"
+                            @click="handleSort(index)"
                         >
-                            {{ cell }}
-                        </td>
-                    </tr>
-                    <tr v-if="filteredRows.length === 0">
-                        <td :colspan="tableData.headers.length || 1" class="text-center py-4 text-muted">
-                            Ничего не найдено
-                        </td>
-                    </tr>
-                    </tbody>
-                </table>
-            </div>
+                            {{ header }}
+                        </button>
+                    </th>
+                </tr>
+                </thead>
+                <tbody class="table-tbody">
+                <tr v-for="(row, rowIndex) in paginatedRows" :key="rowIndex">
+                    <td v-for="(cell, cellIndex) in row" :key="cellIndex" class="format-number">
+                        {{ cell }}
+                    </td>
+                </tr>
+                <tr v-if="filteredRows.length === 0">
+                    <td :colspan="tableData.headers.length || 1" class="text-center text-secondary py-4">
+                        Ничего не найдено
+                    </td>
+                </tr>
+                </tbody>
+            </table>
         </div>
 
-        <div class="card-footer d-flex align-items-center justify-content-between py-3 px-4 bg-transparent border-top" style="border-top: 1px solid #f1f5f9;">
-            <div class="pagination-info" style="font-size: 0.85rem; color: #64748b;">
-                Показано {{ shownStart }}-{{ shownEnd }} из {{ filteredRows.length }}
-            </div>
+        <div class="card-footer d-flex align-items-center">
+            <p class="m-0 text-secondary">
+                Показано <span class="fw-bold">{{ shownStart }}-{{ shownEnd }}</span>
+                из <span class="fw-bold">{{ filteredRows.length }}</span>
+            </p>
 
-            <div class="pagination-buttons btn-group" style="display: flex; gap: 0.25rem;">
-                <button
-                    v-if="currentPage > 1"
-                    type="button"
-                    class="btn btn-white"
-                    style="padding: 6px 12px; font-size: 14px; border-radius: 6px;"
-                    @click="currentPage--"
-                >
-                    &larr;
-                </button>
-
-                <button
+            <ul class="pagination pagination-sm m-0 ms-auto">
+                <li class="page-item" :class="{ disabled: currentPage === 1 }">
+                    <button class="page-link" :disabled="currentPage === 1" @click="currentPage--">
+                        Назад
+                    </button>
+                </li>
+                <li
                     v-for="page in visiblePages"
                     :key="page"
-                    type="button"
-                    :class="['btn', currentPage === page ? 'btn-primary' : 'btn-white']"
-                    style="padding: 6px 12px; font-size: 14px; border-radius: 6px;"
-                    @click="currentPage = page"
+                    class="page-item"
+                    :class="{ active: currentPage === page }"
                 >
-                    {{ page }}
-                </button>
-
-                <button
-                    v-if="currentPage < totalPages"
-                    type="button"
-                    class="btn btn-white"
-                    style="padding: 6px 12px; font-size: 14px; border-radius: 6px;"
-                    @click="currentPage++"
-                >
-                    &rarr;
-                </button>
-            </div>
+                    <button class="page-link" @click="currentPage = page">{{ page }}</button>
+                </li>
+                <li class="page-item" :class="{ disabled: currentPage >= totalPages }">
+                    <button class="page-link" :disabled="currentPage >= totalPages" @click="currentPage++">
+                        Вперёд
+                    </button>
+                </li>
+            </ul>
         </div>
     </div>
 </template>
@@ -151,8 +110,8 @@ const props = defineProps({
 
 const isStriped = computed(() => props.options.striped === true)
 const isCompact = computed(() => props.options.compact === true)
-const cellPadding = computed(() => (isCompact.value ? "0.45rem 0.75rem" : "1rem"))
-const cellFontSize = computed(() => (isCompact.value ? "0.8rem" : "0.875rem"))
+// Отступы и размер шрифта в ячейках задаёт сам Tabler через .table-sm —
+// считать их вручную больше не нужно.
 
 // Плотный вид берут, когда строк много — показываем их больше за страницу.
 const ITEMS_PER_PAGE = computed(() => (isCompact.value ? 12 : 5))

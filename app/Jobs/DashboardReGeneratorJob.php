@@ -38,6 +38,14 @@ class DashboardReGeneratorJob implements ShouldQueue
      */
     public function handle(): void
     {
+        \App\Helpers\Ai\AiUsageContext::set(
+            \App\Models\AiChat::query()->whereKey($this->chatId)->value('company_id'),
+            $this->chatId,
+            $this->messageId,
+            're_generate_dashboard'
+        );
+
+        try {
         $d = null;
 
         try {
@@ -121,6 +129,10 @@ class DashboardReGeneratorJob implements ShouldQueue
             }
 
             throw $e;
+        }
+        } finally {
+            // Воркер долгоживущий — контекст обязан сбрасываться.
+            \App\Helpers\Ai\AiUsageContext::clear();
         }
     }
 }

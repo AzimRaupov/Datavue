@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Chat;
 
 use App\Events\MessageTasksChanged;
+use App\Helpers\Ai\AiUsage;
 use App\Helpers\Task\RouterTask;
 use App\Http\Controllers\Controller;
 use App\Jobs\RouterTaskJob;
@@ -48,6 +49,23 @@ class MessageController extends Controller
             ->where('id', $request->chat_id)
             ->where('company_id', $user->company->id)
             ->firstOrFail();
+
+        // Лимит проверяем ДО создания сообщения: каждое сообщение запускает
+        // цепочку запросов к модели, то есть прямой расход. Иначе компания
+        // с исчерпанным бюджетом продолжала бы тратить, а пользователь видел
+        // бы молча падающие задачи.
+        if (AiUsage::limitReached($user->company)) {
+            $summary = AiUsage::summary($user->company);
+
+            return response()->json([
+                'message' => sprintf(
+                    'Исчерпан месячный лимит на ИИ: израсходовано %s из %s токенов. Лимит обновится в начале месяца.',
+                    number_format($summary['used'], 0, '.', ' '),
+                    number_format($summary['limit'], 0, '.', ' ')
+                ),
+                'usage' => $summary,
+            ], 429);
+        }
 
         $message = AiChatMessage::create([
             'chat_id' => $chat->id,

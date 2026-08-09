@@ -42,6 +42,14 @@ class ReviewWidgetsDashboardJob implements ShouldQueue
      */
     public function handle(): void
     {
+        \App\Helpers\Ai\AiUsageContext::set(
+            \App\Models\Dashboard::query()->whereKey($this->dashboardId)->value('company_id'),
+            \App\Models\Dashboard::query()->whereKey($this->dashboardId)->value('chat_id'),
+            $this->messageId,
+            'review_widgets'
+        );
+
+        try {
         $review=new ReviewWidgetsDashboard($this->dashboard->id,$this->dataSourceId);
         $resultReview = $review->review($review->dataSource, $review->dashboard_widgets);
 
@@ -72,5 +80,9 @@ class ReviewWidgetsDashboardJob implements ShouldQueue
             event(new DashboardWidgetChanged($this->dashboard));
         }
 
+        } finally {
+            // Воркер долгоживущий — контекст обязан сбрасываться.
+            \App\Helpers\Ai\AiUsageContext::clear();
+        }
     }
 }

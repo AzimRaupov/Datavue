@@ -47,9 +47,20 @@ class AIService
         $decoded = json_decode($response, true);
         $text = $decoded['choices'][0]['message']['content'] ?? '';
 
+        // Учёт расхода — здесь, а не в вызывающих классах: через ask() проходят
+        // все обращения к модели (роутер задач, генерация и починка виджетов,
+        // группировка схемы, подбор вариантов), поэтому мимо учёта не пройдёт
+        // ни один вызов, включая те, что появятся позже.
+        AiUsage::record(
+            (int) ($decoded['usage']['total_tokens'] ?? 0),
+            $this->model
+        );
+
         if ($this->responseFormat === 'text') {
             return [
-                'total_tokens'=> $decoded['usage']['total_tokens'],
+                // ?? 0 обязателен: при ошибке или обрыве ответа блока usage
+                // может не быть вовсе, и обращение к нему валило весь запрос.
+                'total_tokens'=> $decoded['usage']['total_tokens'] ?? 0,
                 'content'=> $text,
             ];
         }
