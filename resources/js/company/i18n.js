@@ -14,6 +14,7 @@ const messages = {
             generating_widget_instructions: 'Планирование виджетов',
             review_and_correction_widgets: 'Проверка виджетов',
             response_in_chat: 'Подготовка ответа',
+            export_data: 'Выгрузка в файл',
         },
 
         chatPage: {
@@ -40,6 +41,7 @@ const messages = {
             generating_widget_instructions: 'Planning widgets',
             review_and_correction_widgets: 'Checking widgets',
             response_in_chat: 'Preparing answer',
+            export_data: 'Exporting to file',
         },
 
         chatPage: {
@@ -66,6 +68,7 @@ const messages = {
             generating_widget_instructions: 'Банақшагирии виҷетҳо',
             review_and_correction_widgets: 'Санҷиши виҷетҳо',
             response_in_chat: 'Омодасозии ҷавоб',
+            export_data: 'Содирот ба файл',
         },
 
         chatPage: {

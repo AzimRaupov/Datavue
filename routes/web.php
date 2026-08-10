@@ -138,6 +138,13 @@ Route::get('/test',function(){
 //    dd($router->define());
 
 });
+// Скачивание файла, который агент сформировал по просьбе в чате.
+// Обязательно ВЫШЕ catch-all маршрутов ниже: иначе '/{any}' перехватит адрес
+// и вместо файла отдаст SPA.
+Route::get('/exports/{token}', [\App\Http\Controllers\Chat\ExportController::class, 'download'])
+    ->name('chat-exports.download')
+    ->where('token', '[A-Za-z0-9]+');
+
 Route::view('/admin', 'admin');
 Route::view('/admin/{any}', 'admin')->where('any', '.*');
 

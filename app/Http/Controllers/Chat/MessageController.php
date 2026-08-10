@@ -28,7 +28,7 @@ class MessageController extends Controller
             ->whereHas('chat', function ($query) use ($user) {
                 $query->where('company_id', $user->company->id);
             })
-            ->with(['tasks.status','tasks.task'])
+            ->with(['tasks.status','tasks.task','exports'])
             ->orderBy('created_at')
             ->get();
 
@@ -78,7 +78,9 @@ class MessageController extends Controller
         // попросить новый дашборд по другой теме, даже если для этого чата уже
         // есть один. "re_generate_dashboard" осмысленен, только если дашборд
         // (хотя бы один) уже существует — иначе регенерировать нечего.
-        $taskNames = ['response_in_chat', 'generate_dashboard'];
+        // "export_data" тоже доступен всегда: выгрузить данные в файл можно
+        // и до того, как построен хотя бы один дашборд.
+        $taskNames = ['response_in_chat', 'generate_dashboard', 'export_data'];
 
         $dashboard_count = Dashboard::query()->where('chat_id', $chat->id)->count();
         if ($dashboard_count > 0) {

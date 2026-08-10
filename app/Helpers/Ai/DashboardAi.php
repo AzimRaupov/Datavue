@@ -2,10 +2,7 @@
 
 namespace App\Helpers\Ai;
 
-use App\Helpers\Ai\Providers\DuckDbProviderAi;
-use App\Helpers\Ai\Providers\MysqlProviderAi;
-use App\Helpers\Ai\Providers\PostgresProviderAi;
-use App\Helpers\Ai\Providers\SqliteProviderAi;
+use App\Helpers\Ai\Providers\ProviderAiFactory;
 use App\Models\DataSourceGroup;
 use Illuminate\Support\Collection;
 use RuntimeException;
@@ -17,19 +14,10 @@ class DashboardAi
 
     public function __construct($dataSource)
     {
-        $type = $dataSource->type->name ?? null;
-
-        // Раньше при незнакомом типе providerAi оставался null, и падало это
-        // позже, внутри генерации кода виджета, без указания на причину.
-        $this->providerAi = match ($type) {
-            'duckdb' => new DuckDbProviderAi(),
-            'mysql' => new MysqlProviderAi(),
-            'postgres' => new PostgresProviderAi(),
-            'sqlite' => new SqliteProviderAi(),
-            default => throw new RuntimeException(
-                "DashboardAi: нет генератора кода для источника типа '{$type}'"
-            ),
-        };
+        // При незнакомом типе фабрика падает сразу и по делу — раньше
+        // providerAi молча оставался null, и ошибка всплывала позже,
+        // внутри генерации кода виджета, без указания на причину.
+        $this->providerAi = ProviderAiFactory::for($dataSource);
     }
 
     public function reViewErrorsWidget($data)

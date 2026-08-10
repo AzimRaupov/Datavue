@@ -7,6 +7,7 @@ use App\Helpers\Ai\ChatAgentAi;
 use App\Helpers\Ai\DefineTaskAi;
 use App\Helpers\Chat\ChatContext;
 use App\Helpers\DataSource\DataSourceGrouping;
+use App\Jobs\ChatExportJob;
 use App\Jobs\DashboardGeneratorJob;
 use App\Jobs\DashboardReGeneratorJob;
 use App\Models\AiChat;
@@ -150,6 +151,22 @@ class RouterTask
 
                 return;
             }
+        }
+
+        if ($task === 'export_data') {
+            if (!$this->dataSource) {
+                $this->respondInChat('К этому чату не подключён источник данных, поэтому выгружать нечего. Подключите базу данных или загрузите файл — и я подготовлю выгрузку.');
+
+                return;
+            }
+
+            dispatch(new ChatExportJob(
+                $this->currentMessage->chat_id,
+                $this->currentMessage->id,
+                $this->resultDefine['content']['task_instruction'] ?? $this->currentMessage->message
+            ));
+
+            return;
         }
 
         if ($task === 'generate_dashboard') {

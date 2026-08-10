@@ -40,6 +40,14 @@ class AiChatMessage extends Model
     {
         return $this->hasMany(AiChatTask::class, 'message_id');
     }
+
+    /**
+     * Файлы, сформированные в ответ на это сообщение.
+     */
+    public function exports(): HasMany
+    {
+        return $this->hasMany(ChatExport::class, 'message_id');
+    }
     /**
      * Get the AI chat that owns the message.
      */

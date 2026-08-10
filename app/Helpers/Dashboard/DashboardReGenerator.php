@@ -179,6 +179,21 @@ class DashboardReGenerator
 
         $this->operations = $operations;
 
+        // Единственная запись о том, ЧТО именно решено поменять. Без неё разбор
+        // жалобы «задачи выполнились, а дашборд прежний» упирается в пустоту:
+        // по логам не отличить «модель ничего не вернула» от «операции не
+        // применились».
+        Log::info('DashboardReGenerator: operations decided', [
+            'dashboard_id' => $this->dashboard->id ?? null,
+            'message_id' => $this->message->id ?? null,
+            'instruction' => $instruction,
+            'operations' => array_map(fn ($operation) => [
+                'type' => $operation['operation_type'] ?? null,
+                'widget_id' => $operation['widget_id'] ?? null,
+                'position' => $operation['position'] ?? null,
+                'title' => $operation['title'] ?? null,
+            ], $operations),
+        ]);
 
         $task->status_id = $this->tasks_statuses["completed"];
         $task->save();
@@ -369,6 +384,12 @@ class DashboardReGenerator
                 'title' => $w->title,
                 'instruction' => $w->instruction,
                 'widget_name' => $w->widget?->name,
+                // Вариант отрисовки обязателен и здесь: без него persistWidget
+                // подставлял виджету вариант семейства по умолчанию, и любая
+                // регенерация молча превращала кольцо в круг, а горизонтальные
+                // столбцы — в вертикальные у виджетов, которых никто не просил
+                // менять.
+                'widget_type' => $w->widgetType?->name,
                 'tables' => $w->tables ?? [],
                 'python_code' => ($w->code_path && file_exists($w->code_path))
                     ? file_get_contents($w->code_path)

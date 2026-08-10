@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Chat\ChatController;
+use App\Http\Controllers\Chat\ExportController;
 use App\Http\Controllers\Chat\MessageController;
 use App\Http\Controllers\Dashboard\DashboardController;
 use App\Http\Controllers\DataSource\DataSourceConnectionController;
@@ -64,6 +65,9 @@ Route::middleware(['auth:sanctum', 'active'])->prefix('company')->group(function
     Route::get('messages', [MessageController::class, 'index'])->middleware('permission:view chats');
     Route::get('messages/{message}', [MessageController::class, 'show'])->middleware('permission:view chats');
     Route::post('messages', [MessageController::class, 'store'])->middleware('permission:create chats');
+
+    // Файлы, выгруженные агентом в этом чате.
+    Route::get('exports', [ExportController::class, 'index'])->middleware('permission:view chats');
 
     Route::post('get-widget-content/{id}', [WidgetRunController::class, 'run'])
         ->middleware('permission:view dashboards');

@@ -52,6 +52,31 @@ class DashboardReGeneratorJob implements ShouldQueue
             $d = new DashboardReGenerator($this->dashboardId, $this->chatId, $this->messageId);
 
             $d->determineChanges($this->text);
+
+            // Пустой список операций означает, что модель не поняла запрос.
+            // Раньше работа шла дальше: создавался новый дашборд — точная копия
+            // старого, — все задачи отмечались выполненными, и пользователь
+            // видел «готово» при неизменном экране. Честный отказ полезнее
+            // молчаливого дубля, к тому же он не плодит копии дашбордов.
+            if (empty($d->operations)) {
+                \Log::warning('DashboardReGeneratorJob: no operations, dashboard left unchanged', [
+                    'dashboard_id' => $this->dashboardId,
+                    'message_id' => $this->messageId,
+                    'instruction' => $this->text,
+                ]);
+
+                $d->message->answer = 'Я не понял, что именно нужно изменить на дашборде, и поэтому ничего не трогал. '
+                    ."\n\n".'Напишите чуть конкретнее — какой виджет и что с ним сделать. Например: '
+                    .'«объедини карточки в один виджет вверху и удали второй виджет с карточками» '
+                    .'или «удали виджет «Средний платеж», а его метрику добавь в «Глобальные агрегаты»».';
+                $d->message->status = 'answered';
+                $d->message->save();
+
+                event(new MessageTasksChanged($d->message, null, null));
+
+                return;
+            }
+
             $d->applyChanges();
 
             // Явно вызываем шаги, которые раньше были скрыты внутри applyChanges() —

@@ -228,6 +228,130 @@ PYTHON;
     }
 
     /**
+     * Функция query_df() — тот же запрос, но с именами колонок.
+     *
+     * query() отдаёт голые кортежи: имена колонок теряются вместе с курсором,
+     * и код, который пишет модель, вынужден перечислять их вручную — на длинном
+     * SELECT это регулярно расходится с реальным порядком полей. Для виджета
+     * это терпимо (там результат всё равно раскладывается по схеме), а для
+     * выгрузки в файл имя колонки — это заголовок в готовом документе, который
+     * увидит пользователь.
+     */
+    public function getQueryDataFrameTemplate(): string
+    {
+        $typeName = $this->dataSource->type->name;
+
+        $template = match ($typeName) {
+            'mysql' => $this->getMysqlDataFrameTemplate(),
+            'duckdb' => $this->getDuckDbDataFrameTemplate(),
+            'postgres' => $this->getPostgresDataFrameTemplate(),
+            'sqlite' => $this->getSqliteDataFrameTemplate(),
+            default => throw new RuntimeException(
+                "CodeTemplater: неподдерживаемый тип источника данных '{$typeName}'"
+            ),
+        };
+
+        return str_replace(["\r\n", "\r"], "\n", $template)."\n";
+    }
+
+    private function getMysqlDataFrameTemplate(): string
+    {
+        $host = $this->pyString($this->dataSource->host);
+        $user = $this->pyString($this->dataSource->username);
+        $password = $this->pyString($this->dataSource->password);
+        $database = $this->pyString($this->dataSource->database);
+        $port = (int) ($this->dataSource->port ?: 3306);
+
+        return <<<PYTHON
+def query_df(sql_query, params=None):
+    db = mysql.connector.connect(
+        host={$host},
+        user={$user},
+        password={$password},
+        database={$database},
+        port={$port}
+    )
+    try:
+        cursor = db.cursor()
+        cursor.execute(sql_query, params or ())
+        rows = cursor.fetchall()
+        columns = [column[0] for column in (cursor.description or [])]
+        cursor.close()
+        return pd.DataFrame(rows, columns=columns or None)
+    finally:
+        db.close()
+PYTHON;
+    }
+
+    private function getPostgresDataFrameTemplate(): string
+    {
+        $host = $this->pyString($this->dataSource->host);
+        $user = $this->pyString($this->dataSource->username);
+        $password = $this->pyString($this->dataSource->password);
+        $database = $this->pyString($this->dataSource->database);
+        $port = (int) ($this->dataSource->port ?: 5432);
+
+        return <<<PYTHON
+def query_df(sql_query, params=None):
+    db = psycopg2.connect(
+        host={$host},
+        user={$user},
+        password={$password},
+        dbname={$database},
+        port={$port}
+    )
+    try:
+        cursor = db.cursor()
+        cursor.execute(sql_query, params or None)
+        rows = cursor.fetchall()
+        columns = [column[0] for column in (cursor.description or [])]
+        cursor.close()
+        return pd.DataFrame(rows, columns=columns or None)
+    finally:
+        db.close()
+PYTHON;
+    }
+
+    private function getSqliteDataFrameTemplate(): string
+    {
+        $path = $this->dataSource->extracted->data_path
+            ?? $this->dataSource->path
+            ?? $this->dataSource->database;
+
+        $pathDb = $this->pyString($path);
+
+        return <<<PYTHON
+def query_df(sql_query, params=None):
+    db = sqlite3.connect('file:' + {$pathDb} + '?mode=ro', uri=True)
+
+    try:
+        cursor = db.cursor()
+        cursor.execute(sql_query, params or ())
+        rows = cursor.fetchall()
+        columns = [column[0] for column in (cursor.description or [])]
+        cursor.close()
+        return pd.DataFrame(rows, columns=columns or None)
+    finally:
+        db.close()
+PYTHON;
+    }
+
+    private function getDuckDbDataFrameTemplate(): string
+    {
+        $pathDb = $this->pyString($this->dataSource->extracted->data_path ?? null);
+
+        return <<<PYTHON
+def query_df(sql_query, params=None):
+    db = duckdb.connect({$pathDb})
+
+    try:
+        return db.execute(sql_query, params or ()).fetchdf()
+    finally:
+        db.close()
+PYTHON;
+    }
+
+    /**
      * Плейсхолдер main() — используется только как пример структуры внутри
      * generateFullScript(), который передаётся модели как контекст. Никогда
      * не должен попадать в реально сохраняемый файл.
