@@ -25,11 +25,33 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from common import char_ngrams, normalize  # noqa: E402
+
 HERE = Path(__file__).resolve().parent
 
 SEED = 20260810
-PER_CLASS = 300
-TYPO_SHARE = 0.35  # доля фраз, которые портим опечатками
+
+# Сколько примеров на класс. Классы держим равными: перекос учит модель
+# отвечать самым частым классом, а не разбирать фразу.
+PER_CLASS = 1500
+
+# Сколько диалоговых примеров на класс. Их нельзя делать большинством:
+# реплик вида «давай» в живом чате куда меньше, чем обычных команд, и модель,
+# перекормленная ими, начнёт отвечать по реплике агента, игнорируя пользователя.
+DIALOGUE_PER_CLASS = 600
+
+# Квота на каждый тип диалога (согласие после предложения, отказ, отсылка...).
+# Без неё согласия вытесняют отказы: у них и реплик больше, и контекстов.
+PER_DIALOGUE_TYPE = 160
+
+# Доля обычных фраз, которым контекст не достаётся вовсе. Разговор часто
+# начинается с чистого листа, и на таких сообщениях модель обязана работать
+# ровно так же.
+NO_CONTEXT_SHARE = 0.4
+
+TYPO_SHARE = 0.45  # доля фраз, которые портим опечатками
 
 # ─────────────────────────────────────────────────────────── слоты
 
@@ -67,20 +89,139 @@ TOPICS = [
     "маркетингу", "логистике", "поставщикам",
 ]
 
+# ─────────────────────────────────────────────────── глаголы и обёртки
+#
+# Глаголы вынесены в слоты, а не зашиты в шаблоны. Иначе весь набор — это
+# полтораста скелетов с подставленными существительными, и модель заучивает
+# скелет: «добавь ...» → dashboard. Живой человек говорит «вставь», «нарисуй»,
+# «выведи», «сделай», и на них модель обязана работать так же.
+
+V_ADD = ["добавь", "вставь", "поставь", "создай", "сделай", "нарисуй", "выведи",
+         "покажи на дашборде", "заведи", "построй", "внеси", "прикрути", "добавить"]
+V_REMOVE = ["удали", "убери", "снеси", "выкинь", "убрать", "удалить", "сотри",
+            "избавься от", "не нужен"]
+V_CHANGE = ["измени", "поменяй", "замени", "переделай", "перестрой", "исправь",
+            "поправь", "переключи", "сделай"]
+V_MOVE = ["перенеси", "подвинь", "поставь", "сдвинь", "перемести", "опусти", "подними"]
+V_EXPORT = ["выгрузи", "сохрани", "скачай", "экспортируй", "сформируй", "подготовь",
+            "сделай файл", "скинь", "отправь", "загрузи", "дай файлом", "выгрузить",
+            "сохранить", "оформи"]
+V_SHOW = ["покажи", "выведи", "дай", "перечисли", "назови", "посчитай", "подсчитай"]
+ASK = ["сколько", "какой", "какая", "какие", "что", "почему", "зачем", "где",
+       "когда", "кто", "чем", "насколько"]
+
+# Обёртки: то, чем люди обкладывают команду. Без них каждая фраза начинается
+# с глагола, и модель привыкает смотреть только на первое слово.
+PREFIXES = ["", "", "", "", "а ", "ну ", "слушай, ", "давай ", "можешь ",
+            "можно ", "нужно ", "надо ", "хочу чтобы ты ", "пожалуйста ",
+            "срочно ", "будь добр ", "если можно, ", "мне нужно ", "теперь ",
+            "и ", "ещё ", "потом ", "сначала ", "быстро "]
+SUFFIXES = ["", "", "", "", "", " пожалуйста", " плиз", " срочно", " если можно",
+            " и всё", " спасибо", " заранее спасибо", " ок?", " хорошо?", " можно?"]
+ENDINGS = ["", "", "", ".", "!", "!!", "...", ")", " )"]
+
+# Пользователь называет виджет так, как он подписан на экране, и часто берёт
+# название в кавычки: «"Заказы по странам клиентов" добаф ешё количество».
+WIDGET_TITLES = [
+    "Заказы по странам клиентов",
+    "Топ-10 клиентов по выручке",
+    "Средний чек",
+    "Динамика количества заказов",
+    "Платежи по странам",
+    "Глобальные агрегаты",
+    "Выручка по месяцам",
+    "Воронка продаж",
+    "Цена и расход по клиентам",
+]
+
+# ─────────────────────────────────────────────────── реплики агента (контекст)
+#
+# Последняя фраза предыдущего ответа. Именно она задаёт смысл коротких реплик:
+# «давай» после предложения применить изменения и «давай» после уточняющего
+# вопроса — разные намерения.
+
+# Основная форма контекста — служебное поле агента: короткая каноническая
+# строка «offer <тип> <что предложено>». Одно и то же предложение, как бы
+# агент его ни сформулировал, даёт один и тот же признак.
+CONTEXT_OFFER_DASHBOARD_CANON = ["offer_dashboard"]
+CONTEXT_OFFER_EXPORT_CANON = ["offer_export"]
+CONTEXT_QUESTION_CANON = ["offer_question"]
+CONTEXT_PLAIN_CANON = ["offer_none"]
+
+# Запасная форма — хвост самого ответа агента. Нужна для сообщений, созданных
+# до появления служебного поля, и для ответов не от агента: выгрузка и
+# перестройка дашборда его не заполняют. Без таких примеров в обучении модель
+# на запасном пути увидела бы незнакомый вид контекста.
+CONTEXT_OFFER_DASHBOARD = [
+    # Живые формулировки агента: от первого лица и вопросом. Именно так он
+    # предлагает на самом деле, и именно на них запасной путь спотыкался.
+    "Хочешь, чтобы я подготовил SQL-запросы под твою схему и добавил эти виджеты в дашборд?",
+    "Могу подготовить виджет с более длинной цепочкой этапов. Могу подготовить конфигурацию под ваш выбор.",
+    "Могу добавить динамику по месяцам и топ товаров. Добавить их на дашборд?",
+    "Хотите, я объединю карточки в один блок и уберу дубль?",
+    "Могу перестроить дашборд под эти показатели. Сделать?",
+    "Готов заменить круговую диаграмму на столбчатую — так читается лучше. Поменять?",
+    "Могу убрать виджеты, которые дублируют друг друга. Убрать?",
+    "Если хотите, добавлю фильтр по датам ко всем виджетам.",
+    "Предлагаю объединить карточки в один виджет вверху и убрать дубль. Применить?",
+    "Что можно добавить: график выручки по месяцам, таблицу топ-товаров и воронку продаж. Применить предложенное?",
+    "Виджет со средним чеком дублирует карточки — его стоит удалить. Обновить дашборд?",
+    "Круговая диаграмма на 20 категориях нечитаема, лучше столбчатая. Поменять?",
+    "Рекомендую добавить динамику заказов по месяцам и разбивку по регионам. Добавить эти виджеты?",
+    "Стоит перенести карточки наверх, а таблицу опустить вниз. Сделать так?",
+    "Нашёл два виджета с одной метрикой. Удалить лишний?",
+    "Могу добавить фильтр по датам ко всем виджетам. Применить?",
+]
+
+CONTEXT_OFFER_EXPORT = [
+    "Хочешь, чтобы я подготовил эти данные файлом?",
+    "Могу собрать это в Excel и дать ссылку на скачивание. Подготовить?",
+    "Хотите, выгружу полный список файлом?",
+    "Такой объём удобнее открыть в таблице — могу сделать выгрузку.",
+    "Могу подготовить эти данные файлом — Excel или CSV. Выгрузить?",
+    "Полный список из 340 клиентов удобнее смотреть в файле. Сделать выгрузку?",
+    "Такой отчёт лучше открыть в Excel. Подготовить файл?",
+    "Могу сохранить результат в PDF, чтобы отправить руководителю. Сформировать?",
+]
+
+CONTEXT_OFFER_BUILD = [
+    "Дашборда пока нет. Могу собрать аналитику по продажам. Построить?",
+    "По этим данным хорошо ложится дашборд по клиентам и заказам. Собрать его?",
+    "Готов построить дашборд с выручкой, заказами и топ-клиентами. Начинать?",
+]
+
+CONTEXT_QUESTION = [
+    "За какой период вас интересуют данные?",
+    "Уточните, по всем регионам или только по одному?",
+    "Считать выручку с учётом возвратов или без?",
+    "Какой именно виджет вы имеете в виду — первый или второй?",
+    "По каким клиентам показать: по всем или только активным?",
+    "Вам нужна разбивка по месяцам или по кварталам?",
+]
+
+CONTEXT_PLAIN = [
+    "Всего в базе 122 клиента из 21 страны.",
+    "Выручка за 2024 год составила 3,8 млн — на 12% больше прошлого года.",
+    "На дашборде шесть виджетов: карточки, динамика заказов, продажи по странам, воронка, таблица топ-клиентов и средний чек.",
+    "Готово, файл с выгрузкой можно скачать по ссылке выше.",
+    "Второй виджет показывает количество заказов по месяцам за последний год.",
+    "Данных о сотрудниках в подключённом источнике нет.",
+]
+
 # ─────────────────────────────────────────────────────────── шаблоны
 
 TEMPLATES = {
     "chat": [
-        "сколько {metric}?",
-        "сколько всего {metric}",
+        "{ask} {metric}?",
+        "{ask} всего {metric}",
         "какая динамика {metric_nom}?",
         "как менялись {metric_nom} {period}?",
         "какой месяц был самым прибыльным?",
         "какой {dimension} лучший по {metric_nom}?",
         "есть ли у меня данные {dimension}?",
         "какие данные есть {dimension}?",
-        "покажи {metric} {dimension}",
-        "покажи {metric} {period}",
+        "{show} {metric} {dimension}",
+        "{show} {metric} {period}",
         "что показывает {pointer}?",
         "что означает {pointer}",
         "откуда взялись цифры в {pointer}",
@@ -107,23 +248,43 @@ TEMPLATES = {
         "какие клиенты самые крупные",
         "где просели {metric_nom}",
         "есть ли аномалии в {metric_nom}",
+        "объясни что делает каждый виджет",
+        "объясни что показывает {pointer}",
+        "расскажи про {pointer}",
+        "зачем нужен {pointer}",
+        "какие виджеты видишь и что они показывают",
+        "что можешь рекомендовать что добавить ещё?",
+        "что можно ещё добавить в дашборд?",
+        "что ещё можно добавить по {topic}",
+        "как улучшить дашборд?",
+        "что улучшить в аналитике?",
+        "привет кто ты",
+        "кто ты такой",
+        "ты умеешь работать с {topic}?",
+        "можно ли построить аналитику по {topic}?",
+        "стоит ли что-то убрать с дашборда",
+        "правильно ли считается {metric_nom}",
+        "почему в {pointer} такие цифры",
+        "сравни {pointer} и {pointer}",
+        "что показывает виджет «{widget}»",
+        "откуда данные в виджете «{widget}»",
     ],
     "dashboard": [
-        "добавь {chart} {dimension}",
-        "добавь {chart} с {metric}",
-        "нужен {chart} {dimension}",
-        "сделай {chart} {dimension}",
-        "построй {chart} по {metric_nom}",
-        "выведи {metric} {chart}",
-        "удали {pointer}",
-        "убери {pointer}",
-        "удали {chart} {dimension}",
-        "замени {chart} на график",
-        "поменяй {pointer} на {chart}",
+        "{add} {chart} {dimension}",
+        "{add} {chart} с {metric}",
+        "{add} {chart} {dimension}",
+        "{add} {chart} {dimension}",
+        "{add} {chart} по {metric_nom}",
+        "{add} {chart} с {metric}",
+        "{remove} {pointer}",
+        "{remove} {pointer}",
+        "{remove} {chart} {dimension}",
+        "{change} {chart} на график",
+        "{change} {pointer} на {chart}",
         "сделай {pointer} круговым",
         "разверни {pointer} горизонтально",
-        "перенеси {pointer} вверх",
-        "перенеси {pointer} вниз",
+        "{move} {pointer} вверх",
+        "{move} {pointer} вниз",
         "поставь {pointer} первым",
         "поменяй местами первый и второй виджет",
         "переименуй {pointer}",
@@ -132,7 +293,7 @@ TEMPLATES = {
         "переведи подписи на русский",
         "отсортируй {pointer} по убыванию",
         "отсортируй {chart} по возрастанию",
-        "добавь фильтр по датам",
+        "{add} фильтр по датам",
         "поставь фильтр {dimension}",
         "построй дашборд по {topic}",
         "сделай аналитику по {topic}",
@@ -142,31 +303,62 @@ TEMPLATES = {
         "сгруппируй {metric} {dimension} и покажи графиком",
         "объедини карточки в один виджет",
         "объедини {pointer} и {pointer}",
-        "добавь ещё метрику в карточки",
+        "{add} ещё метрику в карточки",
         "убери дубли виджетов",
         "сделай {pointer} шире",
         "поменяй цвета в {pointer}",
-        "добавь {chart} {dimension} {period}",
+        "{add} {chart} {dimension} {period}",
+        "«{widget}» добавь ещё {metric} для этого виджета",
+        "«{widget}» добавь {metric} в этот виджет",
+        "в виджет «{widget}» добавь {metric}",
+        "в «{widget}» покажи ещё {metric}",
+        "{remove} виджет «{widget}»",
+        "переименуй «{widget}»",
+        "{remove} последний виджет",
+        "{remove} предпоследний виджет",
+        "{remove} перед последний виджет",
+        "сначала {remove} последний виджет",
+        "потом {add} {chart} {dimension}",
+        "создай новый",
+        "создай новый дашборд",
+        "создай дашборд сделай нужные аналитики по всем параметрам",
+        "создай дашборд полный аналитика по всем параметрам",
+        "сделай полную аналитику по всем параметрам",
+        "и {chart} {dimension}",
+        "и ещё {chart}",
+        "{add} {chart} и {chart}",
+        "перестрой всё заново",
+        "верни как было",
+        "сделай виджеты крупнее",
+        "поставь {chart} первым",
+        "покажи {metric} на дашборде",
+        "выведи {metric} {dimension} на дашборд",
     ],
     "export": [
-        "выгрузи {metric} в {format}",
-        "выгрузи {metric} {dimension} в {format}",
-        "выгрузи {metric} {period} в {format}",
-        "выгрузи {metric} {dimension} {period} в {format}",
-        "сохрани {metric} в {format}",
-        "сохрани {metric} {dimension} в {format}",
-        "сохрани топ 10 клиентов в {format}",
-        "посчитай {metric} {dimension} и сохрани в {format}",
-        "посчитай {metric} и выгрузи в {format}",
-        "покажи {metric} {dimension} и сохрани в {format}",
+        "{export} {metric} в {format}",
+        "{export} {metric} {dimension} в {format}",
+        "{export} {metric} {period} в {format}",
+        "{export} {metric} {dimension} {period} в {format}",
+        "{export} {metric} в {format}",
+        "{export} {metric} {dimension} в {format}",
+        "{export} топ 10 клиентов в {format}",
+        "посчитай {metric} {dimension} и {export} в {format}",
+        "посчитай {metric} и {export} в {format}",
+        "{show} {metric} {dimension} и {export} в {format}",
         "сделай отчёт по {topic} в {format}",
         "сделай отчёт {dimension} в {format}",
         "нужен {format} с {metric}",
         "нужен файл {format} по {topic}",
-        "скачать {metric}",
-        "скачать {metric} {dimension}",
+        "{export} {metric}",
+        "{export} {metric} {dimension}",
+        "{export} {metric}",
+        "{export} {metric} {dimension}",
+        "{export} {metric} {period}",
+        "мне надо {format} с {metric}",
+        "мне нужен {format} по {metric}",
+        "загрузи {metric} в {format}",
         "хочу скачать {metric} {period}",
-        "экспортируй {metric} в {format}",
+        "{export} {metric} в {format}",
         "экспорт {metric} {dimension}",
         "сделай выгрузку {metric}",
         "сделай выгрузку {metric} {period}",
@@ -181,6 +373,19 @@ TEMPLATES = {
         "подготовь {format} с {metric} {period}",
         "мне нужен {format} для отчёта",
         "сформируй {format} по {metric}",
+        "дай рейтинг {metric} в формате {format}",
+        "дай рейтинг {metric} {dimension} в формате {format}",
+        "в формате {format} выгрузи {metric}",
+        "{metric} {dimension} в формате {format}",
+        "подготовь таблицу {metric} в {format}",
+        "выгрузи виджет «{widget}» в {format}",
+        "сохрани данные виджета «{widget}»",
+        "перенеси {metric} в {format}",
+        "скинь {metric} файлом",
+        "отправь {metric} в {format}",
+        "нужна выгрузка {metric} {period}",
+        "сделай файл с {metric} {dimension}",
+        "хочу {format} с {metric} {dimension}",
     ],
 }
 
@@ -204,6 +409,31 @@ MANUAL = {
         "какой товар продаётся хуже всех", "есть ли сезонность в продажах",
         "покажи топ 5 товаров", "покажи список менеджеров",
         "выведи список стран", "какие есть категории товаров",
+        # Живые формулировки из чата платформы, с исходными опечатками.
+        "что можно добавит в дашборд",
+        "что можно ешё добавит в дашборд?",
+        "что можеш рекоминдовать что добавит ешё?",
+        "какие виджеты видеш и что они показываю и что можно улочшит",
+        "обясни что делат каждый виджет",
+        "привет кто ты",
+        # Таджикский: пользователи платформы пишут и на нём. В прошлой модели
+        # это была единственная устойчивая ошибка на отложенном наборе.
+        "шумораи муштарӣ ро хисоб кун",
+        "шумораи фармоишҳо чанд аст",
+        "фуруш чанд аст",
+        "маълумот дар бораи муштариён",
+        "чи хел кор мекунад ин график?",
+        "ин график чиро нишон медиҳад",
+        "ин виҷет чист",
+        "даромад чанд шуд",
+        "кадом муштарӣ беҳтарин аст",
+        "маълумот дар бораи кормандон ҳаст?",
+        "фуруш дар моҳи гузашта чанд буд",
+        "чи тавр ҳисоб мешавад",
+        "салом чи хел шумо",
+        "ин рақамҳо аз куҷо",
+        "ба ман маслиҳат деҳ",
+        "чиро илова кардан мумкин аст",
     ],
     "dashboard": [
         "перестрой всё", "начни заново", "собери дашборд",
@@ -218,13 +448,32 @@ MANUAL = {
         "график слишком мелкий сделай больше",
         "поменяй порядок виджетов",
         "верни как было", "отмени последнее изменение",
-        "добавь карту", "нужна карта по странам",
+        "{add} карту", "нужна карта по странам",
         "сделай кольцевую вместо круговой",
         "смени тип на столбчатый",
-        "добавь второй график рядом",
+        "{add} второй график рядом",
         "раздели виджет на два",
         "покажи топ 10 клиентов на дашборде",
         "выведи топ товаров отдельным виджетом",
+        # Живые формулировки из чата платформы, с исходными опечатками.
+        "добаф воронку продаж",
+        "и воронку продаш",
+        "создай новый",
+        "создай дашборо сделай нужные аналитики по всем пераметрам",
+        "создай дашбод полный аналитика по все пераметрам",
+        "убери перед последный виджет",
+        "с начало убери последный виджет",
+        "убери посленый виджет",
+        "«Заказы по странам клиентов» добаф ешё количество клиентов для этого виджета",
+        "Заказы по странам клиентов добаф сумма заказов по странам в этот виджет",
+        "дашборд соз кун",
+        "дашборд соз кун аз руи фуруш",
+        "графики фуруш илова кун",
+        "ин виҷетро нест кун",
+        "виҷети охиринро нест кун",
+        "ҷадвали муштариён илова кун",
+        "диаграмма илова кун",
+        "дашборди навро созед",
     ],
     "export": [
         "csv", "excel", "в pdf", "в эксель", "в ворде",
@@ -239,55 +488,187 @@ MANUAL = {
         "а в ворде можно?", "сделай docx",
         "выгрузи заказы из франции в csv",
         "сохрани клиентов у которых заказов больше 5 в excel",
+        # Живые формулировки из чата платформы, с исходными опечатками.
+        "дай рейтинг клиентов по опалте в формате exel",
+        "дай рейтинг клиентов по оплате в формате exel",
+        "экспортируй клиентов в exel",
+        "скачай данные по сотрудникам",
+        "выгрузи заказы за 2004 год в excel",
+        "мне надо csv для 1с",
+        "маълумотро ба excel содир кун",
+        "файли excel тайёр кун",
+        "рӯйхати муштариёнро ба csv барор",
+        "ҳисоботро дар pdf созед",
+        "маълумотро бор кун",
     ],
 }
+
+# ─────────────────────────────────────────────── короткие реплики и диалоги
+#
+# Ядро всей затеи. Одна и та же реплика с разным контекстом получает разные
+# метки — на этих парах модель и учится смотреть на предыдущий ход, а не только
+# на текущее сообщение.
+
+AGREEMENTS = [
+    "давай", "да", "давай да", "ну давай", "давайте", "ок", "окей", "ok",
+    "хорошо", "хорошо давай", "конечно", "ага", "угу", "да, конечно",
+    "согласен", "идёт", "годится", "отлично", "го", "поехали", "начинай",
+    "продолжай", "валяй", "вперёд", "применяй", "применить", "сделай",
+    "сделай так", "делай", "давай сделаем", "да, применяй", "жми", "запускай",
+    "давай попробуем", "хочу", "нужно", "было бы отлично", "супер, давай",
+]
+
+REFUSALS = [
+    "нет", "не надо", "не нужно", "не стоит", "отмена", "отмени", "стоп",
+    "погоди", "подожди", "пока не надо", "нет, спасибо", "не сейчас",
+    "не то", "не так", "неверно", "я не это имел в виду", "оставь как есть",
+]
+
+FOLLOW_UPS = [
+    "а теперь", "ещё раз", "то же самое", "так же", "аналогично", "повтори",
+    "как в прошлый раз", "и это тоже", "их тоже", "дальше", "продолжи",
+]
+
+DIALOGUES = [
+    # ── основной путь: служебное поле агента ──
+    (AGREEMENTS, CONTEXT_OFFER_DASHBOARD_CANON, "dashboard"),
+    (AGREEMENTS, CONTEXT_OFFER_EXPORT_CANON, "export"),
+    (AGREEMENTS, CONTEXT_QUESTION_CANON, "chat"),
+    (AGREEMENTS, CONTEXT_PLAIN_CANON, "chat"),
+    (REFUSALS, CONTEXT_OFFER_DASHBOARD_CANON, "chat"),
+    (REFUSALS, CONTEXT_OFFER_EXPORT_CANON, "chat"),
+    (REFUSALS, CONTEXT_QUESTION_CANON, "chat"),
+    (FOLLOW_UPS, CONTEXT_OFFER_DASHBOARD_CANON, "dashboard"),
+    (FOLLOW_UPS, CONTEXT_OFFER_EXPORT_CANON, "export"),
+    (FOLLOW_UPS, CONTEXT_QUESTION_CANON, "chat"),
+
+    # ── запасной путь: хвост ответа агента ──
+    (AGREEMENTS, CONTEXT_OFFER_DASHBOARD, "dashboard"),
+    (AGREEMENTS, CONTEXT_OFFER_BUILD, "dashboard"),
+    (AGREEMENTS, CONTEXT_OFFER_EXPORT, "export"),
+    (AGREEMENTS, CONTEXT_QUESTION, "chat"),
+    (REFUSALS, CONTEXT_OFFER_DASHBOARD, "chat"),
+    (REFUSALS, CONTEXT_OFFER_EXPORT, "chat"),
+    (REFUSALS, CONTEXT_QUESTION, "chat"),
+    (FOLLOW_UPS, CONTEXT_OFFER_EXPORT, "export"),
+    (FOLLOW_UPS, CONTEXT_OFFER_DASHBOARD, "dashboard"),
+    (FOLLOW_UPS, CONTEXT_QUESTION, "chat"),
+
+    # без контекста короткая реплика ничего не запускает
+    # Без контекста короткая реплика ничего не запускает — эти примеры
+    # повторены трижды намеренно: «давай» в пустоту модель обязана понимать
+    # как разговор, а примеров с предложениями агента у неё в разы больше.
+    (AGREEMENTS, [""], "chat"),
+    (AGREEMENTS, [""], "chat"),
+    (AGREEMENTS, [""], "chat"),
+    (REFUSALS, [""], "chat"),
+    (FOLLOW_UPS, [""], "chat"),
+    (AGREEMENTS, CONTEXT_PLAIN, "chat"),
+    (REFUSALS, CONTEXT_PLAIN, "chat"),
+]
+
+# Продолжения с собственным смыслом: контекст на метку влиять не должен.
+# Нужны, чтобы модель не выучила «после предложения агента всё есть согласие».
+INDEPENDENT_AFTER_CONTEXT = [
+    ("а сколько всего клиентов?", "chat"),
+    ("покажи топ 10 товаров", "chat"),
+    ("что показывает третий виджет?", "chat"),
+    ("выгрузи заказы в excel", "export"),
+    ("сохрани клиентов в csv", "export"),
+    ("добавь график по регионам", "dashboard"),
+    ("удали второй виджет", "dashboard"),
+    ("построй дашборд по складу", "dashboard"),
+    ("нет, лучше выгрузи в pdf", "export"),
+    ("нет, добавь вместо этого таблицу", "dashboard"),
+]
+
 
 # ─────────────────────────────────────────────────────────── опечатки
 
 
 def typo(text: str, rng: random.Random) -> str:
-    """Портит фразу так, как это делают люди при быстром наборе.
+    """Портит фразу так, как это делают живые пользователи платформы.
 
-    Правила взяты из реальных сообщений пользователей платформы: «не внезу»,
-    «должы быт», «творой», «добаф», «каторы», «почиму», «постройй».
+    Правила выведены из реальных сообщений в ai_chat_messages, а не придуманы:
+
+        добавь → добаф        оглушение и потеря мягкого знака
+        ещё → ешё             щ → ш
+        улучшить → улочшит    безударная о/у + потеря «ь» в инфинитиве
+        видишь → видеш        потеря «ь» и безударная и/е
+        параметрам → пераметрам   перестановка гласных
+        последний → посленый  выпадение буквы
+        excel → exel          удвоение в латинице
+        объясни → обясни      потеря твёрдого знака
+        продаж → продаш       оглушение на конце
+
+    Это не косметика: без таких примеров модель разваливается на первой же
+    живой фразе, потому что символьные n-граммы «добав» и «добаф» — разные
+    признаки.
     """
     variants = []
 
+    # 1. Потеря мягкого и твёрдого знака — самая частая ошибка.
+    if "ь" in text:
+        variants.append(text.replace("ь", "", 1))
+    if "ъ" in text:
+        variants.append(text.replace("ъ", "", 1))
+
+    # 2. Оглушение звонких на конце слова: добавь → добаф, продаж → продаш.
+    for src, dst in (("вь", "ф"), ("жь", "ш"), ("ж ", "ш "), ("в ", "ф ")):
+        if src in text:
+            variants.append(text.replace(src, dst, 1))
+            break
+
+    # 3. Шипящие: ещё → ешё, ещ → еш.
+    if "щ" in text:
+        variants.append(text.replace("щ", "ш", 1))
+
+    # 4. Безударные гласные — о/а и е/и.
+    for src, dst in (("о", "а"), ("а", "о"), ("е", "и"), ("и", "е"), ("у", "о")):
+        position = text.find(src, 2)
+
+        if position > 0:
+            variants.append(text[:position] + dst + text[position + 1:])
+            break
+
+    # 5. Инфинитивы и повелительное наклонение теряют «ть»/«ь» на конце.
+    for ending, replacement in (("ить", "ит"), ("ать", "ат"), ("ять", "ят"), ("шь", "ш")):
+        if text.endswith(ending):
+            variants.append(text[: -len(ending)] + replacement)
+        elif ending + " " in text:
+            variants.append(text.replace(ending + " ", replacement + " ", 1))
+
     chars = list(text)
-    letters = [i for i, c in enumerate(chars) if c.isalpha()]
+    letters = [i for i, char in enumerate(chars) if char.isalpha()]
 
     if len(letters) > 3:
-        # пропущенная буква
-        drop = list(chars)
-        del drop[rng.choice(letters)]
-        variants.append("".join(drop))
+        # 6. Пропущенная буква.
+        dropped = list(chars)
+        del dropped[rng.choice(letters)]
+        variants.append("".join(dropped))
 
-        # переставленные соседние
-        i = rng.choice(letters[:-1])
-        swap = list(chars)
-        swap[i], swap[i + 1] = swap[i + 1], swap[i]
-        variants.append("".join(swap))
+        # 7. Переставленные соседние — «пераметрам», «опалте».
+        index = rng.choice(letters[:-1])
+        swapped = list(chars)
+        swapped[index], swapped[index + 1] = swapped[index + 1], swapped[index]
+        variants.append("".join(swapped))
 
-        # удвоенная буква
-        i = rng.choice(letters)
-        double = list(chars)
-        double.insert(i, chars[i])
-        variants.append("".join(double))
+        # 8. Удвоенная буква — «постройй».
+        index = rng.choice(letters)
+        doubled = list(chars)
+        doubled.insert(index, chars[index])
+        variants.append("".join(doubled))
 
-    # характерные подмены
-    replacements = [
-        ("ь", ""), ("й", "и"), ("о", "а"), ("е", "и"), ("тся", "ться"),
-        ("ый", "ы"), ("ть", "т"), ("щ", "ш"), ("дж", "ж"),
-    ]
-    src, dst = rng.choice(replacements)
+    # 9. Латиница: excel → exel, excell.
+    for src, dst in (("excel", "exel"), ("excel", "excell"), ("xlsx", "xls")):
+        if src in text:
+            variants.append(text.replace(src, dst, 1))
+            break
 
-    if src in text:
-        variants.append(text.replace(src, dst, 1))
-
-    # потерянный пробел
+    # 10. Потерянный пробел.
     if " " in text.strip():
-        i = text.index(" ", 1)
-        variants.append(text[:i] + text[i + 1:])
+        position = text.index(" ", 1)
+        variants.append(text[:position] + text[position + 1:])
 
     return rng.choice(variants) if variants else text
 
@@ -295,8 +676,45 @@ def typo(text: str, rng: random.Random) -> str:
 # ─────────────────────────────────────────────────────────── сборка
 
 
+def decorate(text: str, rng: random.Random) -> str:
+    """Обкладывает команду тем, чем её обкладывает живой человек.
+
+    Обращения, вежливость, порядок слов, знаки в конце. Без этого каждая фраза
+    набора начинается с глагола и заканчивается ровно, а модель заучивает форму
+    вместо смысла.
+    """
+    text = rng.choice(PREFIXES) + text + rng.choice(SUFFIXES) + rng.choice(ENDINGS)
+
+    # Заглавная буква у части фраз — регистр всё равно снимается нормализацией,
+    # но в датасете пусть будет так же вперемешку, как в жизни.
+    if rng.random() < 0.15 and text:
+        text = text[0].upper() + text[1:]
+
+    return " ".join(text.split())
+
+
+def join_clauses(first: str, second: str, rng: random.Random) -> str:
+    """Склеивает две команды одного класса в одно сообщение.
+
+    Люди редко пишут по одному действию за раз: «убери последний виджет
+    и добавь график по странам». Без таких примеров длинная составная фраза
+    для модели выглядит незнакомо.
+    """
+    joiner = rng.choice([" и ", ", а ещё ", ", потом ", ", также ", " плюс ",
+                         ". и ещё ", ", и ", " а также "])
+
+    return first + joiner + second
+
+
 def fill(template: str, rng: random.Random) -> str:
     slots = {
+        "add": V_ADD,
+        "remove": V_REMOVE,
+        "change": V_CHANGE,
+        "move": V_MOVE,
+        "export": V_EXPORT,
+        "show": V_SHOW,
+        "ask": ASK,
         "metric": METRICS,
         "metric_nom": METRICS_NOM,
         "dimension": DIMENSIONS,
@@ -305,6 +723,7 @@ def fill(template: str, rng: random.Random) -> str:
         "chart": CHARTS,
         "pointer": POINTERS,
         "topic": TOPICS,
+        "widget": WIDGET_TITLES,
     }
 
     text = template
@@ -318,57 +737,204 @@ def fill(template: str, rng: random.Random) -> str:
     return " ".join(text.split())
 
 
-def load_test_texts() -> set:
+def load_test_keys() -> set:
+    """Ключи отложенного набора: пара «сообщение + контекст»."""
     path = HERE / "test.csv"
 
     if not path.exists():
         return set()
 
     with path.open(encoding="utf-8") as handle:
-        return {(row["text"] or "").strip().lower() for row in csv.DictReader(handle)}
+        return {
+            ((row.get("text") or "").strip().lower(), (row.get("context") or "").strip().lower())
+            for row in csv.DictReader(handle)
+        }
+
+
+def load_test_grams() -> list:
+    """N-граммы содержательных фраз отложенного набора.
+
+    Нужны для отсева почти-дубликатов. Точного совпадения мало: decorate()
+    обвешивает фразу приставками, и «а сколько всего клиентов? плиз» перестаёт
+    быть равным «сколько всего клиентов?», оставаясь при этом тем же самым
+    примером. Замер до этой проверки: у 54 из 154 тестовых фраз в обучении
+    находился двойник с похожестью выше 0.7, а одна совпадала дословно.
+    Метрика в такой ситуации меряет память, а не понимание.
+
+    Короткие реплики («давай», «нет») из проверки исключены намеренно: их смысл
+    задаётся контекстом, а не текстом, и обобщать там нечего — модель обязана
+    видеть эти слова в обучении, иначе не выучит их вовсе.
+    """
+    path = HERE / "test.csv"
+
+    if not path.exists():
+        return []
+
+    grams = []
+
+    with path.open(encoding="utf-8") as handle:
+        for row in csv.DictReader(handle):
+            text = (row.get("text") or "").strip()
+
+            if len(text.split()) <= 2:
+                continue
+
+            grams.append(set(char_ngrams(normalize(text))))
+
+    return grams
+
+
+def too_similar(text: str, test_grams: list, limit: float = 0.6) -> bool:
+    """Похожа ли фраза на что-то из отложенного набора (мера Жаккара)."""
+    own = set(char_ngrams(normalize(text)))
+
+    if not own:
+        return False
+
+    for other in test_grams:
+        union = own | other
+
+        if union and len(own & other) / len(union) >= limit:
+            return True
+
+    return False
+
+
+def all_contexts() -> list:
+    """Все виды контекста плюс пустой — «разговор только начался»."""
+    return (
+        [""]
+        + CONTEXT_OFFER_DASHBOARD_CANON
+        + CONTEXT_OFFER_EXPORT_CANON
+        + CONTEXT_QUESTION_CANON
+        + CONTEXT_PLAIN_CANON
+        + CONTEXT_OFFER_DASHBOARD
+        + CONTEXT_OFFER_EXPORT
+        + CONTEXT_OFFER_BUILD
+        + CONTEXT_QUESTION
+        + CONTEXT_PLAIN
+    )
+
+
+def build_dialogues(rng: random.Random, forbidden: set) -> list:
+    """Диалоговые примеры: короткая реплика плюс реплика агента перед ней.
+
+    Каждый тип диалога ограничен своей квотой. Иначе согласий, у которых
+    и реплик больше, и контекстов, набирается втрое больше отказов — и модель
+    перестаёт различать «давай» и «отмени» после одного и того же предложения.
+    """
+    rows = []
+    produced = set()
+
+    for replies, contexts, label in DIALOGUES:
+        combinations = [(reply, context) for reply in replies for context in contexts]
+        rng.shuffle(combinations)
+
+        taken = 0
+
+        for reply, context in combinations:
+            if taken >= PER_DIALOGUE_TYPE:
+                break
+
+            text = typo(reply, rng) if rng.random() < TYPO_SHARE / 2 else reply
+            key = (text.lower(), context.lower())
+
+            if key in forbidden or key in produced:
+                continue
+
+            produced.add(key)
+            rows.append((text, context, label))
+            taken += 1
+
+    # Самостоятельные фразы после разных реплик агента: контекст на их метку
+    # влиять не должен, и модель обязана этому научиться. Без таких примеров
+    # она решит, что после предложения агента любое сообщение — согласие.
+    for text, label in INDEPENDENT_AFTER_CONTEXT:
+        for context in all_contexts():
+            key = (text.lower(), context.lower())
+
+            if key in forbidden or key in produced:
+                continue
+
+            produced.add(key)
+            rows.append((text, context, label))
+
+    return rows
 
 
 def main() -> None:
     rng = random.Random(SEED)
-    forbidden = load_test_texts()
+    forbidden = load_test_keys()
+    test_grams = load_test_grams()
+    contexts = all_contexts()
 
-    print(f"Отложенный набор: {len(forbidden)} фраз — они будут исключены из обучения")
+    print(f"Отложенный набор: {len(forbidden)} пар — они будут исключены из обучения")
 
+    dialogues = build_dialogues(rng, forbidden)
+
+    # Равняем диалоги по классам: их задача — научить смотреть на контекст,
+    # а не заслонить собой обычные команды.
     rows = []
 
     for label in ("chat", "dashboard", "export"):
-        produced = set()
-        pool = list(MANUAL[label])
+        subset = [row for row in dialogues if row[2] == label]
+        rng.shuffle(subset)
+        rows += subset[:DIALOGUE_PER_CLASS]
 
-        # Сначала ручные фразы, потом добиваем шаблонами до нужного объёма.
-        for text in pool:
+    print(f"Диалоговых примеров: {len(rows)} {dict(Counter(label for _, _, label in rows))}")
+
+    skipped = 0
+
+    for label in ("chat", "dashboard", "export"):
+        produced = {text.lower() for text, _, lbl in rows if lbl == label}
+        target = PER_CLASS
+
+        # Ручные фразы идут первыми, дальше добираем шаблонами.
+        for text in MANUAL[label]:
             key = text.lower()
+            context = "" if rng.random() < NO_CONTEXT_SHARE else rng.choice(contexts)
 
-            if key not in forbidden and key not in produced:
-                produced.add(key)
-                rows.append((text, label))
+            if (key, context.lower()) in forbidden or key in produced:
+                continue
+
+            if too_similar(text, test_grams):
+                skipped += 1
+                continue
+
+            produced.add(key)
+            rows.append((text, context, label))
 
         attempts = 0
 
-        while len([r for r in rows if r[1] == label]) < PER_CLASS and attempts < PER_CLASS * 200:
+        while len([r for r in rows if r[2] == label]) < target and attempts < PER_CLASS * 200:
             attempts += 1
             text = fill(rng.choice(TEMPLATES[label]), rng)
+
+            # Каждая пятая фраза — составная: люди редко просят по одному
+            # действию за раз.
+            if rng.random() < 0.2:
+                text = join_clauses(text, fill(rng.choice(TEMPLATES[label]), rng), rng)
+
+            text = decorate(text, rng)
 
             if rng.random() < TYPO_SHARE:
                 text = typo(text, rng)
 
             key = text.lower()
+            # Контекст самостоятельным фразам раздаётся случайно, и части
+            # не достаётся вовсе: так модель видит их при всех репликах агента
+            # и учится не принимать контекст за причину.
+            context = "" if rng.random() < NO_CONTEXT_SHARE else rng.choice(contexts)
 
-            if key in forbidden or key in produced or not text.strip():
+            if (key, context.lower()) in forbidden or key in produced or not text.strip():
+                continue
+
+            if too_similar(text, test_grams):
+                skipped += 1
                 continue
 
             produced.add(key)
-            rows.append((text, label))
-
-        count = len([r for r in rows if r[1] == label])
-
-        if count < PER_CLASS:
-            print(f"  {label}: получилось только {count} — шаблонов не хватает на {PER_CLASS}")
+            rows.append((text, context, label))
 
     rng.shuffle(rows)
 
@@ -376,17 +942,27 @@ def main() -> None:
 
     with out.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.writer(handle, quoting=csv.QUOTE_ALL)
-        writer.writerow(["text", "label"])
+        writer.writerow(["text", "context", "label"])
         writer.writerows(rows)
 
     print(f"\nСохранено: {out}")
-    print(f"  строк: {len(rows)}  {dict(Counter(label for _, label in rows))}")
-    print(f"  с опечатками примерно: {int(len(rows) * TYPO_SHARE)}")
+    print(f"  строк: {len(rows)}  {dict(Counter(label for _, _, label in rows))}")
+    print(f"  с контекстом: {sum(1 for _, context, _ in rows if context)}")
+    print(f"  отсеяно как почти-дубликаты теста: {skipped}")
 
-    print("\nПримеры:")
+    print("\nПримеры диалогов:")
 
-    for text, label in rows[:12]:
-        print(f"  [{label:9}] {text}")
+    shown = 0
+
+    for text, context, label in rows:
+        if not context or len(text) > 20:
+            continue
+
+        print(f"  [{label:9}] «{text}»  ← агент: «{context[:70]}»")
+        shown += 1
+
+        if shown >= 6:
+            break
 
     print(
         "\nЭто синтетика. По мере накопления живых сообщений в ai_chat_messages\n"

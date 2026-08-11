@@ -5,6 +5,7 @@ namespace App\Helpers\Task;
 use App\Events\MessageTasksChanged;
 use App\Helpers\Ai\ChatAgentAi;
 use App\Helpers\Ai\DefineTaskAi;
+use App\Helpers\Ai\IntentClassifier;
 use App\Helpers\Chat\ChatContext;
 use App\Helpers\DataSource\DataSourceGrouping;
 use App\Jobs\ChatExportJob;
@@ -14,6 +15,7 @@ use App\Models\AiChat;
 use App\Models\AiChatMessage;
 use App\Models\AiChatTask;
 use App\Models\DataSource;
+use App\Models\IntentSample;
 use App\Models\Task;
 use App\Models\TaskStatus;
 use Illuminate\Support\Facades\Log;
@@ -31,6 +33,10 @@ class RouterTask
     public $task_list;
     public $dashboardId;
     public $resultDefine;
+
+    /** Готовый ответ на нераспознанное сообщение — агента звать незачем. */
+    private ?string $clarification = null;
+
     public $userId;
     public $dataSource;
     public ChatContext $context;
@@ -52,7 +58,7 @@ class RouterTask
             ->where('id', '!=', $currentMessageId)
             ->orderByDesc('id')
             ->limit(8)
-            ->select('message', 'answer')
+            ->select('message', 'answer', 'offer_type', 'offer_summary')
             ->get();
         $this->task_list = $task_list;
         // Источник теперь принадлежит компании и привязан к чату полем
@@ -77,16 +83,24 @@ class RouterTask
             $this->current_task->load(['status', 'task']);
             event(new MessageTasksChanged($this->currentMessage, $this->current_task, null));
 
-            $define_task = new DefineTaskAi($this->messages, $this->currentMessage->message, $this->task_list);
-
-            $this->resultDefine = $define_task->defineTask($this->context->toArray());
+            $this->resultDefine = $this->resolveTask();
 
             $this->currentMessage->tokens_used = $this->resultDefine['total_tokens'] ?? 0;
 
-            // Для "response_in_chat" роутер намеренно возвращает пустой message —
-            // содержательный ответ готовит ChatAgentAi, у которого есть доступ
-            // к данным. Пустым значением затирать ничего не нужно.
-            $routerMessage = trim((string) ($this->resultDefine['content']['message'] ?? ''));
+            // Подтверждение запуска пишется только для задач, которые и правда
+            // что-то запускают. Для ответа в чате его быть не должно: там
+            // содержательный ответ готовит ChatAgentAi.
+            //
+            // Полагаться на то, что модель вернёт пустой message, оказалось
+            // нельзя: на вопрос «а где другое в „воронке продаж"» она выбрала
+            // ответ в чате, но в message написала «Запускаю обновление
+            // дашборда» — и пользователь увидел в чате, что ему сейчас
+            // перестроят дашборд, хотя никто ничего не перестраивал.
+            $taskName = $this->resultDefine['content']['task_name'] ?? null;
+
+            $routerMessage = in_array($taskName, ['generate_dashboard', 're_generate_dashboard', 'export_data'], true)
+                ? trim((string) ($this->resultDefine['content']['message'] ?? ''))
+                : '';
 
             if ($routerMessage !== '') {
                 $this->currentMessage->answer = $routerMessage;
@@ -125,6 +139,222 @@ class RouterTask
 
             throw $e;
         }
+    }
+
+    /**
+     * Определяет задачу: сначала локальным классификатором, при неуверенности —
+     * языковой моделью.
+     *
+     * Каскад. Дешёвое и мгновенное решение принимается на месте, дорогое и
+     * медленное — только там, где локальная модель сомневается. Раньше GPT
+     * спрашивали на каждое сообщение: 6–20 секунд и оплаченные токены ради
+     * выбора из трёх вариантов, включая «привет» и «спасибо».
+     *
+     * Ответ языковой модели на делегированном запросе сохраняется обучающим
+     * примером: это ровно те фразы, которых классификатору не хватает —
+     * лежащие на границе между классами.
+     *
+     * @return array{content: array, total_tokens: int, source: string}
+     */
+    private function resolveTask(): array
+    {
+        $text = (string) $this->currentMessage->message;
+
+        // Что система предложила предыдущим ходом. Без этого короткие реплики
+        // («давай», «нет») неразрешимы — их смысл целиком в предыдущем ходе.
+        //
+        // Основной путь — служебное поле агента: короткая каноническая строка
+        // вида «offer dashboard объединить карточки». Запасной — хвост самого
+        // ответа: у сообщений, созданных до появления поля, и у ответов не от
+        // агента (выгрузка, перестройка дашборда) его нет.
+        $previous = $this->messages->first();
+
+        $context = IntentClassifier::contextFrom(
+            $previous->offer_type ?? null,
+            $previous->offer_summary ?? null,
+            $previous->answer ?? null
+        );
+
+        $classifier = new IntentClassifier();
+        $prediction = $classifier->predict($text, $context);
+
+        // Бессмысленный ввод не относится ни к одному классу, но классификатор
+        // обязан выбрать — и выбирал, после чего агент шёл в базу сочинять SQL
+        // по случайному набору букв. Просьба уточнить стоит ноль обращений
+        // к модели и полезнее любого ответа на такое сообщение.
+        if ($classifier->isUnintelligible($text, $prediction)) {
+            $this->clarification = $this->clarificationMessage();
+
+            Log::info('RouterTask: сообщение не распознано, просим уточнить', [
+                'message_id' => $this->currentMessage->id,
+                'coverage' => round($prediction['coverage'] ?? 0, 3),
+            ]);
+
+            return [
+                'content' => [
+                    'task_name' => 'response_in_chat',
+                    'task_title' => 'Уточнение запроса',
+                    'task_instruction' => '',
+                    'message' => '',
+                ],
+                'total_tokens' => 0,
+                'source' => 'unintelligible',
+            ];
+        }
+
+        $offeredType = trim((string) ($previous->offer_type ?? '')) ?: null;
+
+        if ($prediction !== null && $classifier->isConfident($prediction, $offeredType)) {
+            $resolved = $this->taskFromLabel($prediction['label'], $previous);
+
+            Log::info('RouterTask: задача определена локально', [
+                'message_id' => $this->currentMessage->id,
+                'label' => $prediction['label'],
+                'confidence' => round($prediction['confidence'], 3),
+                'has_context' => $context !== '',
+                'task_name' => $resolved['task_name'],
+            ]);
+
+            return ['content' => $resolved, 'total_tokens' => 0, 'source' => 'local'];
+        }
+
+        $response = (new DefineTaskAi($this->messages, $text, $this->task_list))
+            ->defineTask($this->context->toArray());
+
+        $taskName = $response['content']['task_name'] ?? null;
+
+        Log::info('RouterTask: задача определена языковой моделью', [
+            'message_id' => $this->currentMessage->id,
+            'task_name' => $taskName,
+            'local_label' => $prediction['label'] ?? null,
+            'local_confidence' => isset($prediction) ? round($prediction['confidence'] ?? 0, 3) : null,
+        ]);
+
+        // Запоминаем не всё подряд: у контекстной реплики метка верна только
+        // в этом разговоре, и выучив её, модель начнёт уверенно ошибаться
+        // на ней всегда.
+        if (config('intents.learning.enabled', true) && $classifier->isLearnable($text, $prediction)) {
+            IntentSample::remember(
+                text: $text,
+                label: IntentClassifier::labelForTask($taskName),
+                prediction: $prediction,
+                chatId: $this->currentMessage->chat_id,
+                messageId: $this->currentMessage->id,
+                context: $context
+            );
+        }
+
+        return $response + ['source' => 'llm'];
+    }
+
+    /**
+     * Что передать исполнителю как задание.
+     *
+     * Обычно — сообщение пользователя как есть: генераторы дашборда и выгрузки
+     * разбирают формулировку сами, на своём шаге и с полным контекстом.
+     *
+     * Но на «давай» разбирать нечего: задание лежит в предложении, которое
+     * агент сделал ходом раньше и сам же записал в offer_summary. Раньше эту
+     * формулировку приходилось восстанавливать из markdown-ответа отдельным
+     * обращением к языковой модели — десять тысяч токенов ради строки, которая
+     * у нас уже есть.
+     *
+     * Подменяем только тогда, когда всё сходится: агент предложил ровно то,
+     * что распознал классификатор, а сообщение короткое, то есть собственного
+     * содержания не несёт. «Выгрузи заказы в csv» после предложения по дашборду
+     * останется собой.
+     */
+    private function instructionFor(string $label, $previous): string
+    {
+        $text = (string) $this->currentMessage->message;
+
+        $summary = trim((string) ($previous->offer_summary ?? ''));
+        $offered = trim((string) ($previous->offer_type ?? ''));
+
+        if ($summary === '' || $offered !== $label) {
+            return $text;
+        }
+
+        $words = count(preg_split('/\s+/u', trim($text)) ?: []);
+
+        if ($words > 4) {
+            return $text;
+        }
+
+        Log::info('RouterTask: задание взято из предложения агента', [
+            'message_id' => $this->currentMessage->id,
+            'offer_type' => $offered,
+            'instruction' => $summary,
+        ]);
+
+        return $summary;
+    }
+
+    /**
+     * Ответ на нераспознанное сообщение.
+     *
+     * Не «я вас не понял» в пустоту: пользователю показывают, что именно
+     * система умеет, и дают три готовые формулировки — так уточнение занимает
+     * одно сообщение, а не переписку.
+     */
+    private function clarificationMessage(): string
+    {
+        return <<<'TEXT'
+Не разобрал сообщение — похоже, оно набралось случайно.
+
+Напишите, что нужно сделать:
+- **спросить о данных** — «сколько заказов за март?»
+- **изменить дашборд** — «добавь график по странам»
+- **выгрузить файл** — «выгрузи клиентов в excel»
+TEXT;
+    }
+
+    /**
+     * Превращает класс намерения в задачу роутера.
+     *
+     * Классификатор различает три намерения, а задач четыре: создание и
+     * переделка дашборда по тексту неразличимы — «сделай дашборд по продажам»
+     * означает разное в зависимости от того, есть дашборд или нет. Это признак
+     * состояния системы, а не свойство фразы, поэтому решает его код, а не
+     * модель: так из обучения убран признак, которого во входе всё равно нет.
+     *
+     * task_instruction — исходное сообщение пользователя. Исключение — согласие
+     * на предложенное: см. instructionFor().
+     *
+     * @return array{task_name: string, task_title: string, task_instruction: string, message: string}
+     */
+    private function taskFromLabel(string $label, $previous = null): array
+    {
+        $text = $this->instructionFor($label, $previous);
+
+        if ($label === IntentClassifier::EXPORT) {
+            return [
+                'task_name' => 'export_data',
+                'task_title' => 'Выгрузка данных',
+                'task_instruction' => $text,
+                'message' => 'Готовлю файл с выгрузкой',
+            ];
+        }
+
+        if ($label === IntentClassifier::DASHBOARD) {
+            $hasDashboard = $this->dashboardId !== null || $this->context->dashboard !== null;
+
+            return [
+                'task_name' => $hasDashboard ? 're_generate_dashboard' : 'generate_dashboard',
+                'task_title' => $hasDashboard ? 'Обновление дашборда' : 'Создание дашборда',
+                'task_instruction' => $text,
+                'message' => $hasDashboard ? 'Запускаю обновление дашборда' : 'Запускаю создание дашборда',
+            ];
+        }
+
+        return [
+            'task_name' => 'response_in_chat',
+            'task_title' => 'Ответ в чате',
+            'task_instruction' => '',
+            // Пусто намеренно: содержательный ответ готовит ChatAgentAi,
+            // у которого есть доступ к данным.
+            'message' => '',
+        ];
     }
 
     public function redirectToTask()
@@ -202,7 +432,9 @@ class RouterTask
             ]);
         }
 
-        $this->respondInChat();
+        // Ответ на нераспознанное сообщение известен заранее: звать агента,
+        // чтобы он ходил в базу по случайному набору букв, незачем.
+        $this->respondInChat($this->clarification);
     }
 
     /**
@@ -299,6 +531,8 @@ class RouterTask
         try {
             if ($forcedMessage !== null) {
                 $answer = $forcedMessage;
+                $this->currentMessage->offer_type = 'none';
+                $this->currentMessage->offer_summary = '';
             } else {
                 // В новом чате группировка ещё не выполнялась: её запускает только
                 // построение дашборда. Агент при этом оставался без единой таблицы
@@ -315,6 +549,12 @@ class RouterTask
                 $result = $agent->answer();
 
                 $answer = $result['message'];
+
+                // Служебное описание предложения — сигнал для классификатора
+                // на следующем ходу. Пользователь его не видит.
+                $this->currentMessage->offer_type = $result['offer_type'] ?? 'none';
+                $this->currentMessage->offer_summary = $result['offer_summary'] ?? '';
+
                 $this->currentMessage->tokens_used =
                     (int) ($this->currentMessage->tokens_used ?? 0) + (int) $result['total_tokens'];
             }
@@ -322,6 +562,9 @@ class RouterTask
             $this->currentMessage->answer = $answer;
             $this->currentMessage->status = 'answered';
             $this->currentMessage->save();
+
+            // Агент ответил в чате — значит маршрут «разговор» подтверждён делом.
+            IntentSample::confirm($this->currentMessage->id);
 
             if ($task) {
                 $task->status_id = $this->statuses['completed'];
@@ -334,6 +577,8 @@ class RouterTask
                 ?: 'Не удалось подготовить ответ. Попробуйте переформулировать вопрос.';
             $this->currentMessage->status = 'failed';
             $this->currentMessage->save();
+
+            IntentSample::reject($this->currentMessage->id, 'агент не смог ответить');
 
             if ($task) {
                 $task->status_id = $this->statuses['failed'];

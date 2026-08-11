@@ -8,6 +8,7 @@ use App\Helpers\Export\ChatExportGenerator;
 use App\Models\AiChat;
 use App\Models\AiChatMessage;
 use App\Models\AiChatTask;
+use App\Models\IntentSample;
 use App\Models\Task;
 use App\Models\TaskStatus;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -88,6 +89,9 @@ class ChatExportJob implements ShouldQueue
                 $task->load(['status', 'task']);
             }
 
+            // Файл создан — маршрут «выгрузка» подтверждён делом.
+            IntentSample::confirm($this->messageId);
+
             Log::info('ChatExportJob: export ready', [
                 'message_id' => $this->messageId,
                 'export_id' => $result['export']->id,
@@ -95,6 +99,8 @@ class ChatExportJob implements ShouldQueue
                 'rows' => $result['export']->rows_count,
             ]);
         } catch (Throwable $e) {
+            IntentSample::reject($this->messageId, 'выгрузка не удалась');
+
             Log::error('ChatExportJob: export failed: '.$e->getMessage());
             Log::error($e->getTraceAsString());
 

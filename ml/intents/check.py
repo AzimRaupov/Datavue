@@ -44,22 +44,26 @@ DEMO = [
 ]
 
 
-def decide(model: dict, text: str, threshold: float):
-    ranked = predict(model, text)
+def decide(model: dict, text: str, threshold: float, context: str = ""):
+    ranked = predict(model, text, context)
     label, confidence = ranked[0]
     local = confidence >= threshold
 
     return label, confidence, local, ranked
 
 
-def show(model: dict, text: str, threshold: float) -> None:
+def show(model: dict, text: str, threshold: float, context: str = "") -> None:
     started = time.perf_counter()
-    label, confidence, local, ranked = decide(model, text, threshold)
+    label, confidence, local, ranked = decide(model, text, threshold, context)
     elapsed = (time.perf_counter() - started) * 1000
 
     mark = "локально" if local else "→ к GPT (не уверен)"
 
-    print(f"\n  «{text}»")
+    if context:
+        print(f"\n  агент: «{context[:70]}»")
+        print(f"  «{text}»")
+    else:
+        print(f"\n  «{text}»")
     print(f"    {label}   уверенность {confidence:.3f}   {mark}   {elapsed:.1f} мс")
     print("    " + "   ".join(f"{name}={value:.3f}" for name, value in ranked))
 
@@ -85,7 +89,8 @@ def check_file(model: dict, path: Path, threshold: float) -> None:
 
     for row in rows:
         text = row["text"].strip()
-        label, confidence, local, _ = decide(model, text, threshold)
+        context = (row.get("context") or "").strip()
+        label, confidence, local, _ = decide(model, text, threshold, context)
 
         if local:
             local_total += 1
@@ -103,7 +108,10 @@ def check_file(model: dict, path: Path, threshold: float) -> None:
             if local:
                 correct_local += 1
         else:
-            errors.append((text, expected, label, confidence))
+            errors.append((
+                text + (f"  ← агент: «{context[:50]}»" if context else ""),
+                expected, label, confidence,
+            ))
 
     elapsed = time.perf_counter() - started
 
@@ -145,7 +153,7 @@ def selftest(model: dict) -> None:
     worst = 0.0
 
     for case in cases:
-        mine = dict(predict(model, case["text"]))
+        mine = dict(predict(model, case["text"], case.get("context", "")))
 
         for name, expected in zip(model["classes"], case["proba"]):
             worst = max(worst, abs(mine[name] - expected))

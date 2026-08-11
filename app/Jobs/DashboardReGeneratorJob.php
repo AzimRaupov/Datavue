@@ -65,6 +65,11 @@ class DashboardReGeneratorJob implements ShouldQueue
                     'instruction' => $this->text,
                 ]);
 
+                // Маршрутизатор счёл это командой изменить дашборд, а менять
+                // оказалось нечего. Учить локальную модель такому примеру
+                // нельзя — она переняла бы чужую ошибку.
+                \App\Models\IntentSample::reject($this->messageId, 'изменений для дашборда не найдено');
+
                 $d->message->answer = 'Я не понял, что именно нужно изменить на дашборде, и поэтому ничего не трогал. '
                     ."\n\n".'Напишите чуть конкретнее — какой виджет и что с ним сделать. Например: '
                     .'«объедини карточки в один виджет вверху и удали второй виджет с карточками» '
@@ -126,6 +131,9 @@ class DashboardReGeneratorJob implements ShouldQueue
             $d->message->status = 'answered';
             $d->message->save();
 
+            // Дашборд действительно перестроен — маршрут подтверждён.
+            \App\Models\IntentSample::confirm($this->messageId);
+
             event(new MessageTasksChanged($d->message, $task, $d->newDashboard->id));
 
             // Финальный статус проставляется НОВОМУ дашборду (тому, который только что
@@ -138,6 +146,8 @@ class DashboardReGeneratorJob implements ShouldQueue
         } catch (Throwable $e) {
             \Log::error($e->getMessage());
             \Log::error($e->getTraceAsString());
+
+            \App\Models\IntentSample::reject($this->messageId, 'перестройка дашборда упала');
 
             if ($d && $d->message) {
                 $d->message->status = 'failed';
