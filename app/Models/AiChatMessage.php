@@ -18,6 +18,10 @@ class AiChatMessage extends Model
         'chat_id',
         'message',
         'answer',
+        // Что агент предложил в этом ответе — сигнал для классификатора,
+        // пользователю не показывается. См. IntentClassifier::offerContext().
+        'offer_type',
+        'offer_summary',
         'tokens_used',
         'tool_results',
         'status',
@@ -39,6 +43,14 @@ class AiChatMessage extends Model
     public function tasks(): HasMany
     {
         return $this->hasMany(AiChatTask::class, 'message_id');
+    }
+
+    /**
+     * Файлы, сформированные в ответ на это сообщение.
+     */
+    public function exports(): HasMany
+    {
+        return $this->hasMany(ChatExport::class, 'message_id');
     }
     /**
      * Get the AI chat that owns the message.

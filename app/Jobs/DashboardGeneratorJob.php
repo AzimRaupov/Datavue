@@ -37,6 +37,13 @@ class DashboardGeneratorJob implements ShouldQueue
 
     public function handle(): void
     {
+        \App\Helpers\Ai\AiUsageContext::set(
+            \App\Models\AiChat::query()->whereKey($this->chat_id)->value('company_id'),
+            $this->chat_id,
+            $this->message_id,
+            'generate_dashboard'
+        );
+
         try {
             $generator = new DashboardGenerator(
                 $this->chat_id,
@@ -207,6 +214,16 @@ class DashboardGeneratorJob implements ShouldQueue
                 throw new RuntimeException($result['message'] ?: 'Step generate_widgets_dashboard failed');
             }
 
+            // Отказ отдельных виджетов не проваливает весь дашборд — они уже помечены 'failed'
+            // и будут переданы на исправление в ReviewWidgetsDashboard ниже.
+            if (!empty($result['failed'])) {
+                \Log::warning(sprintf(
+                    'DashboardGeneratorJob: %d/%d widgets failed to generate, continuing to review step',
+                    $result['failed'],
+                    $result['total'] ?? 0
+                ));
+            }
+
             $task->status_id = $generator->tasks_statuses['completed'];
             $task->save();
             $task->load('status');
@@ -260,7 +277,8 @@ class DashboardGeneratorJob implements ShouldQueue
             $task->status_id = $generator->tasks_statuses['completed'];
             $task->save();
             $task->load('status');
-            $generator->message->status="answered";
+            $generator->message->status = "answered";
+            $generator->message->save();
 
             event(new MessageTasksChanged($generator->message, $task, $generator->dashboard->id));
 
@@ -271,9 +289,27 @@ class DashboardGeneratorJob implements ShouldQueue
         } catch (Throwable $e) {
             \Log::error($e->getMessage());
             \Log::error($e->getTraceAsString());
-            $generator->message->status="failed";
+
+            if (isset($generator) && $generator->message) {
+                $generator->message->status = "failed";
+                $generator->message->answer = $generator->message->answer
+                    ?? 'Не удалось сгенерировать дашборд. Попробуйте ещё раз.';
+                $generator->message->save();
+
+                event(new MessageTasksChanged($generator->message, null, $generator->dashboard->id ?? null));
+            }
+
+            if (isset($generator) && $generator->dashboard) {
+                $generator->dashboard->status = 'failed';
+                $generator->dashboard->save();
+                event(new DashboardWidgetChanged($generator->dashboard));
+            }
 
             throw $e;
+        } finally {
+            // Воркер живёт долго: не сбросив контекст, следующая задача
+            // записала бы расход на предыдущую компанию.
+            \App\Helpers\Ai\AiUsageContext::clear();
         }
     }
 }

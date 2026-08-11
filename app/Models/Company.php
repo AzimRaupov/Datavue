@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Company extends Model
@@ -14,7 +15,9 @@ class Company extends Model
      */
     protected $fillable = [
         'name',
+        'owner_id',
         'is_active',
+        'ai_token_limit',
     ];
 
     /**
@@ -35,6 +38,15 @@ class Company extends Model
     public function users(): HasMany
     {
         return $this->hasMany(User::class);
+    }
+
+    /**
+     * Пользователь, зарегистрировавший компанию. Защищён от удаления
+     * и понижения в правах другими администраторами компании.
+     */
+    public function owner(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'owner_id');
     }
 
     /**

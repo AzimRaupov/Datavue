@@ -5,50 +5,31 @@ namespace App\Http\Requests\Chat;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 
+/**
+ * Создание чата.
+ *
+ * Раньше здесь описывался целый источник данных — файл, хост, порт, логин:
+ * чат и источник создавались одним запросом. Теперь источник подключается
+ * отдельно, и чату нужен только его id.
+ */
 class StoreRequest extends FormRequest
 {
-    /**
-     * Determine if the user is authorized to make this request.
-     */
     public function authorize(): bool
     {
+        // Доступ проверяется middleware 'permission:create chats'.
         return true;
     }
 
     /**
-     * Get the validation rules that apply to the request.
-     *
      * @return array<string, ValidationRule|array<mixed>|string>
      */
-public function rules(): array
-{
-    $rules = [
-        'connection_type' => 'required|in:local,remote',
-        'version' => 'nullable|string',
-    ];
-
-    if ($this->connection_type === 'remote') {
-        $rules += [
-            'type_id' => 'required|integer|exists:data_source_types,id',
-            'host' => 'required|string',
-            'port' => 'required|integer',
-            'database' => 'required|string',
-            'username' => 'required|string',
-            'password' => 'nullable|string',
+    public function rules(): array
+    {
+        return [
+            // Принадлежность источника компании проверяется в контроллере:
+            // правило exists подтвердило бы существование чужого источника.
+            'data_source_id' => 'required|integer',
+            'title' => 'nullable|string|max:255',
         ];
-    } else {
-        $rules += [
-            'data_file' => 'required|file|mimes:csv,txt,xlx,xls,xlsx,pdf,doc,docx,sql',
-        ];
-
-        if ($this->file('data_file')?->getClientOriginalExtension() === 'sql') {
-            $rules += [
-                'type_id' => 'required|integer|exists:data_source_types,id',
-            ];
-        }
     }
-
-    return $rules;
-}
-
 }

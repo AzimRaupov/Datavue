@@ -153,9 +153,7 @@ class DuckDbConnectionLocalProvider
         return collect();
     }
 
-    /**
-     * Получить полную схему базы данных (аналог MysqlConnectionRemoteProvider::getSchema)
-     */
+
     public function getSchema($tables_list = [], array $options = []): array
     {
         $tables = count($tables_list) > 0
@@ -312,9 +310,7 @@ class DuckDbConnectionLocalProvider
         return $schema;
     }
 
-    /**
-     * Получить количество записей таблицы
-     */
+
     private function getTableCount(string $tableName): int
     {
         $query = sprintf(

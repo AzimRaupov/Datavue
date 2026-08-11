@@ -5,6 +5,7 @@ import api from '../../api.js';
 import Echo from 'laravel-echo';
 import Pusher from 'pusher-js';
 import { useI18n } from 'vue-i18n'
+import MarkdownText from './MarkdownText.vue';
 
 window.Pusher = Pusher;
 const { t, locale } = useI18n()
@@ -26,7 +27,16 @@ const props = defineProps({
         type: [String, Number],
         default: null,
     },
-
+    /**
+     * Варианты дашбордов, подготовленные при создании чата
+     * (ChatController::store → DashboardSuggestionGenerator).
+     * Приходят асинхронно вместе с чатом, поэтому обращаться к ним
+     * нужно через props.* — деструктурировать нельзя, реактивность потеряется.
+     */
+    suggestions: {
+        type: Array,
+        default: () => [],
+    },
 });
 const emit = defineEmits(['close']);
 
@@ -234,6 +244,12 @@ onMounted(async () => {
                 console.log('--- РЕАЛТАЙМ ИЗМЕНЕНИЕ ЗАДАЧИ ПОЙМАНО! ---', e);
                 applyTaskUpdate(e);
 
+                // Длинный ответ агента не помещается в лимит сокета и не был
+                // отправлен целиком — забираем его обычным запросом.
+                if (e.answer_truncated) {
+                    fetchMessages();
+                }
+
                 if (e.dashboard_id) {
                     router.push({
                         name: 'company.chat',
@@ -271,8 +287,8 @@ onUnmounted(() => {
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3l1.34 3.66l3.66 1.34l-3.66 1.34l-1.34 3.66l-1.34 -3.66l-3.66 -1.34l3.66 -1.34z"/><path d="M8 13l.7 1.87l1.87 .7l-1.87 .7l-.7 1.87l-.7 -1.87l-1.87 -.7l1.87 -.7z"/></svg>
             </div>
             <div class="flex-fill overflow-hidden">
-                <div class="fw-semibold lh-1 small">AI Ассистент</div>
-                <div class="text-secondary d-flex align-items-center gap-1 mt-1" style="font-size:.7rem">
+                <div class="fw-bold">AI Ассистент</div>
+                <div class="text-secondary small d-flex align-items-center gap-1">
                     <div class="fw-semibold text-truncate">{{ chatTitle }}</div>
                 </div>
             </div>
@@ -282,12 +298,6 @@ onUnmounted(() => {
                 </button>
             </div>
         </div>
-        <div class="d-flex gap-2 px-3 py-2 border-bottom flex-shrink-0 flex-wrap bg-body-tertiary">
-            <span class="d-none d-sm-inline">
-                <a href="#" class="btn btn-1 px-2 py-1 gap-1 btn-sm" @click="quickAsk('Покажи статистику продаж')"> Выручка </a>
-              </span>
-        </div>
-
         <div ref="chatMessagesEl" class="chat-messages p-3 d-flex flex-column gap-3" id="chatMessages">
             <template v-if="messages.length">
                 <TransitionGroup name="msg" tag="div" class="d-flex flex-column gap-3">
@@ -302,12 +312,12 @@ onUnmounted(() => {
                         <div class="d-flex justify-content-start">
                             <div
                                 class="card card-body shadow-sm p-3 pb-0 ai-bubble"
-                                :class="isFailed(message) ? 'bg-danger-lt' : 'bg-light'"
+                                :class="isFailed(message) ? 'bg-danger-lt' : 'bg-surface-secondary'"
                                 style="max-width: 80%;"
                             >
                                 <transition name="fade" mode="out-in">
-                                    <div v-if="message.answer" key="answer" class="lh-base text-dark">
-                                        {{ message.answer }}
+                                    <div v-if="message.answer" key="answer" class="lh-base">
+                                        <MarkdownText :text="message.answer" />
                                     </div>
                                     <div v-else-if="isFailed(message)" key="failed" class="lh-base text-danger d-flex align-items-center gap-2 py-1">
                                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
@@ -366,21 +376,47 @@ onUnmounted(() => {
                         <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8a4 4 0 0 1 4 4"/><path d="M12 4a8 8 0 0 1 8 8"/><path d="M12 20a8 8 0 0 1 -8 -8"/><circle cx="12" cy="12" r="1"/></svg>
                     </div>
                     <h5 class="fw-bold mb-1">AI Ассистент</h5>
-                    <p class="text-secondary small mb-3">Задайте вопрос о данных вашего дашборда — анализ метрик, отчёты, тренды.</p>
-                    <div class="d-flex flex-column gap-2 w-100">
-                        <button class="btn btn-outline-secondary text-start suggestion-chip d-flex align-items-center gap-2 px-3 py-2" @click="quickAsk('Проанализируй текущие показатели продаж и дай рекомендации')" style="font-size:.8rem">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="flex-shrink-0 text-muted"><path d="M3 3v18h18"/><path d="M7 16l4 -7l4 4l4 -7"/></svg>
-                            Анализ продаж и рекомендации
-                        </button>
-                        <button class="btn btn-outline-secondary text-start suggestion-chip d-flex align-items-center gap-2 px-3 py-2" @click="quickAsk('Какие метрики показывают отрицательную динамику?')" style="font-size:.8rem">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="flex-shrink-0 text-muted"><path d="M12 5l0 14"/><path d="M18 13l-6 6"/><path d="M6 13l6 6"/></svg>
-                            Проблемные метрики
-                        </button>
-                        <button class="btn btn-outline-secondary text-start suggestion-chip d-flex align-items-center gap-2 px-3 py-2" @click="quickAsk('Составь краткий отчёт по ключевым показателям дашборда')" style="font-size:.8rem">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="flex-shrink-0 text-muted"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2"/><path d="M9 9l1 0"/><path d="M9 13l6 0"/><path d="M9 17l6 0"/></svg>
-                            Сводный отчёт по KPI
-                        </button>
-                    </div>
+
+                    <!-- Варианты дашбордов, подобранные по данным этого источника.
+                         Раньше здесь стояли три одинаковых для всех подсказки про
+                         продажи — на складской или кадровой базе они не значили
+                         ничего. Теперь темы приходят с бэкенда. -->
+                    <template v-if="props.suggestions.length">
+                        <p class="text-secondary small mb-3">
+                            Вот с чего можно начать на этих данных — выберите вариант
+                            или опишите свой запрос словами.
+                        </p>
+                        <div class="d-flex flex-column gap-2 w-100">
+                            <button
+                                v-for="suggestion in props.suggestions"
+                                :key="suggestion.id"
+                                class="btn btn-sm w-100 text-start suggestion-chip d-flex align-items-start gap-2"
+                                :disabled="loading"
+                                @click="quickAsk(suggestion.prompt)"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+                                     fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                     stroke-linejoin="round" class="flex-shrink-0 text-muted mt-1">
+                                    <path d="M3 3v18h18" />
+                                    <path d="M7 16l4 -7l4 4l4 -7" />
+                                </svg>
+                                <span>
+                                    <span class="d-block fw-bold">
+                                        {{ suggestion.title }}
+                                    </span>
+                                    <span v-if="suggestion.description" class="d-block text-secondary small mt-1"
+                                          style="white-space: normal">
+                                        {{ suggestion.description }}
+                                    </span>
+                                </span>
+                            </button>
+                        </div>
+                    </template>
+
+                    <p v-else class="text-secondary small mb-0">
+                        Опишите словами, что хотите увидеть на дашборде — например,
+                        «выручка по месяцам и топ-10 клиентов».
+                    </p>
                 </div>
             </template>
         </div>
@@ -404,7 +440,7 @@ onUnmounted(() => {
                     <svg v-else xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14l11 -11"/><path d="M21 3l-6.5 18a.55 .55 0 0 1 -1 0l-3.5 -7l-7 -3.5a.55 .55 0 0 1 0 -1l18 -6.5"/></svg>
                 </button>
             </div>
-            <div class="text-center text-muted mt-1" style="font-size:.68rem">Enter — отправить &nbsp;·&nbsp; Shift+Enter — новая строка</div>
+            <div class="text-center text-secondary small mt-1">Enter — отправить &nbsp;·&nbsp; Shift+Enter — новая строка</div>
         </div>
 
     </aside>

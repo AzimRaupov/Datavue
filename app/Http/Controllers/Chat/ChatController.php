@@ -2,210 +2,181 @@
 
 namespace App\Http\Controllers\Chat;
 
-use App\Helpers\DataSource\ConnectRemoteDb;
-use App\Helpers\DataSource\DataSourceRouter;
+use App\Helpers\Ai\AiUsage;
+use App\Helpers\Chat\DashboardSuggestionGenerator;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Chat\StoreRequest;
-use App\Jobs\DataHandlerJob;
-use App\Jobs\DashboardGeneratorJob;
-
 use App\Models\AiChat;
 use App\Models\AiChatMessage;
 use App\Models\AiChatTask;
-use App\Models\Dashboard;
+use App\Models\DashboardSuggestion;
 use App\Models\DataSource;
-use App\Models\DataSourceType;
-use App\Models\Task;
-use App\Models\TaskStatus;
-use App\Models\UploadedFile;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Bus;
-use function Pest\Laravel\json;
 
+/**
+ * Чаты с ИИ-агентом.
+ *
+ * Чат заводится НА уже подключённом источнике данных: компания сначала
+ * добавляет источник (см. DataSourceController), а потом создаёт под него
+ * столько чатов, сколько нужно. Раньше эти два действия были склеены — чат
+ * создавался только вместе с новым источником, и одну и ту же базу приходилось
+ * подключать заново под каждый вопрос.
+ */
 class ChatController extends Controller
 {
-    public function index(Request $request){
+    public function index(Request $request)
+    {
+        $user = $request->user();
 
-        $user = auth()->user();
-
-        $chats = AiChat::where('company_id', $user->company->id)
+        $query = AiChat::query()
+            ->where('company_id', $user->company_id)
             ->with([
+                'dataSource:id,name,type_id,connection_type,origin_format',
+                'dataSource.type:id,name',
                 'dashboards' => fn ($query) => $query
+                    ->select('id', 'name', 'chat_id', 'status')
                     ->latest()
-                    ->limit(3)
+                    ->limit(3),
             ])
-            ->get();
+            ->withCount('dashboards')
+            ->latest('id');
 
-        return response()->json($chats);
+        // Список чатов конкретного источника — на его странице.
+        if ($request->filled('data_source_id')) {
+            $query->where('data_source_id', $request->integer('data_source_id'));
+        }
+
+        return response()->json($query->get());
     }
 
-    public function show($id){
-
-        $user = auth()->user();
-
+    public function show(Request $request, $id)
+    {
         $chat = AiChat::query()
             ->where('id', $id)
-            ->where('company_id', $user->company->id)
+            ->where('company_id', $request->user()->company_id)
             ->with([
+                'dataSource:id,name,type_id,connection_type,origin_format,database',
+                'dataSource.type:id,name',
                 'dashboards' => function ($query) {
                     $query->select('id', 'name', 'chat_id');
                 },
+            ])
+            ->firstOrFail();
 
-                ])
-            ->first();
+        // Варианты дашбордов лежат на источнике, но чат — единственное место,
+        // где они показываются, поэтому отдаём их вместе с чатом. При
+        // перезагрузке страницы предложения не теряются.
+        $suggestions = DashboardSuggestion::query()
+            ->where('data_source_id', $chat->data_source_id)
+            ->orderBy('position')
+            ->orderBy('id')
+            ->get();
 
-        return $chat;
-
+        return response()->json(
+            $chat->toArray() + ['suggestions' => $suggestions]
+        );
     }
 
+    /**
+     * Новый чат на существующем источнике.
+     *
+     * Источник больше не создаётся здесь: приходит его id, и остаётся только
+     * проверить, что он принадлежит той же компании.
+     */
     public function store(StoreRequest $request)
     {
-        $user = auth()->user();
+        $user = $request->user();
 
-        if ($request->input('connection_type') === 'local' && !$request->hasFile('data_file')) {
-            return [
+        $dataSource = DataSource::query()
+            ->ofCompany($user->company_id)
+            ->find($request->input('data_source_id'));
+
+        // Отдельная проверка, а не exists-правило: сообщение об источнике чужой
+        // компании не должно отличаться от сообщения о несуществующем.
+        if (!$dataSource) {
+            return response()->json([
                 'success' => false,
-                'message' => 'Файл не был передан.',
-            ];
+                'message' => 'Источник данных не найден.',
+            ], 404);
         }
 
-        $storedFullPath = null;
+        $chat = AiChat::create([
+            'user_id'        => $user->id,
+            'company_id'     => $user->company_id,
+            'data_source_id' => $dataSource->id,
+            'title'          => $request->input('title') ?: 'Новый чат — ' . $dataSource->name,
+        ]);
 
-        try {
-            $result = DB::transaction(function () use ($request, $user, &$storedFullPath) {
+        // Варианты дашбордов готовятся ЗДЕСЬ, а не в фоне: фронт держит
+        // кнопку в состоянии загрузки и открывает чат уже с готовыми
+        // предложениями. Первый вызов на источнике заодно строит группировку
+        // таблиц, поэтому может занять до минуты; для второго чата на том же
+        // источнике всё берётся из базы и отвечает мгновенно.
+        //
+        // Сбой генерации намеренно не роняет запрос — чат создан, просто
+        // откроется без предложений (см. DashboardSuggestionGenerator).
+        // При исчерпанном лимите чат всё равно создаём — просто без вариантов:
+        // блокировать создание чата из-за необязательной подсказки неправильно.
+        $suggestions = AiUsage::limitReached($user->company)
+            ? collect()
+            : (new DashboardSuggestionGenerator($dataSource))->handle();
 
-                $chat = AiChat::create([
-                    'user_id'    => $user->id,
-                    'company_id' => $user->company->id,
-                ]);
-                $types = DataSourceType::query()->pluck('id', 'name')->toArray();
-
-                $connectionType = $request->input('connection_type');
-
-                if ($connectionType === 'local') {
-
-                    $file = $request->file('data_file');
-                    $path = $user->company->id . '/chats/' . $chat->id . '/data';
-                    $name = uniqid('', true) . '.' . $file->getClientOriginalExtension();
-
-                    $storedPath = Storage::disk('company')->putFileAs($path, $file, $name);
-                    $storedFullPath = Storage::disk('company')->path($storedPath);
-
-                    $upload = UploadedFile::create([
-                        'company_id'    => $user->company->id,
-                        'chat_id'       => $chat->id,
-                        'original_name' => $file->getClientOriginalName(),
-                        'file_path'     => $storedFullPath,
-                        'file_type'     => strtolower($file->getClientOriginalExtension()),
-                        'file_size'     => $file->getSize(),
-                    ]);
-
-                    $dataSourceRouter = new DataSourceRouter(
-                        $chat->id,
-                        $upload->id,
-                        $user->id,
-                        $request->input('type_id')
-                    );
-
-                    $handlerResult = $dataSourceRouter->handle();
-
-                    if (!$handlerResult['success']) {
-                        throw new \RuntimeException($handlerResult['message']);
-                    }
-
-                    $extraction = $handlerResult['extraction'];
-                    $connection = $handlerResult['connection'] ?? null;
-
-                    if ($connection) {
-                        // это был .sql дамп, импортированный в реальную mysql-базу —
-                        // сохраняем источник как remote, а не local
-                        DataSource::query()->create([
-                            'company_id'      => $chat->company_id,
-                            'chat_id'         => $chat->id,
-                            'type_id'         => $types[$connection['type_database']],
-                            'extracted_id'    => $extraction->id,
-                            'name'            => $upload->original_name,
-                            'connection_type' => 'remote',
-                            'version'         => $request->input('version'),
-                            'host'            => $connection['host'],
-                            'port'            => $connection['port'],
-                            'database'        => $connection['database'],
-                            'username'        => $connection['username'],
-                            'password'        => $connection['password'],
-                            'path'            => null,
-                        ]);
-                    } else {
-                        DataSource::query()->create([
-                            'company_id'      => $chat->company_id,
-                            'chat_id'         => $chat->id,
-                            'type_id'         => 1,
-                            'extracted_id'    => $extraction->id,
-                            'name'            => $upload->original_name,
-                            'connection_type' => $connectionType,
-                            'version'         => $request->input('version'),
-                            'path'            => $extraction->data_path,
-                        ]);
-                    }
-
-                    return ['chat' => $chat, 'success' => true, 'message' => $handlerResult['message']];
-                }
-
-                if ($connectionType === 'remote') {
-
-                    $type = DataSourceType::query()->find($request->input('type_id'));
-
-                    $remoteDb = new ConnectRemoteDb(
-                        $request->input('host'),
-                        $request->input('port'),
-                        $request->input('database'),
-                        $type->name ?? null,
-                        $request->input('username'),
-                        $request->input('password')
-                    );
-
-                    $checkResult = $remoteDb->check();
-
-                    if (!$checkResult['success']) {
-                        throw new \RuntimeException($checkResult['message']);
-                    }
-
-                    DataSource::query()->create([
-                        'company_id'      => $chat->company_id,
-                        'chat_id'         => $chat->id,
-                        'type_id'         => $request->input('type_id'),
-                        'name'            => $request->input('database'),
-                        'host'            => $request->input('host'),
-                        'port'            => $request->input('port'),
-                        'database'        => $request->input('database'),
-                        'username'        => $request->input('username'),
-                        'password'        => $request->input('password'),
-                        'connection_type' => $connectionType,
-                        'version'         => $request->input('version') ?: null,
-                    ]);
-
-                    return ['chat' => $chat, 'success' => true, 'message' => $checkResult['message']];
-                }
-
-                throw new \RuntimeException('Неизвестный connection_type.');
-            });
-
-            return $result;
-
-        } catch (\Throwable $e) {
-
-            if ($storedFullPath && file_exists($storedFullPath)) {
-                @unlink($storedFullPath);
-            }
-
-            return [
-                'success' => false,
-                'message' => $e->getMessage(),
-            ];
-        }
+        return response()->json([
+            'success' => true,
+            'message' => 'Чат создан.',
+            'chat' => $chat->load('dataSource:id,name,type_id,origin_format', 'dataSource.type:id,name,label'),
+            'suggestions' => $suggestions,
+        ], 201);
     }
 
+    /**
+     * Переименование чата.
+     */
+    public function update(Request $request, $id)
+    {
+        $chat = $this->findForCompany($request, $id);
+
+        $data = $request->validate([
+            'title' => 'required|string|max:255',
+        ]);
+
+        $chat->title = $data['title'];
+        $chat->save();
+
+        return response()->json($chat);
+    }
+
+    /**
+     * Удаление чата вместе с его дашбордами и перепиской.
+     *
+     * Источник данных при этом НЕ трогается: он принадлежит компании, а не
+     * чату, и на нём могут работать другие чаты. Раньше здесь стояло
+     * DataSource::where('chat_id', ...)->delete() — вместе с чатом уносило и базу.
+     */
+    public function destroy(Request $request, $id)
+    {
+        $chat = $this->findForCompany($request, $id);
+
+        DB::transaction(function () use ($chat) {
+            foreach ($chat->dashboards as $dashboard) {
+                $dashboard->widgets()->delete();
+                $dashboard->delete();
+            }
+
+            AiChatTask::query()->where('chat_id', $chat->id)->delete();
+            AiChatMessage::query()->where('chat_id', $chat->id)->delete();
+
+            $chat->delete();
+        });
+
+        return response()->json(['message' => 'Чат удалён.']);
+    }
+
+    private function findForCompany(Request $request, $id): AiChat
+    {
+        return AiChat::query()
+            ->where('company_id', $request->user()->company_id)
+            ->findOrFail($id);
+    }
 }
-
-

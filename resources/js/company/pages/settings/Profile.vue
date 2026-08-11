@@ -1,150 +1,322 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, reactive, computed } from 'vue';
+import api from '../../api.js';
 
-const user = ref(
-    JSON.parse(localStorage.getItem('user') || 'null')
-)
+/**
+ * Собственный профиль: имя, e-mail, пароль и название компании.
+ *
+ * Раньше здесь лежала неизменённая демо-страница Tabler: ссылки вели на
+ * несуществующие .html, поля были привязаны через :value без v-model, кнопки
+ * сохранения не было вовсе. Изменить о себе что-либо было невозможно.
+ *
+ * Три независимых блока вместо одной большой формы: смена пароля требует
+ * подтверждения текущего, и мешать её с правкой имени неудобно — из-за
+ * ошибки в пароле не сохранялось бы и остальное.
+ */
 
-console.log(user.value)
+const stored = JSON.parse(localStorage.getItem('user') || 'null');
+
+const user = ref(stored);
+
+const canManageCompany = computed(() =>
+    (user.value?.permissions ?? []).includes('manage company')
+);
+
+// --- Личные данные ---
+const profile = reactive({
+    name: stored?.name ?? '',
+    email: stored?.email ?? '',
+});
+const savingProfile = ref(false);
+const profileErrors = ref({});
+const profileMessage = ref(null);
+
+// --- Пароль ---
+const passwordForm = reactive({
+    current_password: '',
+    password: '',
+    password_confirmation: '',
+});
+const savingPassword = ref(false);
+const passwordErrors = ref({});
+const passwordMessage = ref(null);
+
+// --- Компания ---
+const company = reactive({ name: stored?.company?.name ?? '' });
+const savingCompany = ref(false);
+const companyErrors = ref({});
+const companyMessage = ref(null);
+
+const profileChanged = computed(() =>
+    profile.name !== (user.value?.name ?? '') ||
+    profile.email !== (user.value?.email ?? '')
+);
+
+const passwordFilled = computed(() =>
+    !!passwordForm.current_password &&
+    !!passwordForm.password &&
+    !!passwordForm.password_confirmation
+);
+
+const companyChanged = computed(() =>
+    company.name !== (user.value?.company?.name ?? '')
+);
+
+function initials(name) {
+    return (name || '?')
+        .split(' ')
+        .filter(Boolean)
+        .slice(0, 2)
+        .map(part => part[0])
+        .join('')
+        .toUpperCase();
+}
+
+/**
+ * Общая отправка: контроллер принимает любой набор полей и меняет только
+ * присланные, поэтому три формы шлют по одному и тому же адресу.
+ */
+async function submit(payload, { saving, errors, message, onSuccess }) {
+    if (saving.value) return;
+
+    saving.value = true;
+    errors.value = {};
+    message.value = null;
+
+    try {
+        const { data } = await api.post('/settings/profile', payload);
+
+        // Ответ содержит свежего пользователя с ролями и правами — им же
+        // пользуется шапка, поэтому кладём его в localStorage целиком.
+        user.value = data.user;
+        localStorage.setItem('user', JSON.stringify(data.user));
+
+        message.value = 'Сохранено.';
+        onSuccess?.();
+    } catch (err) {
+        const data = err.response?.data;
+
+        if (data?.errors) {
+            errors.value = data.errors;
+        } else {
+            errors.value = { _: [data?.message || 'Не удалось сохранить.'] };
+        }
+    } finally {
+        saving.value = false;
+    }
+}
+
+const saveProfile = () => submit(
+    { name: profile.name, email: profile.email },
+    { saving: savingProfile, errors: profileErrors, message: profileMessage }
+);
+
+const savePassword = () => submit(
+    { ...passwordForm },
+    {
+        saving: savingPassword,
+        errors: passwordErrors,
+        message: passwordMessage,
+        onSuccess: () => {
+            passwordForm.current_password = '';
+            passwordForm.password = '';
+            passwordForm.password_confirmation = '';
+            passwordMessage.value = 'Пароль изменён. Остальные сеансы завершены.';
+        },
+    }
+);
+
+const saveCompany = () => submit(
+    { company_name: company.name },
+    { saving: savingCompany, errors: companyErrors, message: companyMessage }
+);
+
+/** Первая ошибка поля — валидация Laravel отдаёт массив на каждое поле. */
+const firstError = (errors, field) => errors.value?.[field]?.[0] ?? null;
 </script>
 
 <template>
-
     <div class="page-wrapper">
-
-        <div class="page-header d-print-none mb-2">
+        <!-- BEGIN PAGE HEADER -->
+        <div class="page-header d-print-none">
             <div class="container-xl">
                 <div class="row g-2 align-items-center">
                     <div class="col">
-                        <h1 class="page-title">Настройки аккаунта</h1>
+                        <div class="page-pretitle">Компания {{ user?.company?.name }}</div>
+                        <h2 class="page-title">Мой профиль</h2>
                     </div>
                 </div>
             </div>
         </div>
         <!-- END PAGE HEADER -->
-        <!-- END PAGE HEADER -->
+
         <!-- BEGIN PAGE BODY -->
-        <main id="content" class="page-body">
+        <main class="page-body">
             <div class="container-xl">
-                <!-- BEGIN PAGE BODY -->
-                <div class="card">
-                    <div class="row g-0">
-                        <div class="col-12 col-md-3 border-end">
-                            <div class="card-body">
-                                <h4 class="subheader">Business settings</h4>
-                                <nav class="list-group list-group-transparent">
-                                    <a href="./settings.html" class="list-group-item list-group-item-action d-flex align-items-center active">My Account</a>
-                                    <a href="#" class="list-group-item list-group-item-action d-flex align-items-center">My Notifications</a>
-                                    <a href="#" class="list-group-item list-group-item-action d-flex align-items-center">Connected Apps</a>
-                                    <a href="./settings-plan.html" class="list-group-item list-group-item-action d-flex align-items-center">Plans</a>
-                                    <a href="#" class="list-group-item list-group-item-action d-flex align-items-center">Billing & Invoices</a>
-                                </nav>
-                                <h4 class="subheader mt-4">Experience</h4>
-                                <nav class="list-group list-group-transparent">
-                                    <a href="#" class="list-group-item list-group-item-action">Give Feedback</a>
-                                </nav>
-                            </div>
-                        </div>
-                        <div class="col-12 col-md-9 d-flex flex-column">
-                            <div class="card-body">
-                                <h2 class="mb-4">My Account</h2>
-                                    <div class="col-5">
-                                        <label class="form-label" for="business-name">Name</label>
-                                        <input
-                                            type="text"
-                                            class="form-control"
-                                            id="business-name"
-                                            name="name"
-                                            :value="user?.name"
-                                        />
-                                    </div>
+                <div class="row row-cards">
+                    <!-- ЛЕВАЯ КОЛОНКА: кто я -->
+                    <div class="col-lg-4">
+                        <div class="card">
+                            <div class="card-body text-center">
+                                <span class="avatar avatar-xl mb-3">{{ initials(user?.name) }}</span>
+                                <h3 class="mb-1">{{ user?.name }}</h3>
+                                <div class="text-secondary">{{ user?.email }}</div>
 
-                                <h3 class="card-title mt-4">Email</h3>
-                                <p class="card-subtitle">This contact will be shown to others publicly, so choose it carefully.</p>
-                                <div>
-                                    <div class="row g-2">
-                                        <div class="col-4">
-                                            <label for="email" class="form-label visually-hidden">Email</label>
-                                            <input type="text" class="form-control" id="email" name="email" value="paweluna@howstuffworks.com" />
-                                        </div>
-                                        <div class="col-auto">
-                                            <a href="#" class="btn btn-1"> Change </a>
-                                        </div>
-                                    </div>
-                                </div>
-                                <h3 class="card-title mt-4">Password</h3>
-                                <p class="card-subtitle">You can set a permanent password if you don't want to use temporary login codes.</p>
-                                <div>
-                                    <a href="#" class="btn btn-1"> Set new password </a>
-                                </div>
-
-                            </div>
-                            <div class="card-footer bg-transparent mt-auto">
-                                <div class="btn-list justify-content-end">
-                                    <a href="#" class="btn btn-1"> Cancel </a>
-                                    <a href="#" class="btn btn-primary btn-2"> Submit </a>
+                                <div class="mt-3">
+                                    <span v-for="role in (user?.roles ?? [])" :key="role"
+                                          class="badge bg-purple-lt me-1">
+                                        {{ role }}
+                                    </span>
+                                    <span v-if="user?.is_company_owner" class="badge bg-yellow-lt">
+                                        владелец
+                                    </span>
                                 </div>
                             </div>
                         </div>
                     </div>
+
+                    <!-- ПРАВАЯ КОЛОНКА: что можно менять -->
+                    <div class="col-lg-8">
+                        <!-- Личные данные -->
+                        <div class="card mb-3">
+                            <div class="card-header">
+                                <h3 class="card-title">Личные данные</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <label class="form-label required">Имя</label>
+                                    <input v-model="profile.name" type="text" class="form-control"
+                                           :class="{ 'is-invalid': firstError(profileErrors, 'name') }"
+                                           :disabled="savingProfile" />
+                                    <div v-if="firstError(profileErrors, 'name')" class="invalid-feedback">
+                                        {{ firstError(profileErrors, 'name') }}
+                                    </div>
+                                </div>
+
+                                <div class="mb-0">
+                                    <label class="form-label required">E-mail</label>
+                                    <input v-model="profile.email" type="email" class="form-control"
+                                           :class="{ 'is-invalid': firstError(profileErrors, 'email') }"
+                                           :disabled="savingProfile" />
+                                    <div v-if="firstError(profileErrors, 'email')" class="invalid-feedback">
+                                        {{ firstError(profileErrors, 'email') }}
+                                    </div>
+                                    <small class="form-hint">
+                                        По этому адресу вы входите в систему.
+                                    </small>
+                                </div>
+
+                                <div v-if="firstError(profileErrors, '_')" class="alert alert-danger mt-3 mb-0"
+                                     role="alert">
+                                    {{ firstError(profileErrors, '_') }}
+                                </div>
+                                <div v-else-if="profileMessage" class="alert alert-success mt-3 mb-0" role="alert">
+                                    {{ profileMessage }}
+                                </div>
+                            </div>
+                            <div class="card-footer text-end">
+                                <button class="btn btn-primary" :class="{ 'btn-loading': savingProfile }"
+                                        :disabled="savingProfile || !profileChanged" @click="saveProfile">
+                                    Сохранить
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Пароль -->
+                        <div class="card mb-3">
+                            <div class="card-header">
+                                <h3 class="card-title">Пароль</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <label class="form-label required">Текущий пароль</label>
+                                    <input v-model="passwordForm.current_password" type="password"
+                                           class="form-control" autocomplete="current-password"
+                                           :class="{ 'is-invalid': firstError(passwordErrors, 'current_password') }"
+                                           :disabled="savingPassword" />
+                                    <div v-if="firstError(passwordErrors, 'current_password')"
+                                         class="invalid-feedback">
+                                        {{ firstError(passwordErrors, 'current_password') }}
+                                    </div>
+                                </div>
+
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label class="form-label required">Новый пароль</label>
+                                            <input v-model="passwordForm.password" type="password"
+                                                   class="form-control" autocomplete="new-password"
+                                                   :class="{ 'is-invalid': firstError(passwordErrors, 'password') }"
+                                                   :disabled="savingPassword" />
+                                            <div v-if="firstError(passwordErrors, 'password')"
+                                                 class="invalid-feedback">
+                                                {{ firstError(passwordErrors, 'password') }}
+                                            </div>
+                                            <small class="form-hint">Минимум 6 символов.</small>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-0">
+                                            <label class="form-label required">Повторите пароль</label>
+                                            <input v-model="passwordForm.password_confirmation" type="password"
+                                                   class="form-control" autocomplete="new-password"
+                                                   :disabled="savingPassword" />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div v-if="firstError(passwordErrors, '_')" class="alert alert-danger mt-3 mb-0"
+                                     role="alert">
+                                    {{ firstError(passwordErrors, '_') }}
+                                </div>
+                                <div v-else-if="passwordMessage" class="alert alert-success mt-3 mb-0" role="alert">
+                                    {{ passwordMessage }}
+                                </div>
+                            </div>
+                            <div class="card-footer text-end">
+                                <button class="btn btn-primary" :class="{ 'btn-loading': savingPassword }"
+                                        :disabled="savingPassword || !passwordFilled" @click="savePassword">
+                                    Изменить пароль
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Компания: только для тех, кто ей управляет -->
+                        <div v-if="canManageCompany" class="card">
+                            <div class="card-header">
+                                <h3 class="card-title">Компания</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-0">
+                                    <label class="form-label required">Название</label>
+                                    <input v-model="company.name" type="text" class="form-control"
+                                           :class="{ 'is-invalid': firstError(companyErrors, 'company_name') }"
+                                           :disabled="savingCompany" />
+                                    <div v-if="firstError(companyErrors, 'company_name')" class="invalid-feedback">
+                                        {{ firstError(companyErrors, 'company_name') }}
+                                    </div>
+                                    <small class="form-hint">Видно всем сотрудникам компании.</small>
+                                </div>
+
+                                <div v-if="firstError(companyErrors, '_')" class="alert alert-danger mt-3 mb-0"
+                                     role="alert">
+                                    {{ firstError(companyErrors, '_') }}
+                                </div>
+                                <div v-else-if="companyMessage" class="alert alert-success mt-3 mb-0" role="alert">
+                                    {{ companyMessage }}
+                                </div>
+                            </div>
+                            <div class="card-footer text-end">
+                                <button class="btn btn-primary" :class="{ 'btn-loading': savingCompany }"
+                                        :disabled="savingCompany || !companyChanged" @click="saveCompany">
+                                    Сохранить
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <!-- END PAGE BODY -->
             </div>
         </main>
         <!-- END PAGE BODY -->
-        <!-- BEGIN FOOTER -->
-        <!--  BEGIN FOOTER  -->
-        <footer class="footer footer-transparent d-print-none">
-            <div class="container-xl">
-                <div class="row text-center align-items-center flex-row-reverse">
-                    <div class="col-lg-auto ms-lg-auto">
-                        <nav aria-label="Footer">
-                            <ul class="list-inline list-inline-dots mb-0">
-                                <li class="list-inline-item"><a href="https://docs.tabler.io" target="_blank" class="link-secondary" rel="noopener">Documentation</a></li>
-                                <li class="list-inline-item"><a href="./license.html" class="link-secondary">License</a></li>
-                                <li class="list-inline-item">
-                                    <a href="https://github.com/tabler/tabler" target="_blank" class="link-secondary" rel="noopener">Source code</a>
-                                </li>
-                                <li class="list-inline-item">
-                                    <a href="https://github.com/sponsors/codecalm" target="_blank" class="link-secondary" rel="noopener">
-                                        <!-- Download SVG icon from http://tabler.io/icons/icon/heart -->
-                                        <svg
-                                            xmlns="http://www.w3.org/2000/svg"
-                                            width="24"
-                                            height="24"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            stroke-width="2"
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                            aria-hidden="true"
-                                            focusable="false"
-                                            class="icon text-pink icon-inline icon-4"
-                                        >
-                                            <path d="M19.5 12.572l-7.5 7.428l-7.5 -7.428a5 5 0 1 1 7.5 -6.566a5 5 0 1 1 7.5 6.572" />
-                                        </svg>
-                                        Sponsor
-                                    </a>
-                                </li>
-                            </ul>
-                        </nav>
-                    </div>
-                    <div class="col-12 col-lg-auto mt-3 mt-lg-0">
-                        <ul class="list-inline list-inline-dots mb-0">
-                            <li class="list-inline-item">
-                                Copyright &copy; 2026
-                                <a href="." class="link-secondary">Tabler</a>. All rights reserved.
-                            </li>
-                            <li class="list-inline-item">
-                                <a href="./changelog.html" class="link-secondary" rel="noopener"> v1.4.0 </a>
-                            </li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
-        </footer>
-        <!--  END FOOTER  -->
-        <!-- END FOOTER -->
     </div>
 </template>

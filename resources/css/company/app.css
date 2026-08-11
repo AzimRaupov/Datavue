@@ -4,11 +4,11 @@
     --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
     'Segoe UI Symbol', 'Noto Color Emoji';
 }
+
 html, body, #app {
     height: 100%;
     overflow-y: auto; /* или просто убрать overflow: hidden, если он где-то стоит */
 }
-
 
 #nprogress .bar {
     background: #3b82f6 !important;
@@ -254,14 +254,48 @@ html, body, #app {
 
 
 
- :root {
-     --chart-demo-pie-color-0: color-mix(in srgb, transparent, var(--tblr-primary) 100%);
-     --chart-demo-pie-color-1: color-mix(in srgb, transparent, var(--tblr-primary) 80%);
-     --chart-demo-pie-color-2: color-mix(in srgb, transparent, var(--tblr-primary) 60%);
-     --chart-demo-pie-color-3: color-mix(in srgb, transparent, var(--tblr-gray-300) 100%);
- }
+/*
+ * Палитра рядов для виджетов дашборда.
+ *
+ * Восемь фиксированных цветов, назначаемых по порядку и никогда не
+ * зацикливаемых. Оттенки взяты из палитры Tabler, кроме жёлтого и зелёного:
+ * штатные #f59f00 и #2fb344 слишком светлые — они выпадают из рабочего
+ * диапазона светлоты и плохо читаются на белой карточке.
+ *
+ * Набор проверен на различимость: худшая соседняя пара при дальтонизме
+ * ΔE 9.4 (порог 8), при обычном зрении ΔE 24.1 (порог 15).
+ *
+ * Слот 4 (#eda100) не дотягивает до контраста 3:1 к белому фону, поэтому у
+ * виджетов с двумя и более рядами всегда включена легенда — цвет не остаётся
+ * единственным признаком ряда.
+ */
 :root {
-    --chart-active-users-2-color-0: color-mix(in srgb, transparent, var(--tblr-primary) 100%);
-    --chart-active-users-2-color-1: color-mix(in srgb, transparent, var(--tblr-azure) 100%);
-    --chart-active-users-2-color-2: color-mix(in srgb, transparent, var(--tblr-green) 100%);
+    --chart-color-1: #066fd1;
+    --chart-color-2: #f76707;
+    --chart-color-3: #0ca678;
+    --chart-color-4: #eda100;
+    --chart-color-5: #d6336c;
+    --chart-color-6: #008300;
+    --chart-color-7: #4263eb;
+    --chart-color-8: #d63939;
+
+    /*
+     * Прежние имена переменных: часть из них (--chart-tasks-overview-color-0)
+     * нигде не была определена, и линейный график из-за невалидного stroke
+     * просто не рисовался — были видны только подсказки при наведении.
+     * Оставлены как псевдонимы, чтобы старая разметка не сломалась.
+     */
+    --chart-demo-pie-color-0: var(--chart-color-1);
+    --chart-demo-pie-color-1: var(--chart-color-2);
+    --chart-demo-pie-color-2: var(--chart-color-3);
+    --chart-demo-pie-color-3: var(--chart-color-4);
+
+    --chart-active-users-2-color-0: var(--chart-color-1);
+    --chart-active-users-2-color-1: var(--chart-color-2);
+    --chart-active-users-2-color-2: var(--chart-color-3);
+
+    --chart-tasks-overview-color-0: var(--chart-color-1);
+
+    --chart-scatter-color-0: var(--chart-color-1);
+    --chart-scatter-color-1: var(--chart-color-5);
 }

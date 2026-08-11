@@ -1,0 +1,40 @@
+/*
+ * Переопределения поверх Tabler.
+ *
+ * ВАЖНО: этот файл импортируется в company/app.js ПОСЛЕ стилей Tabler.
+ * Иначе не работает: раньше эти правила лежали в resources/css/company/app.css,
+ * который blade подключает ПЕРВЫМ, а Tabler — вторым. Свои значения переменных
+ * молча перетирались, и правка выглядела применённой, хотя ничего не меняла.
+ */
+
+/*
+ * Шрифт интерфейса.
+ *
+ * Tabler по умолчанию ждёт Inter (--tblr-font-sans-serif), но в проект через
+ * bunny() грузится Instrument Sans. Inter не подключён, поэтому интерфейс
+ * отрисовывался системным шрифтом — под его метрики Tabler не настраивался,
+ * и всё выглядело крупнее и шире, чем в шаблоне.
+ *
+ * Переопределяем именно --tblr-font-sans-serif, а не --tblr-body-font-family:
+ * переключатель шрифта в настройках темы ([data-bs-theme-font]) читает
+ * переменные по семействам, поэтому выбор serif / monospace / comic
+ * продолжает работать.
+ */
+:root {
+    --tblr-font-sans-serif: 'Instrument Sans', ui-sans-serif, system-ui, -apple-system,
+    'Segoe UI', Roboto, 'Helvetica Neue', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+}
+
+/*
+ * Иллюстрация в пустых состояниях.
+ *
+ * У Tabler есть собственное правило img { max-width: 100%; height: auto } —
+ * оно сильнее HTML-атрибута height, поэтому <img height="128"> разворачивался
+ * в натуральную величину. Исходники иллюстраций 1600×1200, и картинка
+ * занимала пол-экрана.
+ */
+.empty-img img {
+    height: 8rem;
+    width: auto;
+    max-width: 100%;
+}

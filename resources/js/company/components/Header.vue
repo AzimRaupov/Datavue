@@ -1,6 +1,6 @@
 <script setup>
-import { onBeforeUnmount, onMounted, nextTick, ref } from 'vue'
-import { Dropdown } from 'bootstrap'
+import { computed, ref } from 'vue'
+import axios from 'axios'
 import { useI18n } from 'vue-i18n'
 
 const logo = '/logos/logo.png'
@@ -8,46 +8,62 @@ const logo = '/logos/logo.png'
 
 const { t, locale } = useI18n()
 
-const user = JSON.parse(localStorage.getItem('user') || 'null')
-const languageToggleRef = ref(null)
-const userToggleRef = ref(null)
-const dropdownInstances = []
+if (localStorage.getItem('lang')) {
+    locale.value = localStorage.getItem('lang')
+}
 
+const user = JSON.parse(localStorage.getItem('user') || 'null')
+
+// Пункты меню показываем только тем, кому они доступны на бэкенде,
+// чтобы пользователь не упирался в 403 из интерфейса.
+const permissions = computed(() => user?.permissions ?? [])
+const canViewUsers = computed(() => permissions.value.includes('view users'))
+const canViewSources = computed(() => permissions.value.includes('view data sources'))
+
+// Выпадающие меню работают на штатном data-api Bootstrap (data-bs-toggle="dropdown").
+// Раньше здесь была своя реализация через Dropdown.getOrCreateInstance(), потому что
+// штатная не срабатывала: на страницу попадали ДВЕ копии Bootstrap (импорт из '@tabler/core/'),
+// data-api регистрировался дважды, и каждый клик обрабатывался два раза — меню
+// открывалось и тут же закрывалось. Дубликат устранён, ручная логика больше не нужна
+// и только конфликтовала со штатной.
 const changeLanguage = (lang) => {
     locale.value = lang
     localStorage.setItem('lang', lang)
-    const instance = languageToggleRef.value
-        ? Dropdown.getInstance(languageToggleRef.value)
-        : null
-
-    instance?.hide()
 }
 
-const toggleDropdown = (event) => {
-    event.preventDefault()
-    const current = Dropdown.getOrCreateInstance(event.currentTarget)
+/**
+ * Выход из аккаунта.
+ *
+ * Раньше пункт меню вёл на несуществующий ./sign-in.html: токен оставался
+ * и в localStorage, и действующим на сервере. Теперь он сначала отзывается
+ * на бэкенде, и только потом чистится локально.
+ *
+ * Ошибку сети намеренно проглатываем: если сервер недоступен, пользователь
+ * всё равно должен выйти локально, иначе выйти будет невозможно вообще.
+ */
+const loggingOut = ref(false)
 
-    dropdownInstances
-        .filter((instance) => instance !== current)
-        .forEach((instance) => instance.hide())
+const logout = async () => {
+    if (loggingOut.value) return
+    loggingOut.value = true
 
-    current.toggle()
-}
-
-onMounted(async () => {
-    await nextTick()
-
-    ;[languageToggleRef.value, userToggleRef.value]
-        .filter(Boolean)
-        .forEach((el) => {
-            const instance = Dropdown.getOrCreateInstance(el)
-            dropdownInstances.push(instance)
+    try {
+        // Через axios напрямую, а не через api.js: у того baseURL '/api/company',
+        // а выход живёт на уровень выше — '/api/logout'.
+        await axios.post('/api/logout', {}, {
+            headers: {
+                Authorization: `Bearer ${localStorage.getItem('token')}`,
+                Accept: 'application/json',
+            },
         })
-})
-
-onBeforeUnmount(() => {
-    dropdownInstances.forEach((instance) => instance.dispose())
-})
+    } catch (e) {
+        // намеренно тихо, см. комментарий выше
+    } finally {
+        localStorage.removeItem('token')
+        localStorage.removeItem('user')
+        window.location.href = '/login'
+    }
+}
 </script>
 <template>
     <header class="navbar navbar-expand-md d-print-none">
@@ -306,17 +322,14 @@ onBeforeUnmount(() => {
                     <!-- BEGIN LANGUAGE SELECTOR -->
                     <div class="nav-item dropdown d-none d-md-flex">
                         <a
-                            ref="languageToggleRef"
                             href="#"
                             class="nav-link px-0"
                             data-bs-toggle="dropdown"
-                            @click.stop.prevent="toggleDropdown"
                             tabindex="-1"
                             aria-label="Select language"
-                            data-bs-auto-close="outside"
                             aria-expanded="false"
                         >
-                            ТҶ
+                            {{ locale === 'ru' ? 'RU' : locale === 'tj' ? 'ТҶ' : 'EN' }}
                         </a>
                         <div class="dropdown-menu dropdown-menu-arrow dropdown-menu-end">
                         <a class="dropdown-item" href="#" @click.prevent="changeLanguage('ru')">
@@ -337,11 +350,9 @@ onBeforeUnmount(() => {
                     <!-- BEGIN USER MENU -->
                 <div class="nav-item dropdown">
                     <a
-                        ref="userToggleRef"
                         href="#"
                         class="nav-link d-flex lh-1 p-0 px-2"
                         data-bs-toggle="dropdown"
-                        @click.stop.prevent="toggleDropdown"
                         aria-label="Open user menu"
                         aria-expanded="false"
                     >
@@ -404,13 +415,122 @@ onBeforeUnmount(() => {
                             Analytics</a
                         >
                         <div class="dropdown-divider"></div>
+                        <router-link
+                            v-if="canViewUsers"
+                            class="dropdown-item"
+                            :to="{ name: 'settings.users' }"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                                 fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                 stroke-linejoin="round" aria-hidden="true" focusable="false"
+                                 class="icon dropdown-item-icon icon-2">
+                                <path d="M9 7m-4 0a4 4 0 1 0 8 0a4 4 0 1 0 -8 0" />
+                                <path d="M3 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+                                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                                <path d="M21 21v-2a4 4 0 0 0 -3 -3.85" />
+                            </svg>
+                            Сотрудники
+                        </router-link>
+                        <router-link class="dropdown-item" :to="{ name: 'company.widgets' }">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                                 fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                 stroke-linejoin="round" aria-hidden="true" focusable="false"
+                                 class="icon dropdown-item-icon icon-2">
+                                <path d="M4 4h6v6h-6z" />
+                                <path d="M14 4h6v6h-6z" />
+                                <path d="M4 14h6v6h-6z" />
+                                <path d="M14 14h6v6h-6z" />
+                            </svg>
+                            Все виджеты
+                        </router-link>
                         <a class="dropdown-item" href="./settings.html">Settings &amp; Privacy</a>
                         <a class="dropdown-item" href="#">Help</a>
-                        <a class="dropdown-item" href="./sign-in.html">{{ t('header.logout') }}</a>
+                        <a class="dropdown-item" href="#" @click.prevent="logout">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                                 fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                 stroke-linejoin="round" aria-hidden="true" focusable="false"
+                                 class="icon dropdown-item-icon icon-2">
+                                <path d="M14 8v-2a2 2 0 0 0 -2 -2h-7a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h7a2 2 0 0 0 2 -2v-2" />
+                                <path d="M9 12h12l-3 -3" />
+                                <path d="M18 15l3 -3" />
+                            </svg>
+                            {{ loggingOut ? '…' : t('header.logout') }}
+                        </a>
                     </div>
                 </div>
                 <!-- END USER MENU -->
             </div>
+
+            <!-- BEGIN NAVBAR MENU -->
+            <!-- Меню живёт в том же .container, что логотип и меню пользователя,
+                 поэтому рисуется с ними в один ряд. Меню пользователя выше стоит
+                 с order-md-last — оно и остаётся прижатым вправо. -->
+            <div class="collapse navbar-collapse" id="navbar-menu">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <router-link class="nav-link" :to="{ name: 'company.dashboard' }">
+                            <span class="nav-link-icon d-md-none d-lg-inline-block">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                                     fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                     stroke-linejoin="round" aria-hidden="true" class="icon icon-2">
+                                    <path d="M5 12l-2 0l9 -9l9 9l-2 0" />
+                                    <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" />
+                                    <path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" />
+                                </svg>
+                            </span>
+                            <span class="nav-link-title">Обзор</span>
+                        </router-link>
+                    </li>
+
+                    <li v-if="canViewSources" class="nav-item">
+                        <router-link class="nav-link" :to="{ name: 'company.sources' }">
+                            <span class="nav-link-icon d-md-none d-lg-inline-block">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                                     fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                     stroke-linejoin="round" aria-hidden="true" class="icon icon-2">
+                                    <path d="M12 6m-8 0a8 3 0 1 0 16 0a8 3 0 1 0 -16 0" />
+                                    <path d="M4 6v6a8 3 0 0 0 16 0v-6" />
+                                    <path d="M4 12v6a8 3 0 0 0 16 0v-6" />
+                                </svg>
+                            </span>
+                            <span class="nav-link-title">Источники данных</span>
+                        </router-link>
+                    </li>
+
+                    <li class="nav-item">
+                        <router-link class="nav-link" :to="{ name: 'company.widgets' }">
+                            <span class="nav-link-icon d-md-none d-lg-inline-block">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                                     fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                     stroke-linejoin="round" aria-hidden="true" class="icon icon-2">
+                                    <path d="M4 4h6v6h-6z" />
+                                    <path d="M14 4h6v6h-6z" />
+                                    <path d="M4 14h6v6h-6z" />
+                                    <path d="M14 14h6v6h-6z" />
+                                </svg>
+                            </span>
+                            <span class="nav-link-title">Виджеты</span>
+                        </router-link>
+                    </li>
+
+                    <li v-if="canViewUsers" class="nav-item">
+                        <router-link class="nav-link" :to="{ name: 'settings.users' }">
+                            <span class="nav-link-icon d-md-none d-lg-inline-block">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                                     fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                     stroke-linejoin="round" aria-hidden="true" class="icon icon-2">
+                                    <path d="M9 7m-4 0a4 4 0 1 0 8 0a4 4 0 1 0 -8 0" />
+                                    <path d="M3 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+                                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                                    <path d="M21 21v-2a4 4 0 0 0 -3 -3.85" />
+                                </svg>
+                            </span>
+                            <span class="nav-link-title">Сотрудники</span>
+                        </router-link>
+                    </li>
+                </ul>
+            </div>
+            <!-- END NAVBAR MENU -->
         </div>
     </header>
 </template>

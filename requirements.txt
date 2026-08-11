@@ -1,0 +1,15 @@
+# Python-зависимости для сгенерированных скриптов виджетов и выгрузок.
+# Устанавливаются в venv/ проекта:  venv/bin/pip install -r requirements.txt
+
+pandas
+numpy
+
+# Драйверы источников данных (ставьте те, которые реально используются)
+mysql-connector-python
+psycopg2-binary
+duckdb
+
+# Форматы файлов для выгрузок из чата (App\Helpers\Export)
+openpyxl        # xlsx
+reportlab       # pdf
+python-docx     # docx

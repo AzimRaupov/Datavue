@@ -5,6 +5,7 @@ namespace App\Helpers\Widget;
 use App\Helpers\Ai\DashboardAi;
 use App\Helpers\DataSource\CodeTemplater;
 use App\Helpers\DataSource\ConnectionProviderRouter;
+use App\Helpers\DataSource\SchemaOptions;
 use App\Models\Dashboard;
 use App\Models\DashboardWidget;
 use App\Models\DataSource;
@@ -12,6 +13,8 @@ use Throwable;
 
 class ReviewWidgetsDashboard
 {
+    private const MAX_FIX_ATTEMPTS = 2;
+
     public $dashboard_widgets = null;
     public $dashboard = null;
     public $dataSource;
@@ -26,7 +29,7 @@ class ReviewWidgetsDashboard
 
             $this->dashboard_widgets = DashboardWidget::query()
                 ->where('dashboard_id', $dashboardId)
-                ->with('widget')
+                ->with('widget.types', 'widgetType')
                 ->get();
         }
         if ($dataSourceId) {
@@ -66,7 +69,7 @@ class ReviewWidgetsDashboard
 
     public function reGenerate($widgetId, $runResult)
     {
-        $widget = DashboardWidget::query()->with('widget')->find($widgetId);
+        $widget = DashboardWidget::query()->with('widget.types', 'widgetType')->find($widgetId);
 
         $fullCode = $this->codeTemplate->getLibraries() . "\n";
         $fullCode .= $this->codeTemplate->getQueryTemplate() . "\n";
@@ -75,21 +78,7 @@ class ReviewWidgetsDashboard
 
         $scheme = $this->connectionProviderRouter->getSchema(
             tables: $widget->tables,
-            options: [
-                'count_rows',
-                'columns',
-                'relations' => [
-                    'column' => [
-                        'type',
-                        'nullable',
-                        'key',
-                    ],
-
-                    'relation' => [
-                        'table',
-                    ],
-                ],
-            ]
+            options: SchemaOptions::basic()
         );
 
         $schemeStr = json_encode($scheme, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
@@ -98,9 +87,13 @@ class ReviewWidgetsDashboard
             'instruction' => $widget->instruction,
             'code' => $fullCode,
             'errors' => $errorsStr,
+            'outIsArr' => is_array($runResult['output']),
+            'output' => is_string($runResult['output'])
+                ? $runResult['output']
+                : null,
             'tables_scheme' => $schemeStr,
-            'widget_scheme' => $widget->widget->scheme,
-            'widget_scheme_description' => $widget->widget->scheme_description,
+            'widget_scheme' => $widget->effectiveScheme(),
+            'widget_scheme_description' => $widget->effectiveSchemeDescription(),
         ];
 
         $response = $this->dashboardAi->reViewErrorsWidget($data);
@@ -115,60 +108,150 @@ class ReviewWidgetsDashboard
     public function startReGenerate($resultsRun)
     {
         foreach ($resultsRun as $result) {
-            if (count($result['errors']) > 0) {
-                $this->reGenerate($result['widget_id'], $result);
+            if (empty($result['errors'])) {
+                continue;
             }
+
+            if (empty($result['has_code'])) {
+                // Кода вообще нет (генерация не завершилась) — чинить через reGenerate() нечего,
+                // это требует полной перегенерации, а не патча существующего кода.
+                DashboardWidget::query()
+                    ->where('id', $result['widget_id'])
+                    ->update(['status' => 'failed']);
+
+                continue;
+            }
+
+            $this->fixWidget($result['widget_id'], $result);
         }
+    }
+
+    /**
+     * Пытается исправить виджет по результатам ошибок и заново прогоняет/валидирует код,
+     * чтобы убедиться, что фикс реально сработал. Раньше reGenerate() вызывался один раз
+     * "вслепую" — статус виджета никак не отражал, помог фикс или нет.
+     */
+    private function fixWidget(int $widgetId, array $runResult, int $attempt = 1): void
+    {
+        $this->reGenerate($widgetId, $runResult);
+
+        $widget = DashboardWidget::query()->with('widget.types', 'widgetType')->find($widgetId);
+
+        if (!$widget) {
+            return;
+        }
+
+        $recheck = $this->runAndValidateWidget($widget);
+
+        if ($recheck['is_valid']) {
+            $widget->status = 'active';
+            $widget->save();
+
+            return;
+        }
+
+        if ($attempt < self::MAX_FIX_ATTEMPTS) {
+            $this->fixWidget($widgetId, $recheck, $attempt + 1);
+
+            return;
+        }
+
+        $widget->status = 'failed';
+        $widget->save();
     }
 
     public function review($dataSource, $dashboard_widgets)
     {
-        $widgetCodeRun = new WidgetCodeRun();
-        $validator = new WidgetOutputValidator();
         $isError = false;
         $result = [];
 
         foreach ($dashboard_widgets as $widget) {
-            $runResult = $widgetCodeRun->run(
-                widget: $widget,
-                dataSource: $dataSource
-            );
+            $entry = $this->runAndValidateWidget($widget);
 
-            $rawOutput = $runResult['output'][0] ?? null;
-            $type = $widget->widget->name ?? null;
-
-            $decoded = null;
-            $errors = [];
-
-            if ($rawOutput === null) {
-                $errors[] = "Пустой вывод скрипта";
-            } elseif (!$type) {
-                $errors[] = "Не удалось определить тип виджета (widget->widget->name)";
-            } else {
-                $decoded = json_decode($rawOutput, true);
-
-                if (json_last_error() !== JSON_ERROR_NONE) {
-                    $errors[] = "Ошибка парсинга JSON: " . json_last_error_msg();
-                } else {
-                    $errors = $validator->validate($type, $decoded);
-                }
-            }
-
-            if (count($errors) > 0) {
+            if (!$entry['is_valid']) {
                 $isError = true;
             }
 
-            $result[] = [
-                'widget_id'   => $widget->id ?? null,
-                'widget_type' => $type,
-                'command'     => $runResult['command'] ?? null,
-                'exit_code'   => $runResult['exit_code'] ?? null,
-                'output'      => $decoded ?? $rawOutput,
-                'is_valid'    => empty($errors),
-                'errors'      => $errors,
-            ];
+            $result[] = $entry;
         }
 
         return ['result' => $result, 'isError' => $isError];
+    }
+
+    /**
+     * Запускает python-код виджета и валидирует вывод. Вынесено из review() в отдельный
+     * метод, чтобы его же можно было использовать при повторной проверке после fixWidget().
+     */
+    private function runAndValidateWidget(DashboardWidget $widget): array
+    {
+        $widgetType = $widget->widget->name ?? null;
+        // Вариант отрисовки нужен валидатору: у bubble, polar-area и
+        // with-progress форма данных отличается от общей для семейства.
+        $widgetView = $widget->effectiveType()?->name;
+
+        if (!$widget->code_path || !is_file($widget->code_path)) {
+            return [
+                'widget_id'   => $widget->id ?? null,
+                'widget_type' => $widgetType,
+                'command'     => null,
+                'exit_code'   => null,
+                'output'      => null,
+                'is_valid'    => false,
+                'errors'      => ['Код виджета не найден (генерация не завершилась)'],
+                'has_code'    => false,
+            ];
+        }
+
+        try {
+            $runResult = (new WidgetCodeRun())->run(
+                widget: $widget,
+                dataSource: $this->dataSource
+            );
+        } catch (Throwable $e) {
+            return [
+                'widget_id'   => $widget->id ?? null,
+                'widget_type' => $widgetType,
+                'command'     => null,
+                'exit_code'   => null,
+                'output'      => null,
+                'is_valid'    => false,
+                'errors'      => [$e->getMessage()],
+                'has_code'    => true,
+            ];
+        }
+
+        $rawOutput = $runResult['output'] ?? null;
+
+        if (is_array($rawOutput)) {
+            $rawOutput = implode("\n", $rawOutput);
+        }
+
+        $decoded = null;
+        $errors = [];
+
+        if ($rawOutput === null) {
+            $errors[] = "Пустой вывод скрипта";
+        } elseif (!$widgetType) {
+            $errors[] = "Не удалось определить тип виджета (widget->widget->name)";
+        } else {
+            $decoded = json_decode($rawOutput, true);
+
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                $errors[] = "Ошибка парсинга JSON: " . json_last_error_msg();
+            } else {
+                $errors = (new WidgetOutputValidator())->validate($widgetType, $decoded, $widgetView);
+            }
+        }
+
+        return [
+            'widget_id'   => $widget->id ?? null,
+            'widget_type' => $widgetType,
+            'command'     => $runResult['command'] ?? null,
+            'exit_code'   => $runResult['exit_code'] ?? null,
+            'output'      => $decoded ?? $rawOutput,
+            'is_valid'    => empty($errors),
+            'errors'      => $errors,
+            'has_code'    => true,
+        ];
     }
 }
