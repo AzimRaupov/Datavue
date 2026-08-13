@@ -2,12 +2,9 @@
 
 namespace App\Helpers\Ai;
 
-use App\Helpers\Ai\Providers\DuckDbProviderAi;
-use App\Helpers\Ai\Providers\MysqlProviderAi;
-use App\Helpers\Ai\Providers\PostgresProviderAi;
-use App\Helpers\Ai\Providers\SqliteProviderAi;
+use App\Helpers\Ai\Providers\ProviderAiFactory;
+use App\Helpers\Ai\Providers\SqlProviderAi;
 use App\Helpers\Widget\WidgetShapeMapper;
-use RuntimeException;
 
 /**
  * Просит у модели SQL-спецификацию виджета вместо Python-программы.
@@ -24,21 +21,14 @@ use RuntimeException;
  */
 class WidgetQueryAi
 {
-    private object $providerAi;
+    private SqlProviderAi $providerAi;
 
     public function __construct($dataSource)
     {
-        $type = $dataSource->type->name ?? null;
-
-        $this->providerAi = match ($type) {
-            'duckdb' => new DuckDbProviderAi(),
-            'mysql' => new MysqlProviderAi(),
-            'postgres' => new PostgresProviderAi(),
-            'sqlite' => new SqliteProviderAi(),
-            default => throw new RuntimeException(
-                "WidgetQueryAi: нет генератора запросов для источника типа '{$type}'"
-            ),
-        };
+        // Через фабрику, а не своим match'ем: копия списка типов здесь уже
+        // однажды разошлась с фабрикой, и новый тип источника пришлось бы
+        // не забыть дописать в двух местах.
+        $this->providerAi = ProviderAiFactory::for($dataSource);
     }
 
     /**

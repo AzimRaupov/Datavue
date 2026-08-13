@@ -113,10 +113,22 @@ class PythonRunner
         $output = [];
         $exitCode = 0;
 
+        // Ограничение потоков вычислительных библиотек.
+        //
+        // OpenBLAS внутри numpy по умолчанию поднимает поток на каждое ядро —
+        // на сервере с 64 ядрами это 64 потока при лимите хостинга в 40
+        // процессов на пользователя. Итог: «import pandas» не падает с внятной
+        // ошибкой, а зависает намертво, и виджет молча уходит в таймаут.
+        //
+        // Одного потока достаточно: тяжёлые вычисления идут в SQL, а pandas
+        // здесь только раскладывает готовый результат.
+        $environment = 'OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 '
+            .'MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1 ';
+
         $wrapped = sprintf(
             'timeout --signal=KILL %d bash -c %s',
             $this->timeoutSeconds,
-            escapeshellarg($command)
+            escapeshellarg($environment.$command)
         );
 
         exec($wrapped . ' 2>&1', $output, $exitCode);
