@@ -32,6 +32,11 @@ const saveTypesError = ref(null);
 
 const hasTypeChanges = computed(() => Object.keys(pendingTypes.value).length > 0);
 
+const currentUser = JSON.parse(localStorage.getItem("user") || "null");
+const canEditDashboards = computed(() =>
+    (currentUser?.permissions ?? []).includes("edit dashboards")
+);
+
 function typesOf(widget) {
     return widget?.widget?.types ?? [];
 }
@@ -335,6 +340,16 @@ onUnmounted(() => {
 
                     <div class="col-auto ms-auto d-print-none">
                         <div class="d-flex align-items-center gap-2 flex-wrap">
+
+                            <!-- Вход в конструктор: добавить виджет, поправить
+                                 код, переставить порядок. -->
+                            <router-link
+                                v-if="currentDashboard?.id && canEditDashboards"
+                                class="btn"
+                                :to="{ name: 'company.dashboard.edit', params: { dashboard: currentDashboard.id } }"
+                            >
+                                Редактировать
+                            </router-link>
 
                             <!-- Появляется, как только изменён тип хотя бы одного
                                  виджета: превью меняется сразу, в базу — отсюда. -->

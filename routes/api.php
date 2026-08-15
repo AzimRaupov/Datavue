@@ -4,7 +4,9 @@ use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Chat\ChatController;
 use App\Http\Controllers\Chat\ExportController;
 use App\Http\Controllers\Chat\MessageController;
+use App\Http\Controllers\Dashboard\DashboardBuilderController;
 use App\Http\Controllers\Dashboard\DashboardController;
+use App\Http\Controllers\Dashboard\DashboardWidgetController;
 use App\Http\Controllers\DataSource\DataSourceConnectionController;
 use App\Http\Controllers\DataSource\DataSourceController;
 use App\Http\Controllers\DataSource\DataSourceTypeController;
@@ -60,6 +62,35 @@ Route::middleware(['auth:sanctum', 'active'])->prefix('company')->group(function
     Route::match(['put', 'patch'], 'dashboards/{dashboard}/widgets', [DashboardController::class, 'updateWidgets'])
         ->middleware('permission:edit dashboards');
     Route::delete('dashboards/{dashboard}', [DashboardController::class, 'destroy'])->middleware('permission:delete dashboards');
+
+    /*
+    | Рабочее место сборки дашборда.
+    |
+    | Отделено от просмотра: здесь отдаётся код виджетов и схема источника,
+    | которые смотрящему дашборд не нужны. Написание кода закрыто отдельным
+    | правом — оно выполняется на сервере, в отличие от перестановки виджетов.
+    */
+    Route::middleware('permission:edit dashboards')->group(function () {
+        Route::get('dashboards/{dashboard}/edit', [DashboardBuilderController::class, 'edit']);
+        Route::get('dashboards/{dashboard}/schema', [DashboardBuilderController::class, 'schema']);
+        Route::post('dashboards/{dashboard}/query', [DashboardBuilderController::class, 'query']);
+
+        Route::post('dashboards/{dashboard}/widgets', [DashboardWidgetController::class, 'store']);
+        Route::match(['put', 'patch'], 'dashboards/{dashboard}/widgets/{widget}', [DashboardWidgetController::class, 'update']);
+        Route::delete('dashboards/{dashboard}/widgets/{widget}', [DashboardWidgetController::class, 'destroy']);
+        Route::put('dashboards/{dashboard}/reorder', [DashboardWidgetController::class, 'reorder']);
+
+        Route::middleware('permission:write widget code')->group(function () {
+            // Основной способ задать содержимое виджета — SQL-запрос.
+            Route::post('dashboards/{dashboard}/widgets/{widget}/query/run', [DashboardWidgetController::class, 'runQuery']);
+            Route::put('dashboards/{dashboard}/widgets/{widget}/query', [DashboardWidgetController::class, 'saveQuery']);
+
+            // Python остался у виджетов, написанных до перехода на запросы.
+            Route::post('dashboards/{dashboard}/widgets/{widget}/run', [DashboardWidgetController::class, 'runDraft']);
+            Route::put('dashboards/{dashboard}/widgets/{widget}/code', [DashboardWidgetController::class, 'saveCode']);
+            Route::post('dashboards/{dashboard}/widgets/{widget}/code/restore', [DashboardWidgetController::class, 'restoreCode']);
+        });
+    });
 
     // Сообщения агенту — это работа с чатом, поэтому право на создание чата.
     Route::get('messages', [MessageController::class, 'index'])->middleware('permission:view chats');

@@ -6,6 +6,7 @@ use App\Helpers\Ai\AiUsage;
 use App\Helpers\DataSource\ConnectionProviderRouter;
 use App\Helpers\DataSource\DataSourceCreator;
 use App\Helpers\DataSource\DataSourceRefresher;
+use App\Helpers\DataSource\SourceSchema;
 use App\Http\Controllers\Controller;
 use App\Jobs\DataSourceGroupingJob;
 use App\Http\Requests\DataSource\StoreRequest;
@@ -240,6 +241,11 @@ class DataSourceController extends Controller
             ], 422);
         }
 
+        // Схема источника закэширована для конструктора виджетов. После
+        // перезалива состав таблиц и колонок мог измениться, и без сброса
+        // конструктор ещё несколько минут предлагал бы то, чего уже нет.
+        SourceSchema::forget($source->id);
+
         return response()->json([
             'success' => true,
             'message' => $result['message'],
@@ -306,6 +312,9 @@ class DataSourceController extends Controller
         }
 
         $source->fill($data)->save();
+
+        // Могли поменяться база или хост — читать схему нужно заново.
+        SourceSchema::forget($source->id);
 
         return response()->json([
             'success' => true,

@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers\Dashboard;
 
+use App\Helpers\Widget\ManualWidgetAuthor;
 use App\Http\Controllers\Controller;
+use App\Models\AiChat;
 use App\Models\Dashboard;
 use App\Models\DashboardWidget;
+use App\Models\DataSource;
 use App\Models\WidgetType;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -13,12 +16,27 @@ use Illuminate\Validation\ValidationException;
 
 class DashboardController extends Controller
 {
+    /**
+     * Список дашбордов компании.
+     *
+     * Отдаёт то, из чего собирается карточка в списке: сколько в дашборде
+     * виджетов, по какому источнику он считает и из какого чата вырос.
+     * Раньше приходило только имя со статусом, и список нельзя было
+     * показать иначе как строчкой текста.
+     */
     public function index(Request $request)
     {
         $dashboards = Dashboard::query()
             ->where('company_id', $request->user()->company_id)
+            ->withCount('widgets')
+            ->with([
+                'dataSource:id,name',
+                'chat:id,title',
+            ])
             ->latest('id')
             ->get();
+
+        $this->fillSourcesFromChats($dashboards);
 
         return response()->json($dashboards);
     }
@@ -81,14 +99,26 @@ class DashboardController extends Controller
                 // привязать дашборд к чужому чату.
                 Rule::exists('ai_chats', 'id')->where('company_id', $user->company_id),
             ],
+            // Источник обязателен, когда дашборд собирают руками: чата у него
+            // нет, и виджетам иначе не по чему считать.
+            'data_source_id' => [
+                'required_without:chat_id',
+                'nullable',
+                Rule::exists('data_sources', 'id')->where('company_id', $user->company_id),
+            ],
         ]);
 
         $dashboard = Dashboard::query()->create([
             'company_id' => $user->company_id,
+            'created_by' => $user->id,
             'chat_id' => $data['chat_id'] ?? null,
+            'data_source_id' => $data['data_source_id'] ?? null,
             'name' => $data['name'],
             'description' => $data['description'] ?? null,
             'status' => 'empty',
+            // Через этот метод дашборд заводит человек: пайплайн ИИ создаёт
+            // свои дашборды напрямую в DashboardGenerator.
+            'origin' => Dashboard::ORIGIN_MANUAL,
         ]);
 
         return response()->json($dashboard, 201);
@@ -177,14 +207,65 @@ class DashboardController extends Controller
         ]);
     }
 
-    public function destroy(Request $request, $id)
+    public function destroy(Request $request, $id, ManualWidgetAuthor $author)
     {
         $dashboard = $this->findForCompany($request, $id);
+
+        // Файлы со скриптами удаляются вместе со строками: раньше они
+        // оставались в storage навсегда, хотя ссылаться на них было уже некому.
+        foreach ($dashboard->widgets()->get() as $widget) {
+            $widget->setRelation('dashboard', $dashboard);
+            $author->deleteFiles($widget);
+        }
 
         $dashboard->widgets()->delete();
         $dashboard->delete();
 
         return response()->json(['message' => 'Дашборд удалён.']);
+    }
+
+    /**
+     * Подставляет источник дашбордам, у которых он лежит на чате.
+     *
+     * Для списка разница между «источник на дашборде» и «источник на чате»
+     * значения не имеет — показать нужно одно и то же название. Делается это
+     * двумя запросами на весь список, а не обращением к базе на каждую строку.
+     */
+    private function fillSourcesFromChats($dashboards): void
+    {
+        $chatIds = $dashboards
+            ->whereNull('data_source_id')
+            ->pluck('chat_id')
+            ->filter()
+            ->unique();
+
+        if ($chatIds->isEmpty()) {
+            return;
+        }
+
+        // chat_id => data_source_id
+        $sourceIdByChat = AiChat::query()
+            ->whereIn('id', $chatIds)
+            ->pluck('data_source_id', 'id');
+
+        // Только id и name: в список не должны попадать хост, база и логин
+        // подключения — это детали, которые видно в разделе источников.
+        $sources = DataSource::query()
+            ->whereIn('id', $sourceIdByChat->filter()->unique()->values())
+            ->get(['id', 'name'])
+            ->keyBy('id');
+
+        foreach ($dashboards as $dashboard) {
+            if ($dashboard->data_source_id || !$dashboard->chat_id) {
+                continue;
+            }
+
+            $source = $sources->get($sourceIdByChat->get($dashboard->chat_id));
+
+            if ($source) {
+                $dashboard->setRelation('dataSource', $source);
+            }
+        }
     }
 
     private function findForCompany(Request $request, $id): Dashboard

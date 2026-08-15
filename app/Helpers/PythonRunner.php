@@ -11,11 +11,33 @@ class PythonRunner
     /** Максимальное время выполнения процесса, сек. */
     private int $timeoutSeconds;
 
+    /** Ограничения ulimit для процесса: ключ ulimit => значение. */
+    private array $limits;
+
+    /**
+     * Ограничения для кода, написанного человеком.
+     *
+     * Это не песочница, а страховка от очевидного: бесконечного выделения
+     * памяти, форк-бомбы и записи гигабайтов на диск. От намеренной атаки
+     * защищает изоляция процесса на уровне системы, а не эти лимиты.
+     *
+     * @return array<string, int>
+     */
+    public static function restrictedLimits(): array
+    {
+        return [
+            'v' => 1_500_000, // виртуальная память, КБ (~1.5 ГБ: pandas требует запаса)
+            'u' => 64,        // число процессов
+            'f' => 200_000,   // размер создаваемых файлов, блоки по 1 КБ
+        ];
+    }
+
     public function __construct(
         ?string $pathPython = null,
         array $args = [],
         ?string $python = null,
-        int $timeoutSeconds = 60
+        int $timeoutSeconds = 60,
+        array $limits = []
     ) {
         $this->pythonBinary = $python ?: base_path('venv/bin/python');
 
@@ -24,6 +46,7 @@ class PythonRunner
         }
 
         $this->timeoutSeconds = $timeoutSeconds;
+        $this->limits = $limits;
 
         if ($pathPython !== null) {
             $scriptDirectory = dirname($pathPython);
@@ -125,10 +148,18 @@ class PythonRunner
         $environment = 'OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 '
             .'MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1 ';
 
+        // ulimit ставится внутри той же оболочки, что запускает python:
+        // ограничение действует на дочерний процесс и всё его потомство.
+        $ulimits = '';
+
+        foreach ($this->limits as $flag => $value) {
+            $ulimits .= sprintf('ulimit -%s %d; ', $flag, (int) $value);
+        }
+
         $wrapped = sprintf(
             'timeout --signal=KILL %d bash -c %s',
             $this->timeoutSeconds,
-            escapeshellarg($environment.$command)
+            escapeshellarg($ulimits.$environment.$command)
         );
 
         exec($wrapped . ' 2>&1', $output, $exitCode);

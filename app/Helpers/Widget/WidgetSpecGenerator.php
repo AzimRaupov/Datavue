@@ -2,119 +2,289 @@
 
 namespace App\Helpers\Widget;
 
+use App\Helpers\Ai\Dashboard\WidgetSpecAi;
 use App\Helpers\Ai\WidgetQueryAi;
 use App\Models\DashboardWidget;
 use App\Models\DataSource;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Готовит содержимое виджета: SQL-спецификацию вместо Python-скрипта.
+ * Готовит содержимое виджета: спецификацию запроса вместо Python-скрипта.
  *
- * Три уровня проверки ДО сохранения — в этом главное отличие от прежнего
- * пути. Раньше сгенерированный скрипт сохранялся как есть, и о его
- * неработоспособности узнавали при первой отрисовке у пользователя.
+ * Два пути, и порядок между ними не случайный.
  *
- *   1. Безопасность — только SELECT/WITH, без «;», с лимитом (ReadOnlySqlGuard).
- *   2. Синтаксис и существование колонок — подтверждает сама база (LIMIT 1).
- *   3. Форма — вернулись ли колонки, которых ждёт выбранная форма.
+ *   Основной — декларация. Модель отвечает на вопрос «что считать и в каком
+ *   разрезе», а запрос собирает WidgetQueryComposer. Промпт короткий, ошибки
+ *   в синтаксисе и диалекте невозможны в принципе, а колонки проверяются по
+ *   схеме ещё до обращения к базе.
  *
- * Не прошло — ошибка уходит обратно модели дословно, и та чинит запрос.
+ *   Запасной — SQL текстом. Нужен там, где декларации не хватает: связи
+ *   нескольких таблиц, окна, подзапросы. Сюда попадают виджеты, которым
+ *   назначено больше одной таблицы, и те, где модель сама подняла флаг.
+ *
+ * Проверяет результат в обоих случаях один и тот же WidgetSpecValidator —
+ * тот, что стоит за конструктором. Правила не могут разойтись между путями,
+ * потому что они физически одни.
+ *
+ * Не прошло — ошибка уходит обратно модели дословно, и та чинит СВОЙ ответ,
+ * а не сочиняет заново.
  */
 class WidgetSpecGenerator
 {
-    /** Сколько раз пробуем починить запрос перед тем, как признать неудачу. */
+    /** Сколько раз пробуем починить перед тем, как признать неудачу. */
     private const MAX_ATTEMPTS = 3;
 
-    private WidgetQueryAi $ai;
-    private WidgetQueryRunner $runner;
+    private WidgetSpecAi $planner;
+    private WidgetQueryAi $sqlAi;
+    private WidgetQueryComposer $composer;
+    private WidgetSpecValidator $validator;
 
     public function __construct(private DataSource $dataSource)
     {
-        $this->ai = new WidgetQueryAi($dataSource);
-        $this->runner = new WidgetQueryRunner($dataSource);
+        $this->planner = new WidgetSpecAi();
+        $this->sqlAi = new WidgetQueryAi($dataSource);
+        $this->composer = new WidgetQueryComposer($dataSource);
+        $this->validator = new WidgetSpecValidator($dataSource);
     }
 
     /**
-     * @param array $tablesScheme Схема отобранных таблиц
+     * @param array $tablesScheme Схема отобранных таблиц: таблица => колонки
      *
-     * @return array{ok: bool, spec: ?array, filters: array, error: ?string, attempts: int}
+     * @return array{ok: bool, spec: ?array, mode: string, error: ?string, attempts: int, tokens: int}
      */
-    public function generate(
-        DashboardWidget $widget,
-        array $tablesScheme,
-        ?array $brokenSpec = null,
-        ?string $initialError = null
-    ): array {
+    public function generate(DashboardWidget $widget, array $tablesScheme): array
+    {
         $family = $widget->widget->name;
-        $type = $widget->widgetType->name ?? null;
+        $type = $widget->widgetType->name ?? $widget->effectiveType()?->name;
         $instruction = (string) $widget->instruction;
 
-        // Если пришли на починку — стартуем сразу с известной ошибкой,
-        // а не тратим первую попытку на повторение того же запроса.
-        $spec = $brokenSpec;
-        $error = $initialError;
-        $chosenFilters = [];
+        $schema = $this->compactSchema($tablesScheme);
+        $slots = WidgetQueryComposer::slotsFor($family, $type);
 
-        // Кандидаты отбираются механически: обязательные сюда не попадают,
-        // датовые — только если в схеме есть дата. Модель получает короткий
-        // список, а не весь каталог.
-        $candidates = WidgetFilterResolver::candidates($family, $tablesScheme);
+        $spentTokens = 0;
+
+        // Одна таблица — задача почти наверняка выражается настройками.
+        // Несколько — нужны связи, и туда декларация не дотянется: идём
+        // сразу текстом запроса, не тратя попытку впустую.
+        if (count($schema) === 1) {
+            $result = $this->viaBuilder($widget, $instruction, $family, $type, $schema, $slots);
+
+            if ($result['ok'] || !$result['fallback']) {
+                return $this->strip($result);
+            }
+
+            $spentTokens = $result['tokens'];
+
+            Log::info('WidgetSpecGenerator: переходим на текстовый запрос', [
+                'widget_id' => $widget->id,
+                'reason' => $result['error'],
+            ]);
+        }
+
+        return $this->strip(
+            $this->viaSql($widget, $instruction, $family, $type, $tablesScheme, $spentTokens)
+        );
+    }
+
+    /**
+     * Починка виджета, который сломался при отрисовке.
+     *
+     * Ключевое отличие от generate(): модель получает СЛОМАННУЮ спецификацию
+     * и текст ошибки. Без этого она закономерно повторяет прежний ответ.
+     *
+     * @return array{ok: bool, spec: ?array, mode: string, error: ?string, attempts: int, tokens: int}
+     */
+    public function repair(
+        DashboardWidget $widget,
+        array $tablesScheme,
+        array $brokenSpec,
+        string $error
+    ): array {
+        $family = $widget->widget->name;
+        $type = $widget->widgetType->name ?? $widget->effectiveType()?->name;
+        $instruction = (string) $widget->instruction;
+
+        // Виджет, собранный декларацией, чинится декларацией: так модель
+        // правит то, что сама выбрала, а не переписывает всё запросом.
+        if (($brokenSpec['mode'] ?? null) === DashboardWidget::MODE_BUILDER) {
+            $schema = $this->compactSchema($tablesScheme);
+            $slots = WidgetQueryComposer::slotsFor($family, $type);
+
+            $result = $this->viaBuilder(
+                $widget,
+                $instruction,
+                $family,
+                $type,
+                $schema,
+                $slots,
+                $brokenSpec['builder'] ?? [],
+                $error
+            );
+
+            if ($result['ok']) {
+                return $this->strip($result);
+            }
+        }
+
+        return $this->strip(
+            $this->viaSql($widget, $instruction, $family, $type, $tablesScheme, 0, $brokenSpec, $error)
+        );
+    }
+
+    // -----------------------------------------------------------------
+    // Путь 1: декларация
+    // -----------------------------------------------------------------
+
+    /**
+     * @return array{ok: bool, spec: ?array, mode: string, error: ?string, attempts: int, tokens: int, fallback: bool}
+     */
+    private function viaBuilder(
+        DashboardWidget $widget,
+        string $instruction,
+        string $family,
+        ?string $type,
+        array $schema,
+        array $slots,
+        ?array $brokenBuilder = null,
+        ?string $initialError = null
+    ): array {
+        $builder = $brokenBuilder;
+        $error = $initialError;
+        $tokens = 0;
 
         for ($attempt = 1; $attempt <= self::MAX_ATTEMPTS; $attempt++) {
+            $answer = $error !== null && $builder !== null
+                ? $this->planner->repair($instruction, $family, $type, $schema, $slots, $builder, $error)
+                : $this->planner->plan($instruction, $family, $type, $schema, $slots);
 
-            $isRepair = $error !== null;
+            $tokens += $answer['total_tokens'] ?? 0;
 
-            $result = $isRepair
-                ? $this->ai->repair($instruction, $family, $type, $tablesScheme, $spec ?? [], $error, $candidates)
-                : $this->ai->generate($instruction, $family, $type, $tablesScheme, $candidates);
-
-            // Сбой связи с API — не ошибка запроса. Повторяем тот же шаг,
-            // не переключаясь в режим починки: иначе модель получила бы
-            // бессмысленное «модель не ответила» вместо реальной ошибки SQL.
-            if (!empty($result['api_error'])) {
-                Log::warning('WidgetSpecGenerator: обращение к модели не удалось', [
+            // Сбой связи — не ошибка ответа: повторяем тот же шаг, иначе
+            // модель получила бы «нет ответа» вместо реальной причины.
+            if (!empty($answer['api_error'])) {
+                Log::warning('WidgetSpecGenerator: модель не ответила', [
                     'widget_id' => $widget->id,
                     'attempt' => $attempt,
-                    'error' => $result['api_error'],
+                    'error' => $answer['api_error'],
                 ]);
 
-                // Небольшая пауза: чаще всего это ограничение частоты.
                 usleep(1_500_000);
 
                 continue;
             }
 
-            if (empty($result['spec'])) {
-                $error = $result['message'] ?? 'Модель не вернула запрос.';
+            if (!empty($answer['needs_sql'])) {
+                return $this->builderResult(false, null, $answer['message'] ?? 'Нужен запрос текстом', $attempt, $tokens, fallback: true);
+            }
+
+            if (!$answer['ok']) {
+                $error = $answer['message'] ?? 'Модель не вернула настройки.';
+
                 continue;
             }
 
-            $spec = $result['spec'];
-            $chosenFilters = $result['filters'] ?? [];
+            $builder = $answer['builder'];
 
-            // Форму не доверяем модели: она известна по семейству виджета,
-            // и подмена здесь ломала бы раскладку.
-            $spec['shape'] = WidgetShapeMapper::shapeFor($family);
+            // Сборка — тоже проверка: колонки, типы и совместимость со слотами
+            // виджета отсеиваются здесь, без обращения к базе.
+            $composed = $this->composer->compose($builder, $family, $type);
 
-            $check = $this->validate($spec, $family, $type);
+            if (!$composed['ok']) {
+                $error = $composed['errors'][0] ?? 'Не удалось собрать запрос.';
+
+                Log::info('WidgetSpecGenerator: настройки не собрались', [
+                    'widget_id' => $widget->id,
+                    'attempt' => $attempt,
+                    'error' => $error,
+                ]);
+
+                continue;
+            }
+
+            $spec = WidgetSpecValidator::build($family, $composed['sql'], $composed['presentation'] ?? []);
+            $spec['mode'] = DashboardWidget::MODE_BUILDER;
+            $spec['builder'] = $builder;
+
+            $check = $this->validator->validate($spec, $family, $type);
 
             if ($check['ok']) {
-                // Обязательные фильтры семейства добавляются здесь же —
-                // они не зависят от ответа модели.
-                WidgetFilterResolver::apply($widget, $family, $chosenFilters);
+                return $this->builderResult(true, $spec, null, $attempt, $tokens, fallback: false);
+            }
 
+            $error = $check['errors'][0] ?? 'Запрос не прошёл проверку.';
+        }
+
+        // Настройками не вышло — пробуем текстом запроса.
+        return $this->builderResult(false, null, $error, self::MAX_ATTEMPTS, $tokens, fallback: true);
+    }
+
+    // -----------------------------------------------------------------
+    // Путь 2: запрос текстом
+    // -----------------------------------------------------------------
+
+    /**
+     * @return array{ok: bool, spec: ?array, mode: string, error: ?string, attempts: int, tokens: int}
+     */
+    private function viaSql(
+        DashboardWidget $widget,
+        string $instruction,
+        string $family,
+        ?string $type,
+        array $tablesScheme,
+        int $tokensSoFar = 0,
+        ?array $brokenSpec = null,
+        ?string $initialError = null
+    ): array {
+        $spec = $brokenSpec;
+        $error = $initialError;
+        $tokens = $tokensSoFar;
+
+        for ($attempt = 1; $attempt <= self::MAX_ATTEMPTS; $attempt++) {
+            $isRepair = $error !== null && $spec !== null;
+
+            // Фильтры этому пути не передаются: их каталог не подключён,
+            // и спрашивать о нём модель значит тратить токены впустую.
+            $answer = $isRepair
+                ? $this->sqlAi->repair($instruction, $family, $type, $tablesScheme, $spec, $error, [])
+                : $this->sqlAi->generate($instruction, $family, $type, $tablesScheme, []);
+
+            $tokens += $answer['total_tokens'] ?? 0;
+
+            if (!empty($answer['api_error'])) {
+                usleep(1_500_000);
+
+                continue;
+            }
+
+            if (empty($answer['spec'])) {
+                $error = $answer['message'] ?? 'Модель не вернула запрос.';
+
+                continue;
+            }
+
+            $spec = $answer['spec'];
+
+            // Форму не доверяем модели: она известна по семейству виджета,
+            // и подмена здесь сломала бы раскладку.
+            $spec['shape'] = WidgetShapeMapper::shapeFor($family);
+            $spec['mode'] = DashboardWidget::MODE_SQL;
+
+            $check = $this->validator->validate($spec, $family, $type);
+
+            if ($check['ok']) {
                 return [
                     'ok' => true,
                     'spec' => $spec,
-                    'filters' => $chosenFilters,
+                    'mode' => DashboardWidget::MODE_SQL,
                     'error' => null,
                     'attempts' => $attempt,
+                    'tokens' => $tokens,
                 ];
             }
 
-            $error = $check['error'];
+            $error = $check['errors'][0] ?? 'Запрос не прошёл проверку.';
 
-            Log::info('WidgetSpecGenerator: попытка не прошла проверку', [
+            Log::info('WidgetSpecGenerator: запрос не прошёл проверку', [
                 'widget_id' => $widget->id,
                 'attempt' => $attempt,
                 'error' => $error,
@@ -124,176 +294,77 @@ class WidgetSpecGenerator
         return [
             'ok' => false,
             'spec' => $spec,
-            'filters' => [],
+            'mode' => DashboardWidget::MODE_SQL,
             'error' => $error,
             'attempts' => self::MAX_ATTEMPTS,
+            'tokens' => $tokens,
+        ];
+    }
+
+    // -----------------------------------------------------------------
+
+    /**
+     * Схема в виде «таблица => колонка => тип».
+     *
+     * Из полной схемы выбрасывается всё, что не нужно для выбора метрики
+     * и разреза: связи, число строк, уверенность сопоставления. На виджет
+     * это экономит больше половины промпта.
+     *
+     * @return array<string, array<string, string>>
+     */
+    private function compactSchema(array $tablesScheme): array
+    {
+        $schema = [];
+
+        foreach ($tablesScheme as $table => $definition) {
+            $columns = $definition['columns'] ?? $definition;
+
+            if (!is_array($columns)) {
+                continue;
+            }
+
+            foreach ($columns as $name => $meta) {
+                if (is_int($name)) {
+                    // Колонки могут прийти простым списком имён.
+                    $schema[$table][(string) $meta] = 'unknown';
+
+                    continue;
+                }
+
+                $schema[$table][$name] = is_array($meta)
+                    ? (string) ($meta['type'] ?? 'unknown')
+                    : (string) $meta;
+            }
+        }
+
+        return $schema;
+    }
+
+    /**
+     * @return array{ok: bool, spec: ?array, mode: string, error: ?string, attempts: int, tokens: int, fallback: bool}
+     */
+    private function builderResult(bool $ok, ?array $spec, ?string $error, int $attempts, int $tokens, bool $fallback): array
+    {
+        return [
+            'ok' => $ok,
+            'spec' => $spec,
+            'mode' => DashboardWidget::MODE_BUILDER,
+            'error' => $error,
+            'attempts' => $attempts,
+            'tokens' => $tokens,
+            'fallback' => $fallback,
         ];
     }
 
     /**
-     * Починка виджета, который не прошёл проверку при отрисовке.
+     * Убирает служебный признак «нужен запасной путь» из ответа наружу.
      *
-     * Ключевое отличие от generate(): модель получает СЛОМАННУЮ спецификацию
-     * и ТЕКСТ ОШИБКИ. Раньше review вызывал обычную генерацию с теми же
-     * входными данными — модель закономерно повторяла ту же ошибку, и починка
-     * не работала. В Python-пути ошибка и код передавались, поэтому он и чинил.
-     *
-     * @return array{ok: bool, spec: ?array, filters: array, error: ?string, attempts: int}
+     * @return array{ok: bool, spec: ?array, mode: string, error: ?string, attempts: int, tokens: int}
      */
-    public function repair(
-        DashboardWidget $widget,
-        array $tablesScheme,
-        array $brokenSpec,
-        string $error
-    ): array {
-        return $this->generate($widget, $tablesScheme, $brokenSpec, $error);
-    }
-
-    /**
-     * @return array{ok: bool, error: ?string}
-     */
-    private function validate(array $spec, string $family, ?string $type): array
+    private function strip(array $result): array
     {
-        $queries = $spec['queries'] ?? [];
+        unset($result['fallback']);
 
-        if (!is_array($queries) || $queries === []) {
-            return ['ok' => false, 'error' => 'В спецификации нет ни одного запроса.'];
-        }
-
-        // Уровни 1 и 2: безопасность и синтаксис проверяет сама база —
-        // и по каждому запросу отдельно, иначе ошибка во втором счётчике
-        // всплыла бы только при отрисовке у пользователя.
-        $columns = [];
-
-        foreach ($queries as $name => $sql) {
-            $probe = $this->runner->probe($sql);
-
-            if (!$probe['ok']) {
-                return [
-                    'ok' => false,
-                    'error' => count($queries) > 1
-                        ? "Запрос «{$name}»: ".$probe['error']
-                        : $probe['error'],
-                ];
-            }
-
-            // Колонки берём из первого запроса, вернувшего строки: все
-            // запросы формы обязаны отдавать одинаковый набор колонок.
-            if ($columns === [] && ($probe['columns'] ?? []) !== []) {
-                $columns = array_map('strval', $probe['columns']);
-            }
-        }
-
-        // Пустой результат — не повод отклонять запрос: данных может просто
-        // не быть за выбранный период. Но и форму тогда не проверить.
-        if ($columns === []) {
-            return ['ok' => true, 'error' => null];
-        }
-
-        // Уровень 3: те ли колонки вернулись.
-        $required = $this->requiredColumns($spec['shape'], $type);
-
-        $missing = array_diff($required, $columns);
-
-        if ($missing !== []) {
-            return [
-                'ok' => false,
-                'error' => sprintf(
-                    'Запрос вернул колонки [%s], а форма «%s» требует [%s]. Отсутствуют: %s. '
-                    . 'Задай имена через AS.',
-                    implode(', ', $columns),
-                    $spec['shape'],
-                    implode(', ', $required),
-                    implode(', ', $missing)
-                ),
-            ];
-        }
-
-        // Уровень 4: осмысленность результата, а не только его форма.
-        $sense = $this->validateShapeSense($spec, $family, $type);
-
-        if (!$sense['ok']) {
-            return $sense;
-        }
-
-        return ['ok' => true, 'error' => null];
-    }
-
-    /**
-     * Ловит перепутанные местами series и category.
-     *
-     * Формально такой запрос корректен: колонки на месте, типы верные — все
-     * предыдущие проверки он проходит. Но «продажи по странам», где страна
-     * попала в series, разворачивается в 21 ряд по одному значению: каждая
-     * страна своим цветом, ось из одного деления. График нечитаем, а понять
-     * это по колонкам нельзя — только по данным.
-     *
-     * @return array{ok: bool, error: ?string}
-     */
-    private function validateShapeSense(array $spec, string $family, ?string $type): array
-    {
-        if (($spec['shape'] ?? null) !== WidgetShapeMapper::SHAPE_SERIES_MATRIX) {
-            return ['ok' => true, 'error' => null];
-        }
-
-        try {
-            $run = $this->runner->run(
-                spec: $spec,
-                family: $family,
-                type: $type,
-                sample: true
-            );
-        } catch (\Throwable) {
-            // Проверка вспомогательная: не смогли посмотреть — не мешаем.
-            return ['ok' => true, 'error' => null];
-        }
-
-        if (!($run['ok'] ?? false)) {
-            return ['ok' => true, 'error' => null];
-        }
-
-        $seriesCount = count($run['data']['series'] ?? []);
-        $axis = $run['data']['categories'] ?? $run['data']['labels'] ?? [];
-
-        // Много рядов при единственном делении оси — почти наверняка подмена.
-        // Порог в три ряда: два-три ряда на одну точку иногда осмысленны
-        // (сравнение показателей на дату), двадцать — никогда.
-        if ($seriesCount > 3 && count($axis) <= 1) {
-            return [
-                'ok' => false,
-                'error' => sprintf(
-                    'Запрос вернул %d рядов и всего %d делений оси — значения из '
-                    . 'колонки series должны быть в category. То, что сравнивают '
-                    . '(страны, месяцы, товары), кладётся в category, а series для '
-                    . 'одиночного графика — строковая константа, например '
-                    . "SELECT 'Выручка' AS series, country AS category, SUM(...) AS value.",
-                    $seriesCount,
-                    count($axis)
-                ),
-            ];
-        }
-
-        return ['ok' => true, 'error' => null];
-    }
-
-    /**
-     * Обязательные колонки формы с поправкой на вариант отрисовки:
-     * bubble требует третье число, вариант с прогрессом — процент.
-     *
-     * @return array<int, string>
-     */
-    private function requiredColumns(string $shape, ?string $type): array
-    {
-        $columns = WidgetShapeMapper::SHAPE_COLUMNS[$shape] ?? [];
-
-        if ($shape === WidgetShapeMapper::SHAPE_POINTS && $type === 'bubble') {
-            $columns[] = 'z';
-        }
-
-        if ($shape === WidgetShapeMapper::SHAPE_COUNTERS && $type === 'with-progress') {
-            $columns[] = 'percent';
-        }
-
-        return $columns;
+        return $result;
     }
 }

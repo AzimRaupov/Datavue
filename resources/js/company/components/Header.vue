@@ -19,6 +19,7 @@ const user = JSON.parse(localStorage.getItem('user') || 'null')
 const permissions = computed(() => user?.permissions ?? [])
 const canViewUsers = computed(() => permissions.value.includes('view users'))
 const canViewSources = computed(() => permissions.value.includes('view data sources'))
+const canViewDashboards = computed(() => permissions.value.includes('view dashboards'))
 
 // Выпадающие меню работают на штатном data-api Bootstrap (data-bs-toggle="dropdown").
 // Раньше здесь была своя реализация через Dropdown.getOrCreateInstance(), потому что
@@ -479,6 +480,22 @@ const logout = async () => {
                                 </svg>
                             </span>
                             <span class="nav-link-title">Обзор</span>
+                        </router-link>
+                    </li>
+
+                    <li v-if="canViewDashboards" class="nav-item">
+                        <router-link class="nav-link" :to="{ name: 'company.dashboards' }">
+                            <span class="nav-link-icon d-md-none d-lg-inline-block">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                                     fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                     stroke-linejoin="round" aria-hidden="true" class="icon icon-2">
+                                    <path d="M4 4h6v8h-6z" />
+                                    <path d="M4 16h6v4h-6z" />
+                                    <path d="M14 12h6v8h-6z" />
+                                    <path d="M14 4h6v4h-6z" />
+                                </svg>
+                            </span>
+                            <span class="nav-link-title">Дашборды</span>
                         </router-link>
                     </li>
 

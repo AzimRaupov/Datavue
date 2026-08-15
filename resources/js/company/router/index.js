@@ -3,7 +3,9 @@ import NProgress from 'nprogress';
 import 'nprogress/nprogress.css';
 
 import DashboardPage from '../pages/DashboardPage.vue';
+import DashboardsIndex from '../pages/dashboards/IndexPage.vue';
 import ProjectDashboardShow from '../pages/project/dashboard/ShowPage.vue';
+import DashboardBuilder from '../pages/project/dashboard/BuilderPage.vue';
 import ChatPage from '../pages/ChatPage.vue';
 import Profile from "../pages/settings/Profile.vue";
 import Users from "../pages/settings/Users.vue";
@@ -16,6 +18,12 @@ const routes = [
         path: '/',
         name: 'company.dashboard',
         component: DashboardPage,
+    },
+    // Все дашборды компании: и собранные руками, и выросшие из чатов.
+    {
+        path: '/dashboards',
+        name: 'company.dashboards',
+        component: DashboardsIndex,
     },
     // Источники данных — точка входа в работу: сначала подключается источник,
     // и уже на нём заводятся чаты.
@@ -56,6 +64,13 @@ const routes = [
         path:'/project/dashboard/:dashboard',
         name: 'project.dashboard.show',
         component: ProjectDashboardShow
+    },
+    // Рабочее место сборки: сюда попадают сразу после создания дашборда
+    // и по кнопке «Редактировать» на готовом дашборде.
+    {
+        path:'/project/dashboard/:dashboard/edit',
+        name: 'company.dashboard.edit',
+        component: DashboardBuilder
     },
     {
         path: '/widgets',

@@ -1,5 +1,6 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import { Modal } from 'bootstrap';
 import { useRouter } from 'vue-router';
 import api from '../api.js';
 
@@ -30,10 +31,84 @@ const currentUser = JSON.parse(localStorage.getItem('user') || 'null');
 const permissions = computed(() => currentUser?.permissions ?? []);
 const canManageSources = computed(() => permissions.value.includes('manage data sources'));
 const canViewSources = computed(() => permissions.value.includes('view data sources'));
+const canCreateDashboards = computed(() => permissions.value.includes('create dashboards'));
+
+/**
+ * Создание дашборда руками — второй вход в платформу рядом с чатом.
+ *
+ * Источник здесь обязателен, и это не формальность: у такого дашборда нет
+ * чата, а значит нет и базы, по которой виджеты могли бы что-то посчитать.
+ */
+const createModalEl = ref(null);
+let createModal = null;
+const creating = ref(false);
+const createError = ref(null);
+const createErrors = ref({});
+const createForm = reactive({
+    name: '',
+    description: '',
+    data_source_id: '',
+});
+
+async function openCreateModal() {
+    createForm.name = '';
+    createForm.description = '';
+    createForm.data_source_id = sources.value.length === 1 ? sources.value[0].id : '';
+    createError.value = null;
+    createErrors.value = {};
+
+    await nextTick();
+    createModal?.show();
+}
+
+async function submitCreate() {
+    if (creating.value) return;
+
+    creating.value = true;
+    createError.value = null;
+    createErrors.value = {};
+
+    try {
+        const { data } = await api.post('/dashboards', {
+            name: createForm.name,
+            description: createForm.description || null,
+            data_source_id: createForm.data_source_id || null,
+        });
+
+        createModal?.hide();
+
+        // Сразу в рабочее место: пустой дашборд в списке пользы не приносит.
+        router.push({
+            name: 'company.dashboard.edit',
+            params: { dashboard: data.id },
+        });
+    } catch (err) {
+        const body = err.response?.data;
+        if (body?.errors) createErrors.value = body.errors;
+        createError.value = body?.message || 'Не удалось создать дашборд.';
+    } finally {
+        creating.value = false;
+    }
+}
 
 // Показываем только свежее: полный список — на отдельных страницах.
 const recentSources = computed(() => sources.value.slice(0, 4));
 const recentChats = computed(() => chats.value.slice(0, 6));
+const recentDashboards = computed(() => dashboards.value.slice(0, 8));
+
+/** Статус дашборда словами — см. страницу «Дашборды». */
+const DASHBOARD_STATUS = {
+    empty: { text: 'Пустой', cls: 'bg-secondary-lt' },
+    generating_scheme: { text: 'Генерируется', cls: 'bg-azure-lt' },
+    generating_widgets: { text: 'Считает виджеты', cls: 'bg-azure-lt' },
+    reviewing: { text: 'Проверяется', cls: 'bg-azure-lt' },
+    completed: { text: 'Готов', cls: 'bg-green-lt' },
+    failed: { text: 'Ошибка', cls: 'bg-red-lt' },
+};
+
+function dashboardStatus(dashboard) {
+    return DASHBOARD_STATUS[dashboard.status] ?? { text: dashboard.status, cls: 'bg-secondary-lt' };
+}
 
 const typeBadgeClass = (name) =>
     ({
@@ -83,7 +158,16 @@ async function fetchAll() {
     }
 }
 
-onMounted(fetchAll);
+onMounted(async () => {
+    await fetchAll();
+    await nextTick();
+
+    if (createModalEl.value) createModal = new Modal(createModalEl.value);
+});
+
+onBeforeUnmount(() => {
+    createModal?.dispose();
+});
 </script>
 
 <template>
@@ -101,6 +185,17 @@ onMounted(fetchAll);
                             <router-link v-if="canViewSources" class="btn" :to="{ name: 'company.sources' }">
                                 Все источники
                             </router-link>
+                            <button v-if="canCreateDashboards" class="btn" type="button" @click="openCreateModal">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                                     fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                     stroke-linejoin="round" class="icon icon-2">
+                                    <path d="M4 4h6v8h-6z" />
+                                    <path d="M4 16h6v4h-6z" />
+                                    <path d="M14 12h6v8h-6z" />
+                                    <path d="M14 4h6v4h-6z" />
+                                </svg>
+                                Создать дашборд
+                            </button>
                             <router-link v-if="canManageSources" class="btn btn-primary"
                                          :to="{ name: 'company.source.create' }">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
@@ -387,8 +482,148 @@ onMounted(fetchAll);
                             </div>
                         </div>
                     </div>
+
+                    <!-- ===================== ДАШБОРДЫ ===================== -->
+                    <!-- Внизу обзора, потому что это результат работы: сначала
+                         источник, потом чат или конструктор, и уже потом готовый
+                         дашборд, к которому возвращаются каждый день. -->
+                    <div class="row g-2 align-items-center mb-3 mt-4">
+                        <div class="col">
+                            <h3 class="mb-0">Последние дашборды</h3>
+                        </div>
+                        <div v-if="dashboards.length" class="col-auto">
+                            <router-link :to="{ name: 'company.dashboards' }" class="text-secondary">
+                                Смотреть все →
+                            </router-link>
+                        </div>
+                    </div>
+
+                    <div v-if="!recentDashboards.length" class="card">
+                        <div class="card-body">
+                            <div class="empty">
+                                <p class="empty-title">Дашбордов пока нет</p>
+                                <p class="empty-subtitle text-secondary">
+                                    Соберите дашборд сами или опишите нужное словами в чате.
+                                </p>
+                                <div v-if="canCreateDashboards" class="empty-action">
+                                    <button class="btn btn-primary" type="button" @click="openCreateModal">
+                                        Создать дашборд
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div v-else class="row row-cards">
+                        <div v-for="dashboard in recentDashboards" :key="dashboard.id"
+                             class="col-sm-6 col-lg-3 col-xxl-2">
+                            <div class="card card-link card-link-pop h-100">
+                                <div class="card-body d-flex flex-column">
+                                    <div class="d-flex align-items-center justify-content-between mb-2">
+                                        <span class="badge" :class="dashboardStatus(dashboard).cls">
+                                            {{ dashboardStatus(dashboard).text }}
+                                        </span>
+                                        <span class="subheader text-muted">
+                                            {{ formatDate(dashboard.created_at) }}
+                                        </span>
+                                    </div>
+
+                                    <h3 class="card-title mb-1">
+                                        <router-link
+                                            :to="{ name: 'project.dashboard.show', params: { dashboard: dashboard.id } }"
+                                            class="text-reset"
+                                        >
+                                            {{ dashboard.name || `Дашборд #${dashboard.id}` }}
+                                        </router-link>
+                                    </h3>
+
+                                    <div class="text-secondary mt-auto">
+                                        {{ dashboard.widgets_count ?? 0 }} виджет(ов)
+                                        <template v-if="dashboard.data_source">
+                                            · {{ dashboard.data_source.name }}
+                                        </template>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </template>
             </div>
         </main>
+
+        <!-- Создание дашборда руками -->
+        <div ref="createModalEl" class="modal modal-blur fade" tabindex="-1" role="dialog" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered" role="document">
+                <div class="modal-content">
+                    <form @submit.prevent="submitCreate">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Новый дашборд</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"
+                                    aria-label="Закрыть"></button>
+                        </div>
+
+                        <div class="modal-body">
+                            <div v-if="createError" class="alert alert-danger" role="alert">
+                                {{ createError }}
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label required">Название</label>
+                                <input v-model="createForm.name" type="text" class="form-control"
+                                       :class="{ 'is-invalid': createErrors.name }"
+                                       placeholder="Продажи по регионам" maxlength="255" required />
+                                <div v-if="createErrors.name" class="invalid-feedback">
+                                    {{ createErrors.name[0] }}
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Описание</label>
+                                <textarea v-model="createForm.description" class="form-control" rows="3"
+                                          placeholder="Зачем этот дашборд и кому он нужен"></textarea>
+                            </div>
+
+                            <div>
+                                <label class="form-label required">Источник данных</label>
+                                <select v-model="createForm.data_source_id" class="form-select"
+                                        :class="{ 'is-invalid': createErrors.data_source_id }"
+                                        :disabled="!sources.length" required>
+                                    <option value="" disabled>Выберите источник</option>
+                                    <option v-for="source in sources" :key="source.id" :value="source.id">
+                                        {{ source.name }} — {{ source.format_label }}
+                                    </option>
+                                </select>
+                                <div v-if="createErrors.data_source_id" class="invalid-feedback">
+                                    {{ createErrors.data_source_id[0] }}
+                                </div>
+                                <!-- По источнику виджеты считают данные: без него дашборд
+                                     будет пустой рамкой, поэтому поле обязательное. -->
+                                <small v-if="sources.length" class="form-hint">
+                                    Виджеты будут считать данные по этому источнику.
+                                </small>
+                                <small v-else class="form-hint text-danger">
+                                    Источников пока нет.
+                                    <router-link v-if="canManageSources" :to="{ name: 'company.source.create' }">
+                                        Подключите первый
+                                    </router-link>
+                                    <span v-else>Попросите администратора подключить источник.</span>
+                                </small>
+                            </div>
+                        </div>
+
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">
+                                Отмена
+                            </button>
+                            <button type="submit" class="btn btn-primary"
+                                    :class="{ 'btn-loading': creating }"
+                                    :disabled="creating || !sources.length">
+                                Создать и открыть
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
     </div>
 </template>

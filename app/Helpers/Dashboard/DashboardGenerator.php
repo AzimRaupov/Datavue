@@ -4,7 +4,6 @@ namespace App\Helpers\Dashboard;
 
 use App\Events\DashboardWidgetChanged;
 use App\Helpers\Ai\DashboardAi;
-use App\Helpers\DataSource\CodeTemplater;
 use App\Helpers\DataSource\ConnectionProviderRouter;
 use App\Helpers\DataSource\SchemaOptions;
 use App\Models\AiChat;
@@ -19,7 +18,7 @@ use App\Models\TaskStatus;
 use App\Models\Widget;
 use App\Models\WidgetType;
 use App\Helpers\Widget\WidgetCatalog;
-use Illuminate\Support\Facades\File;
+use App\Helpers\Widget\WidgetSpecGenerator;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Throwable;
@@ -412,36 +411,52 @@ class DashboardGenerator
         }
     }
 
+    /**
+     * Содержимое виджета — спецификация запроса.
+     *
+     * Раньше здесь генерировался Python: модель писала программу, которая
+     * подключалась к базе, выполняла SQL и вручную собирала вложенный JSON.
+     * Считал при этом всё равно SQL, а Python только перекладывал строки —
+     * и приносил с собой выполнение кода на сервере, шаблон рантайма в
+     * каждом промпте и целый класс ошибок, которые всплывали лишь при
+     * первой отрисовке у пользователя.
+     *
+     * Теперь модель отвечает, ЧТО считать, а запрос собирает и проверяет
+     * платформа — тем же кодом, что стоит за ручным конструктором.
+     */
     public function generateContentWidget($dashboard_widget, $tables_scheme): array
     {
         try {
-            $type = $this->dataSource->type->name;
+            $generator = new WidgetSpecGenerator($this->dataSource);
 
-            $codeTemplater = new CodeTemplater($this->dataSource->id, $this->token);
-            $codeTemplate = $codeTemplater->generateFullScript();
-            $schemeStr = json_encode($tables_scheme, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+            $result = $generator->generate($dashboard_widget, $tables_scheme);
 
-            $mainBody = $this->dashboardGeneratorAi->generateContentWidget(
-                $dashboard_widget,
-                $schemeStr,
-                $codeTemplate
-            );
+            if (!$result['ok']) {
+                $dashboard_widget->status = 'failed';
+                $dashboard_widget->last_error = $result['error'];
+                $dashboard_widget->last_run_at = now();
+                $dashboard_widget->save();
 
-            $path = $this->storage.'/dashboard/widgets/'.$dashboard_widget->id.'/generated_script.py';
+                event(new DashboardWidgetChanged($this->dashboard));
 
-            File::ensureDirectoryExists(dirname($path));
-            File::put($path, $mainBody);
+                return $this->result(true, (string) $result['error'], ['widget' => $dashboard_widget]);
+            }
 
-            $dashboard_widget->code_path = $path;
+            $dashboard_widget->query_spec = $result['spec'];
+            $dashboard_widget->content_mode = $result['mode'];
+            $dashboard_widget->origin = DashboardWidget::ORIGIN_AI;
             $dashboard_widget->status = 'active';
+            $dashboard_widget->last_error = null;
+            $dashboard_widget->last_run_at = now();
             $dashboard_widget->save();
+
             event(new DashboardWidgetChanged($this->dashboard));
 
             return $this->result(false, '', ['widget' => $dashboard_widget]);
         } catch (Throwable $e) {
             $dashboard_widget->status = 'failed';
+            $dashboard_widget->last_error = $e->getMessage();
             $dashboard_widget->save();
-
 
             return $this->result(true, $e->getMessage(), ['widget' => $dashboard_widget]);
         }

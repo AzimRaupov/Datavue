@@ -23,6 +23,13 @@ class RolePermissionSeeder extends Seeder
         'edit dashboards',
         'delete dashboards',
 
+        // Написание кода виджета руками.
+        //
+        // Право отдельное, а не производное от 'edit dashboards': собрать
+        // дашборд из виджетов и переставить их может любой аналитик, а вот
+        // код виджета выполняется на сервере — это выдаётся адресно.
+        'write widget code',
+
         // Чаты с AI-агентом
         'view chats',
         'create chats',
@@ -54,6 +61,7 @@ class RolePermissionSeeder extends Seeder
             'create dashboards',
             'edit dashboards',
             'delete dashboards',
+            'write widget code',
             'view chats',
             'create chats',
             'edit chats',

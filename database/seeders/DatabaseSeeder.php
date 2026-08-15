@@ -38,6 +38,7 @@ class DatabaseSeeder extends Seeder
             TaskStatusSeeder::class,
             DataSourceTypesSeeder::class,
             DashboardStatusesSeeder::class,
+            FilersSeeder::class,
 
             // Каталог виджетов: одно семейство = один сидер, типы внутри него.
             MiniCountersSeeder::class,
