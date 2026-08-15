@@ -120,17 +120,63 @@ class DashboardBuilderController extends Controller
             ], 422);
         }
 
+        // Граф связей отдаётся сразу: без него конструктор предлагал бы
+        // связать таблицы, которые связывать нечем, и заставлял бы
+        // вспоминать, какой ключ куда смотрит.
+        try {
+            $relations = SourceSchema::relations(
+                $dataSource,
+                array_column($tables, 'name')
+            );
+        } catch (Throwable) {
+            $relations = [];
+        }
+
         return response()->json([
             'data_source' => ['id' => $dataSource->id, 'name' => $dataSource->name],
             'tables' => $tables,
+            'relations' => $relations,
             // Словарь конструктора: функции, округления дат и условия приходят
             // с сервера, чтобы панель не держала их копию, которая разъедется
             // с тем, что реально умеет сборщик запроса.
             'aggregates' => WidgetQueryComposer::AGGREGATES,
+            'join_types' => WidgetQueryComposer::JOIN_TYPES,
             'grains' => WidgetQueryComposer::GRAINS,
             'operators' => WidgetQueryComposer::OPERATORS,
             'default_limit' => WidgetQueryComposer::DEFAULT_LIMIT,
         ]);
+    }
+
+    /**
+     * Связи между выбранными таблицами — подсказка для конструктора.
+     *
+     * Спрашивается по требованию: когда автор добавляет вторую таблицу,
+     * платформа предлагает готовое условие соединения вместо того, чтобы
+     * заставлять вспоминать, какой ключ куда смотрит.
+     */
+    public function relations(Request $request, $id)
+    {
+        $dashboard = $this->findForCompany($request, $id);
+
+        $request->validate([
+            'tables' => 'required|array|min:2|max:10',
+            'tables.*' => 'string|max:255',
+        ]);
+
+        $dataSource = $dashboard->resolveDataSource();
+
+        if (!$dataSource) {
+            return response()->json(['message' => 'У дашборда не задан источник данных.'], 422);
+        }
+
+        try {
+            $relations = SourceSchema::relations($dataSource, $request->input('tables'));
+        } catch (Throwable $e) {
+            // Подсказка не обязательна: связь всегда можно выбрать руками.
+            return response()->json(['relations' => []]);
+        }
+
+        return response()->json(['relations' => $relations]);
     }
 
     /**

@@ -78,6 +78,59 @@ class SourceSchema
         return $map;
     }
 
+    /**
+     * Связи между таблицами — чтобы конструктор сам предлагал, по каким
+     * колонкам их соединять.
+     *
+     * Спрашивается отдельно и только по нужным таблицам: провайдер проверяет
+     * связи по самим данным, и делать это для всего источника разом дорого.
+     *
+     * @param array<int, string> $tables
+     *
+     * @return array<int, array{from_table: string, from_column: string, to_table: string, to_column: string, confidence: ?string}>
+     */
+    public static function relations(DataSource $dataSource, array $tables): array
+    {
+        $tables = array_values(array_unique(array_filter($tables)));
+
+        if (count($tables) < 2) {
+            return [];
+        }
+
+        sort($tables);
+
+        return Cache::remember(
+            self::cacheKey($dataSource->id).':relations:'.md5(implode(',', $tables)),
+            now()->addMinutes(self::TTL_MINUTES),
+            function () use ($dataSource, $tables) {
+                $schema = (new ConnectionProviderRouter($dataSource->id))
+                    ->getSchema($tables, SchemaOptions::detailed());
+
+                $relations = [];
+
+                foreach ($schema as $table => $definition) {
+                    foreach (($definition['relations'] ?? []) as $column => $meta) {
+                        $target = $meta['relation'] ?? null;
+
+                        if (!$target || empty($target['table']) || empty($target['column'])) {
+                            continue;
+                        }
+
+                        $relations[] = [
+                            'from_table' => $table,
+                            'from_column' => $column,
+                            'to_table' => $target['table'],
+                            'to_column' => $target['column'],
+                            'confidence' => $target['confidence'] ?? null,
+                        ];
+                    }
+                }
+
+                return $relations;
+            }
+        );
+    }
+
     public static function forget(int $dataSourceId): void
     {
         Cache::forget(self::cacheKey($dataSourceId));

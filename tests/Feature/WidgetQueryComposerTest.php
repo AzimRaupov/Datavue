@@ -191,7 +191,7 @@ it('не пускает в запрос колонку, которой нет в
     ], 'bar');
 
     expect($result['ok'])->toBeFalse()
-        ->and($result['errors'][0])->toContain('нет колонки');
+        ->and($result['errors'][0])->toContain('«секрет»');
 });
 
 it('не пускает в запрос чужую таблицу', function () {
@@ -215,7 +215,8 @@ it('отклоняет SQL, спрятанный в имени колонки', 
     ], 'bar');
 
     expect($result['ok'])->toBeFalse()
-        ->and($result['errors'][0])->toContain('нет колонки');
+        // Выражение отклонено: такой колонки нет ни в одной таблице запроса.
+        ->and($result['errors'][0])->toContain('SELECT password');
 });
 
 it('экранирует кавычки в значении условия', function () {
@@ -531,4 +532,324 @@ it('игнорирует цель, которой нельзя пользова�
 it('говорит конструктору, что виду нужна цель', function () {
     expect(WidgetQueryComposer::slotsFor('mini-counters', 'with-progress')['needs_target'])->toBeTrue()
         ->and(WidgetQueryComposer::slotsFor('mini-counters', 'cards')['needs_target'])->toBeFalse();
+});
+
+// ---------------------------------------------------------------------------
+// Связи таблиц
+// ---------------------------------------------------------------------------
+
+it('связывает несколько таблиц в одном виджете', function () {
+    Cache::put("datasource:{$this->source->id}:schema", [
+        [
+            'name' => 'orders',
+            'columns' => [
+                ['name' => 'id', 'type' => 'int', 'kind' => 'number'],
+                ['name' => 'customer_id', 'type' => 'int', 'kind' => 'number'],
+                ['name' => 'amount', 'type' => 'decimal', 'kind' => 'number'],
+            ],
+        ],
+        [
+            'name' => 'customers',
+            'columns' => [
+                ['name' => 'id', 'type' => 'int', 'kind' => 'number'],
+                ['name' => 'country', 'type' => 'varchar', 'kind' => 'string'],
+            ],
+        ],
+    ], now()->addMinutes(5));
+
+    $composer = new WidgetQueryComposer($this->source->fresh(['type']));
+
+    $result = $composer->compose([
+        'table' => 'orders',
+        'joins' => [[
+            'table' => 'customers',
+            'type' => 'left',
+            'on' => [['left_table' => 'orders', 'left' => 'customer_id', 'right' => 'id']],
+        ]],
+        'metrics' => [['agg' => 'sum', 'column' => 'amount', 'table' => 'orders', 'label' => 'Выручка']],
+        'dimensions' => [['column' => 'country', 'table' => 'customers']],
+    ], 'bar');
+
+    expect($result['ok'])->toBeTrue()
+        ->and($result['sql'])->toContain('LEFT JOIN `customers` ON `orders`.`customer_id` = `customers`.`id`')
+        // Со связями имя колонки становится неоднозначным: id есть в обеих
+        // таблицах, поэтому в запрос идёт полное имя.
+        ->and($result['sql'])->toContain('`customers`.`country` AS `category`')
+        ->and($result['sql'])->toContain('SUM(`orders`.`amount`)');
+});
+
+it('оставляет запрос без префиксов, пока таблица одна', function () {
+    // Виджеты, собранные до появления связей, не должны измениться:
+    // лишние префиксы только зашумляют запрос.
+    $result = $this->composer->compose([
+        'table' => 'orders',
+        'metrics' => [['agg' => 'sum', 'column' => 'amount', 'label' => 'Выручка']],
+        'dimensions' => [['column' => 'country']],
+    ], 'bar');
+
+    expect($result['sql'])->toContain('SUM(`amount`)')
+        ->and($result['sql'])->not->toContain('`orders`.`amount`');
+});
+
+it('не пускает колонку таблицы, которую не связали', function () {
+    Cache::put("datasource:{$this->source->id}:schema", [
+        ['name' => 'orders', 'columns' => [['name' => 'amount', 'type' => 'decimal', 'kind' => 'number']]],
+        ['name' => 'customers', 'columns' => [['name' => 'country', 'type' => 'varchar', 'kind' => 'string']]],
+    ], now()->addMinutes(5));
+
+    $composer = new WidgetQueryComposer($this->source->fresh(['type']));
+
+    $result = $composer->compose([
+        'table' => 'orders',
+        'metrics' => [['agg' => 'count']],
+        'dimensions' => [['column' => 'country', 'table' => 'customers']],
+    ], 'bar');
+
+    expect($result['ok'])->toBeFalse()
+        ->and($result['errors'][0])->toContain('не участвует в запросе');
+});
+
+it('отклоняет связь без условия и по чужой колонке', function () {
+    $noCondition = $this->composer->compose([
+        'table' => 'orders',
+        'joins' => [['table' => 'orders', 'on' => []]],
+        'metrics' => [['agg' => 'count']],
+        'dimensions' => [['column' => 'country']],
+    ], 'bar');
+
+    expect($noCondition['ok'])->toBeFalse();
+
+    $badColumn = $this->composer->compose([
+        'table' => 'orders',
+        'joins' => [[
+            'table' => 'orders',
+            'on' => [['left' => 'секрет', 'right' => 'id']],
+        ]],
+        'metrics' => [['agg' => 'count']],
+        'dimensions' => [['column' => 'country']],
+    ], 'bar');
+
+    expect($badColumn['ok'])->toBeFalse();
+});
+
+// ---------------------------------------------------------------------------
+// Подзапрос как источник
+// ---------------------------------------------------------------------------
+
+it('строит виджет поверх запроса-источника', function () {
+    // Ответ на подзапросы: сложную выборку пишут один раз, а метрики
+    // и разрезы дальше набирают слотами.
+    $result = $this->composer->compose([
+        'subquery' => [
+            'query' => 'SELECT country, amount FROM orders JOIN customers ON 1 = 1',
+            'columns' => [
+                ['name' => 'country', 'type' => 'varchar'],
+                ['name' => 'amount', 'type' => 'decimal'],
+            ],
+        ],
+        'metrics' => [['agg' => 'sum', 'column' => 'amount', 'label' => 'Выручка']],
+        'dimensions' => [['column' => 'country']],
+        'limit' => 5,
+    ], 'bar');
+
+    expect($result['ok'])->toBeTrue()
+        ->and($result['sql'])->toContain(') AS `source`')
+        ->and($result['sql'])->toContain('SUM(`amount`) AS `value`')
+        ->and($result['sql'])->toContain('GROUP BY `country`');
+});
+
+it('проверяет колонки подзапроса так же строго, как колонки таблицы', function () {
+    $result = $this->composer->compose([
+        'subquery' => [
+            'query' => 'SELECT country FROM customers',
+            'columns' => [['name' => 'country', 'type' => 'varchar']],
+        ],
+        'metrics' => [['agg' => 'sum', 'column' => 'секрет']],
+        'dimensions' => [['column' => 'country']],
+    ], 'bar');
+
+    expect($result['ok'])->toBeFalse()
+        ->and($result['errors'][0])->toContain('«секрет»');
+});
+
+it('не берёт запрос-источник без списка его колонок', function () {
+    // Иначе конструктор не знал бы, что можно складывать, а что — разбивка.
+    $result = $this->composer->compose([
+        'subquery' => ['query' => 'SELECT * FROM orders'],
+        'metrics' => [['agg' => 'count']],
+        'dimensions' => [['column' => 'country']],
+    ], 'bar');
+
+    expect($result['ok'])->toBeFalse()
+        ->and($result['errors'][0])->toContain('колонки');
+});
+
+it('считает метрики из несвязанных таблиц каждую по своей', function () {
+    // Счётчик «Заказов / Клиентов / Товаров»: три числа из трёх таблиц,
+    // которые нечем и незачем связывать. Раньше таблица метрики молча
+    // терялась, и всё считалось по основной — тихо и неверно.
+    Cache::put("datasource:{$this->source->id}:schema", [
+        ['name' => 'orders', 'columns' => [['name' => 'id', 'type' => 'int', 'kind' => 'number']]],
+        ['name' => 'customers', 'columns' => [['name' => 'id', 'type' => 'int', 'kind' => 'number']]],
+        ['name' => 'products', 'columns' => [['name' => 'price', 'type' => 'decimal', 'kind' => 'number']]],
+    ], now()->addMinutes(5));
+
+    $composer = new WidgetQueryComposer($this->source->fresh(['type']));
+
+    $result = $composer->compose([
+        'table' => 'orders',
+        'metrics' => [
+            ['agg' => 'count', 'label' => 'Заказов'],
+            ['agg' => 'count', 'table' => 'customers', 'label' => 'Клиентов'],
+            ['agg' => 'sum', 'table' => 'products', 'column' => 'price', 'label' => 'Стоимость склада'],
+        ],
+    ], 'mini-counters');
+
+    expect($result['ok'])->toBeTrue()
+        ->and($result['sql'])->toContain("'Заказов' AS `name`")
+        ->and($result['sql'])->toContain('FROM `orders`')
+        ->and($result['sql'])->toContain('FROM `customers`')
+        ->and($result['sql'])->toContain('FROM `products`')
+        // Каждая метрика — своя выборка, поэтому объединений на одну меньше.
+        ->and(substr_count($result['sql'], 'UNION ALL'))->toBe(2);
+});
+
+it('требует связь, когда метрики считаются одной выборкой', function () {
+    // У графика со сравнением строки общие: чужая таблица без связи дала бы
+    // перемножение строк и неверные числа.
+    Cache::put("datasource:{$this->source->id}:schema", [
+        ['name' => 'orders', 'columns' => [['name' => 'country', 'type' => 'varchar', 'kind' => 'string']]],
+        ['name' => 'stock', 'columns' => [['name' => 'quantity', 'type' => 'int', 'kind' => 'number']]],
+    ], now()->addMinutes(5));
+
+    $composer = new WidgetQueryComposer($this->source->fresh(['type']));
+
+    $result = $composer->compose([
+        'table' => 'orders',
+        'metrics' => [['agg' => 'sum', 'column' => 'quantity', 'table' => 'stock']],
+        'dimensions' => [['column' => 'country']],
+    ], 'bar');
+
+    expect($result['ok'])->toBeFalse()
+        ->and($result['errors'][0])->toContain('добавьте её связью');
+});
+
+it('связывает таблицы без условия, когда связывать нечем', function () {
+    Cache::put("datasource:{$this->source->id}:schema", [
+        ['name' => 'orders', 'columns' => [['name' => 'amount', 'type' => 'decimal', 'kind' => 'number']]],
+        ['name' => 'targets', 'columns' => [['name' => 'plan', 'type' => 'decimal', 'kind' => 'number']]],
+    ], now()->addMinutes(5));
+
+    $composer = new WidgetQueryComposer($this->source->fresh(['type']));
+
+    $result = $composer->compose([
+        'table' => 'orders',
+        'joins' => [['table' => 'targets', 'type' => 'cross']],
+        'metrics' => [['agg' => 'sum', 'column' => 'amount', 'table' => 'orders', 'label' => 'Факт']],
+        'dimensions' => [['column' => 'plan', 'table' => 'targets']],
+    ], 'bar');
+
+    expect($result['ok'])->toBeTrue()
+        ->and($result['sql'])->toContain('CROSS JOIN `targets`')
+        // У связи без условия ON быть не должно.
+        ->and($result['sql'])->not->toContain('CROSS JOIN `targets` ON');
+});
+
+it('объясняет, что делать, когда связь не задана', function () {
+    Cache::put("datasource:{$this->source->id}:schema", [
+        ['name' => 'orders', 'columns' => [['name' => 'country', 'type' => 'varchar', 'kind' => 'string']]],
+        ['name' => 'stock', 'columns' => [['name' => 'quantity', 'type' => 'int', 'kind' => 'number']]],
+    ], now()->addMinutes(5));
+
+    $composer = new WidgetQueryComposer($this->source->fresh(['type']));
+
+    $result = $composer->compose([
+        'table' => 'orders',
+        'joins' => [['table' => 'stock', 'type' => 'left', 'on' => []]],
+        'metrics' => [['agg' => 'count']],
+        'dimensions' => [['column' => 'country']],
+    ], 'bar');
+
+    expect($result['ok'])->toBeFalse()
+        ->and($result['errors'][0])->toContain('без условия');
+});
+
+it('находит колонку сам, когда таблица не указана', function () {
+    // Виджеты, собранные до появления связей, хранят колонки без таблицы.
+    // Раньше все они искались в основной, и «В таблице payments нет колонки
+    // customerName» останавливало настройку на ровном месте.
+    Cache::put("datasource:{$this->source->id}:schema", [
+        ['name' => 'payments', 'columns' => [
+            ['name' => 'customer_id', 'type' => 'int', 'kind' => 'number'],
+            ['name' => 'amount', 'type' => 'decimal', 'kind' => 'number'],
+        ]],
+        ['name' => 'customers', 'columns' => [
+            ['name' => 'id', 'type' => 'int', 'kind' => 'number'],
+            ['name' => 'name', 'type' => 'varchar', 'kind' => 'string'],
+        ]],
+    ], now()->addMinutes(5));
+
+    $composer = new WidgetQueryComposer($this->source->fresh(['type']));
+
+    $join = [[
+        'table' => 'customers',
+        'type' => 'left',
+        'on' => [['left_table' => 'payments', 'left' => 'customer_id', 'right' => 'id']],
+    ]];
+
+    foreach ([null, ''] as $table) {
+        $result = $composer->compose([
+            'table' => 'payments',
+            'joins' => $join,
+            'metrics' => [['agg' => 'sum', 'column' => 'amount']],
+            'dimensions' => [['column' => 'name', 'table' => $table]],
+        ], 'bar');
+
+        expect($result['ok'])->toBeTrue()
+            // Колонка нашлась в связанной таблице, и в запрос ушла именно она.
+            ->and($result['sql'])->toContain('`customers`.`name` AS `category`');
+    }
+});
+
+it('не гадает, когда колонка есть в нескольких таблицах', function () {
+    Cache::put("datasource:{$this->source->id}:schema", [
+        ['name' => 'payments', 'columns' => [
+            ['name' => 'customer_id', 'type' => 'int', 'kind' => 'number'],
+            ['name' => 'amount', 'type' => 'decimal', 'kind' => 'number'],
+        ]],
+        ['name' => 'customers', 'columns' => [
+            ['name' => 'customer_id', 'type' => 'int', 'kind' => 'number'],
+            ['name' => 'country', 'type' => 'varchar', 'kind' => 'string'],
+        ]],
+    ], now()->addMinutes(5));
+
+    $composer = new WidgetQueryComposer($this->source->fresh(['type']));
+
+    $result = $composer->compose([
+        'table' => 'payments',
+        'joins' => [[
+            'table' => 'customers',
+            'type' => 'left',
+            'on' => [['left_table' => 'payments', 'left' => 'customer_id', 'right' => 'customer_id']],
+        ]],
+        'metrics' => [['agg' => 'sum', 'column' => 'amount']],
+        'dimensions' => [['column' => 'customer_id']],
+    ], 'bar');
+
+    // Взять любую из двух — значит молча посчитать не то.
+    expect($result['ok'])->toBeFalse()
+        ->and($result['errors'][0])->toContain('в нескольких таблицах')
+        ->and($result['errors'][0])->toContain('payments, customers');
+});
+
+it('перечисляет таблицы запроса, когда колонки нет нигде', function () {
+    $result = $this->composer->compose([
+        'table' => 'orders',
+        'metrics' => [['agg' => 'count']],
+        'dimensions' => [['column' => 'нетакой']],
+    ], 'bar');
+
+    expect($result['ok'])->toBeFalse()
+        ->and($result['errors'][0])->toContain('ни в одной из таблиц запроса')
+        ->and($result['errors'][0])->toContain('orders');
 });

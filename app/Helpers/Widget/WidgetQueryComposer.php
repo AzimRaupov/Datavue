@@ -86,6 +86,23 @@ class WidgetQueryComposer
     /** Операторы, которым значение не нужно. */
     private const OPERATORS_WITHOUT_VALUE = ['is_null', 'not_null'];
 
+    /**
+     * Как связывать таблицы.
+     *
+     * По умолчанию LEFT: аналитик почти всегда хочет видеть все строки
+     * основной таблицы, даже если в связанной пары не нашлось. INNER
+     * молча выбрасывал бы их, и цифры расходились бы с ожиданием.
+     */
+    public const JOIN_TYPES = [
+        'left' => 'Все строки основной таблицы',
+        'inner' => 'Только совпавшие строки',
+        'right' => 'Все строки связанной таблицы',
+        // Таблицы, которые нечем связать. Строки перемножаются, поэтому
+        // выбор осознанный: это не «на всякий случай», а «мне правда нужно
+        // каждое с каждым».
+        'cross' => 'Без условия — все строки со всеми',
+    ];
+
     public const DEFAULT_LIMIT = 100;
     public const MAX_LIMIT = 5000;
 
@@ -94,6 +111,15 @@ class WidgetQueryComposer
 
     /** @var array<string, array<string, string>> таблица => колонка => вид */
     private array $schema;
+
+    /** Основная таблица текущего запроса. */
+    private string $baseTable = '';
+
+    /** @var array<int, array{table: string, type: string, on: array}> Связи текущего запроса */
+    private array $joins = [];
+
+    /** @var array{sql: string, columns: array, alias: string}|null Источник-запрос */
+    private ?array $subquery = null;
 
     public function __construct(private DataSource $dataSource)
     {
@@ -117,14 +143,43 @@ class WidgetQueryComposer
      */
     public function compose(array $builder, string $family, ?string $type = null): array
     {
+        // Состояние сбрасывается на каждый вызов: один объект собирает
+        // много запросов подряд, и остатки прошлого не должны в них попадать.
+        $this->joins = [];
+        $this->subquery = null;
+        $this->schema = SourceSchema::map($this->dataSource);
+
         try {
-            $table = $this->requireTable($builder['table'] ?? null);
-            $metrics = $this->readMetrics($builder['metrics'] ?? [], $table);
-            $dimensions = $this->readDimensions($builder['dimensions'] ?? [], $table);
-            $where = $this->readFilters($builder['filters'] ?? [], $table);
-            $limit = $this->readLimit($builder['limit'] ?? null);
+            // Источником может быть не только таблица, но и запрос: так
+            // конструктор работает поверх выборки, которую иначе пришлось бы
+            // писать целиком руками. Это ответ на подзапросы — в Superset
+            // ту же роль играет виртуальный датасет, в Metabase — вопрос,
+            // построенный на другом вопросе.
+            $subquery = $this->readSubquery($builder['subquery'] ?? null);
+
+            $table = $subquery
+                ? $this->registerSubquery($subquery)
+                : $this->requireTable($builder['table'] ?? null);
+
+            // Связи разбираются первыми: от них зависит, какие таблицы вообще
+            // доступны метрикам, разбивкам и условиям.
+            $this->joins = $this->readJoins($builder['joins'] ?? [], $table);
+            $this->baseTable = $table;
 
             $shape = WidgetShapeMapper::shapeFor($family);
+
+            // Счётчики и плоские списки без разбивки считают каждую метрику
+            // отдельной выборкой — значит таблицы могут быть любые, в том
+            // числе никак не связанные между собой.
+            $independent = in_array($shape, [
+                WidgetShapeMapper::SHAPE_COUNTERS,
+                WidgetShapeMapper::SHAPE_SERIES_VALUES,
+            ], true) && empty($builder['dimensions']);
+
+            $metrics = $this->readMetrics($builder['metrics'] ?? [], $table, $independent);
+            $dimensions = $this->readDimensions($builder['dimensions'] ?? [], $table);
+            $where = $this->readFilters($builder['filters'] ?? [], $table, $independent);
+            $limit = $this->readLimit($builder['limit'] ?? null);
 
             // Без метрик считать нечего. Проверка нужна именно здесь: раньше
             // пустой список молча доходил до сборки, и получался обрубок вида
@@ -135,11 +190,11 @@ class WidgetQueryComposer
             }
 
             $sql = match ($shape) {
-                WidgetShapeMapper::SHAPE_SERIES_MATRIX => $this->composeMatrix($table, $metrics, $dimensions, $where, $builder, $limit),
+                WidgetShapeMapper::SHAPE_SERIES_MATRIX => $this->composeMatrix($table, $metrics, $dimensions, $this->conditionsFor($where, $this->tablesInPlay($table)), $builder, $limit),
                 WidgetShapeMapper::SHAPE_SERIES_VALUES => $this->composeValues($table, $metrics, $dimensions, $where, $builder, $limit),
                 WidgetShapeMapper::SHAPE_COUNTERS => $this->composeCounters($table, $metrics, $dimensions, $where, $builder, $limit, $type),
-                WidgetShapeMapper::SHAPE_POINTS => $this->composePoints($table, $metrics, $dimensions, $where, $builder, $limit, $type),
-                WidgetShapeMapper::SHAPE_ROWS => $this->composeRows($table, $metrics, $dimensions, $where, $builder, $limit),
+                WidgetShapeMapper::SHAPE_POINTS => $this->composePoints($table, $metrics, $dimensions, $this->conditionsFor($where, $this->tablesInPlay($table)), $builder, $limit, $type),
+                WidgetShapeMapper::SHAPE_ROWS => $this->composeRows($table, $metrics, $dimensions, $this->conditionsFor($where, $this->tablesInPlay($table)), $builder, $limit),
                 default => throw new RuntimeException("Для этого виджета конструктор пока не поддерживается."),
             };
 
@@ -563,7 +618,22 @@ class WidgetQueryComposer
                 $columns[] = $this->percentExpression($metric).' AS '.$this->alias('percent');
             }
 
-            $parts[] = $this->select($columns, $table, $where, [], null, null);
+            // Каждая метрика считается по СВОЕЙ таблице. Именно это делает
+            // возможным счётчик «Заказов / Клиентов / Товаров»: три числа
+            // из трёх таблиц, которые нечем и незачем связывать.
+            $metricTable = $metric['table'] ?? $table;
+            $tables = $metricTable === $table
+                ? $this->tablesInPlay($table)
+                : [$metricTable];
+
+            $parts[] = $this->select(
+                $columns,
+                $metricTable,
+                $this->conditionsFor($where, $tables),
+                [],
+                null,
+                null
+            );
         }
 
         return implode("\nUNION ALL\n", $parts)."\nLIMIT ".$limit;
@@ -572,6 +642,142 @@ class WidgetQueryComposer
     // -----------------------------------------------------------------
     // Разбор настроек
     // -----------------------------------------------------------------
+
+    /**
+     * Разбирает связи между таблицами.
+     *
+     * Условие связи — пара колонок, и обе проверяются по схеме: в запрос
+     * не попадает ничего, чего нет в источнике. Без этого join был бы
+     * дырой ровно того сорта, от которой конструктор и уходит.
+     *
+     * @return array<int, array{table: string, type: string, on: array<int, array{left_table: string, left: string, right: string}>}>
+     */
+    private function readJoins(mixed $joins, string $baseTable): array
+    {
+        if (!is_array($joins) || $joins === []) {
+            return [];
+        }
+
+        $result = [];
+        // Таблицы, к которым уже можно присоединяться: основная и всё,
+        // что присоединено до этого шага.
+        $available = [$baseTable];
+
+        foreach ($joins as $join) {
+            if (!is_array($join)) {
+                continue;
+            }
+
+            $table = $this->requireTable($join['table'] ?? null);
+
+            if (in_array($table, $available, true)) {
+                throw new RuntimeException("Таблица «{$table}» уже участвует в запросе.");
+            }
+
+            $type = strtolower(trim((string) ($join['type'] ?? 'left')));
+
+            if (!array_key_exists($type, self::JOIN_TYPES)) {
+                throw new RuntimeException("Неизвестный тип связи «{$type}».");
+            }
+
+            $conditions = [];
+
+            foreach (($join['on'] ?? []) as $pair) {
+                if (!is_array($pair)) {
+                    continue;
+                }
+
+                // Слева — колонка одной из уже подключённых таблиц,
+                // справа — колонка присоединяемой.
+                $leftTable = trim((string) ($pair['left_table'] ?? $baseTable));
+
+                if (!in_array($leftTable, $available, true)) {
+                    throw new RuntimeException(
+                        "Связь ссылается на таблицу «{$leftTable}», которой ещё нет в запросе."
+                    );
+                }
+
+                $conditions[] = [
+                    'left_table' => $leftTable,
+                    'left' => $this->requireColumn($leftTable, $pair['left'] ?? null),
+                    'right' => $this->requireColumn($table, $pair['right'] ?? null),
+                ];
+            }
+
+            // Связь без условия — единственный случай, когда пары колонок нет.
+            if ($conditions === [] && $type !== 'cross') {
+                throw new RuntimeException(
+                    "Для таблицы «{$table}» не указано, по каким колонкам её связывать. "
+                    . "Если связывать нечем, выберите тип «без условия»."
+                );
+            }
+
+            $result[] = ['table' => $table, 'type' => $type, 'on' => $conditions];
+            $available[] = $table;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Таблицы, доступные метрикам, разбивкам и условиям.
+     *
+     * @return array<int, string>
+     */
+    private function tablesInPlay(string $baseTable): array
+    {
+        return array_merge([$baseTable], array_column($this->joins, 'table'));
+    }
+
+    /**
+     * Разбирает подзапрос-источник.
+     */
+    private function readSubquery(mixed $subquery): ?array
+    {
+        if (!is_array($subquery)) {
+            return null;
+        }
+
+        $sql = trim((string) ($subquery['query'] ?? ''));
+
+        if ($sql === '') {
+            return null;
+        }
+
+        $columns = [];
+
+        foreach (($subquery['columns'] ?? []) as $column) {
+            if (is_array($column) && !empty($column['name'])) {
+                $columns[(string) $column['name']] = SourceSchema::kindOf($column['type'] ?? null);
+            } elseif (is_string($column) && $column !== '') {
+                $columns[$column] = 'string';
+            }
+        }
+
+        if ($columns === []) {
+            throw new RuntimeException(
+                'Неизвестно, какие колонки возвращает запрос-источник. Выполните его один раз.'
+            );
+        }
+
+        return ['sql' => $sql, 'columns' => $columns, 'alias' => 'source'];
+    }
+
+    /**
+     * Регистрирует подзапрос как таблицу: дальше конструктор работает с ним
+     * так же, как с обычной, — те же метрики, разбивки и условия.
+     */
+    private function registerSubquery(array $subquery): string
+    {
+        $alias = $subquery['alias'];
+
+        // Колонки подзапроса проверяются так же строго, как колонки таблицы:
+        // белый список — то, что он реально вернул при проверке.
+        $this->schema[$alias] = $subquery['columns'];
+        $this->subquery = $subquery;
+
+        return $alias;
+    }
 
     private function requireTable(mixed $table): string
     {
@@ -589,9 +795,13 @@ class WidgetQueryComposer
     }
 
     /**
-     * @return array<int, array{expression: string, label: string}>
+     * @param bool $independentTables Разрешено ли метрике брать таблицу, не
+     *        связанную с основной. Так устроены счётчики и плоские списки:
+     *        каждая метрика там — отдельная выборка, и связывать нечего.
+     *
+     * @return array<int, array{expression: string, label: string, table: string}>
      */
-    private function readMetrics(mixed $metrics, string $table): array
+    private function readMetrics(mixed $metrics, string $table, bool $independentTables = false): array
     {
         if (!is_array($metrics)) {
             return [];
@@ -610,27 +820,36 @@ class WidgetQueryComposer
                 throw new RuntimeException("Неизвестная функция «{$agg}».");
             }
 
+            // Таблица метрики: своя или основная. Раньше она у COUNT(*)
+            // просто терялась, и «клиентов» считалось по таблице заказов —
+            // молча и неверно.
+            $metricTable = $this->metricTable($metric, $table, $independentTables);
+
             if (in_array($agg, self::AGGREGATES_WITHOUT_COLUMN, true)) {
                 $result[] = [
                     'expression' => 'COUNT(*)',
                     'label' => trim((string) ($metric['label'] ?? '')) ?: 'Количество',
                     'target' => $this->readTarget($metric['target'] ?? null),
+                    'table' => $metricTable,
                 ];
 
                 continue;
             }
 
-            $column = $this->requireColumn($table, $metric['column'] ?? null);
+            $resolved = $this->resolveColumn($metric, $metricTable, $independentTables);
+            $column = $resolved['column'];
 
-            if (in_array($agg, self::NUMERIC_AGGREGATES, true) && $this->schema[$table][$column] !== 'number') {
+            if (in_array($agg, self::NUMERIC_AGGREGATES, true) && $resolved['kind'] !== 'number') {
                 throw new RuntimeException(
                     "Колонка «{$column}» не числовая — посчитать по ней «".self::AGGREGATES[$agg]."» нельзя."
                 );
             }
 
+            $reference = $this->columnRef($resolved);
+
             $expression = match ($agg) {
-                'count_distinct' => 'COUNT(DISTINCT '.$this->quote($column).')',
-                default => strtoupper($agg).'('.$this->quote($column).')',
+                'count_distinct' => 'COUNT(DISTINCT '.$reference.')',
+                default => strtoupper($agg).'('.$reference.')',
             };
 
             $result[] = [
@@ -639,6 +858,7 @@ class WidgetQueryComposer
                 // Цель нужна счётчику с полосой выполнения: от неё считается
                 // процент. У остальных виджетов поле просто не используется.
                 'target' => $this->readTarget($metric['target'] ?? null),
+                'table' => $resolved['table'],
             ];
         }
 
@@ -665,17 +885,18 @@ class WidgetQueryComposer
                 continue;
             }
 
-            $column = $this->requireColumn($table, $dimension['column'] ?? null);
+            $resolved = $this->resolveColumn($dimension, $table);
+            $column = $resolved['column'];
             $grain = $dimension['grain'] ?? null;
 
-            $expression = $this->quote($column);
+            $expression = $this->columnRef($resolved);
 
             if ($grain) {
                 if (!array_key_exists($grain, self::GRAINS)) {
                     throw new RuntimeException("Неизвестное округление даты «{$grain}».");
                 }
 
-                if ($this->schema[$table][$column] !== 'date') {
+                if ($resolved['kind'] !== 'date') {
                     throw new RuntimeException("Колонка «{$column}» не дата — округлять её по периодам нельзя.");
                 }
 
@@ -686,6 +907,8 @@ class WidgetQueryComposer
                 'expression' => $expression,
                 'label' => trim((string) ($dimension['label'] ?? '')) ?: $column,
                 'column' => $column,
+                // Ссылка без округления — по ней видно, что разбивка временная.
+                'reference' => $this->columnRef($resolved),
             ];
         }
 
@@ -693,9 +916,9 @@ class WidgetQueryComposer
     }
 
     /**
-     * @return array<int, string> Готовые условия WHERE
+     * @return array<int, array{table: string, sql: string}> Условия с их таблицами
      */
-    private function readFilters(mixed $filters, string $table): array
+    private function readFilters(mixed $filters, string $table, bool $independentTables = false): array
     {
         if (!is_array($filters)) {
             return [];
@@ -708,18 +931,22 @@ class WidgetQueryComposer
                 continue;
             }
 
-            $column = $this->requireColumn($table, $filter['column'] ?? null);
+            $resolved = $this->resolveColumn($filter, $table, $independentTables);
+            $column = $resolved['column'];
             $op = trim((string) ($filter['op'] ?? '='));
 
             if (!array_key_exists($op, self::OPERATORS)) {
                 throw new RuntimeException("Неизвестное условие «{$op}».");
             }
 
-            $quoted = $this->quote($column);
-            $kind = $this->schema[$table][$column];
+            $quoted = $this->columnRef($resolved);
+            $kind = $resolved['kind'];
 
             if (in_array($op, self::OPERATORS_WITHOUT_VALUE, true)) {
-                $conditions[] = $op === 'is_null' ? "{$quoted} IS NULL" : "{$quoted} IS NOT NULL";
+                $conditions[] = [
+                    'table' => $resolved['table'],
+                    'sql' => $op === 'is_null' ? "{$quoted} IS NULL" : "{$quoted} IS NOT NULL",
+                ];
 
                 continue;
             }
@@ -730,7 +957,7 @@ class WidgetQueryComposer
                 throw new RuntimeException("У условия по колонке «{$column}» не задано значение.");
             }
 
-            $conditions[] = match ($op) {
+            $conditions[] = ['table' => $resolved['table'], 'sql' => match ($op) {
                 'in' => $quoted.' IN ('.implode(', ', array_map(
                     fn ($item) => $this->literal($item, $kind),
                     is_array($value) ? $value : preg_split('/\s*,\s*/', (string) $value)
@@ -743,10 +970,33 @@ class WidgetQueryComposer
                 'between' => $this->betweenCondition($quoted, $value, $kind, $column),
 
                 default => $quoted.' '.$op.' '.$this->literal($value, $kind),
-            };
+            }];
         }
 
         return $conditions;
+    }
+
+    /**
+     * Условия, относящиеся к этой таблице и связанным с ней.
+     *
+     * В объединении метрик у каждой части свой источник, и чужое условие
+     * туда просто не подставить: колонки в этой выборке нет.
+     *
+     * @param array<int, array{table: string, sql: string}> $conditions
+     *
+     * @return array<int, string>
+     */
+    private function conditionsFor(array $conditions, array $tables): array
+    {
+        $result = [];
+
+        foreach ($conditions as $condition) {
+            if (in_array($condition['table'], $tables, true)) {
+                $result[] = $condition['sql'];
+            }
+        }
+
+        return $result;
     }
 
     private function betweenCondition(string $quoted, mixed $value, string $kind, string $column): string
@@ -802,7 +1052,7 @@ class WidgetQueryComposer
     /** Разбивка с округлением даты: выражение отличается от голой колонки. */
     private function isTimeDimension(array $dimension): bool
     {
-        return $dimension['expression'] !== $this->quote($dimension['column']);
+        return $dimension['expression'] !== ($dimension['reference'] ?? $this->quote($dimension['column']));
     }
 
     private function direction(mixed $dir): string
@@ -829,7 +1079,11 @@ class WidgetQueryComposer
         ?string $orderBy,
         ?int $limit
     ): string {
-        $sql = "SELECT\n    ".implode(",\n    ", $columns)."\nFROM ".$this->quote($table);
+        // Связи относятся к основной таблице: у отдельной выборки метрики
+        // их быть не должно, иначе в неё попали бы чужие соединения.
+        $joins = $table === ($this->baseTable ?: $table) ? $this->joinsSql() : '';
+
+        $sql = "SELECT\n    ".implode(",\n    ", $columns)."\nFROM ".$this->fromSql($table).$joins;
 
         if ($where !== []) {
             $sql .= "\nWHERE ".implode("\n  AND ", $where);
@@ -845,6 +1099,47 @@ class WidgetQueryComposer
 
         if ($limit !== null) {
             $sql .= "\nLIMIT ".$limit;
+        }
+
+        return $sql;
+    }
+
+    /**
+     * Источник запроса: таблица или подзапрос.
+     */
+    private function fromSql(string $table): string
+    {
+        if ($this->subquery && $this->subquery['alias'] === $table) {
+            $inner = rtrim(trim($this->subquery['sql']), "; \t\n\r");
+
+            return "(\n".$inner."\n) AS ".$this->quote($table);
+        }
+
+        return $this->quote($table);
+    }
+
+    /**
+     * Связи для FROM.
+     */
+    private function joinsSql(): string
+    {
+        $sql = '';
+
+        foreach ($this->joins as $join) {
+            $conditions = [];
+
+            foreach ($join['on'] as $pair) {
+                $conditions[] = $this->quote($pair['left_table']).'.'.$this->quote($pair['left'])
+                    .' = '.$this->quote($join['table']).'.'.$this->quote($pair['right']);
+            }
+
+            $sql .= "\n".strtoupper($join['type']).' JOIN '.$this->quote($join['table']);
+
+            // У связи без условия ON не бывает: пустой ON — синтаксическая
+            // ошибка, а не «соединить всё со всем».
+            if ($conditions !== []) {
+                $sql .= ' ON '.implode(' AND ', $conditions);
+            }
         }
 
         return $sql;
@@ -909,6 +1204,123 @@ class WidgetQueryComposer
         }
 
         return $column;
+    }
+
+    /**
+     * Таблица метрики.
+     */
+    private function metricTable(array $metric, string $fallback, bool $independentTables): string
+    {
+        $table = trim((string) ($metric['table'] ?? '')) ?: $fallback;
+
+        if ($table === $fallback) {
+            return $fallback;
+        }
+
+        $this->requireTable($table);
+
+        // В формах с одной выборкой чужая таблица без связи дала бы
+        // перемножение строк и неверные числа.
+        if (!$independentTables && !in_array($table, $this->tablesInPlay($fallback), true)) {
+            throw new RuntimeException(
+                "Таблица «{$table}» не участвует в запросе — добавьте её связью."
+            );
+        }
+
+        return $table;
+    }
+
+    /**
+     * Разбирает ссылку на колонку: своя таблица у неё или основная.
+     *
+     * Со связями одного имени мало: «orderNumber» есть и в заказах, и в их
+     * позициях. Поэтому колонка может назвать свою таблицу, а если не назвала —
+     * берётся основная, и виджеты, собранные до появления связей, работают
+     * как работали.
+     *
+     * @return array{table: string, column: string, kind: string}
+     */
+    private function resolveColumn(array $definition, string $fallbackTable, bool $independentTables = false): array
+    {
+        $column = is_string($definition['column'] ?? null) ? trim($definition['column']) : '';
+
+        if ($column === '') {
+            throw new RuntimeException('Не выбрана колонка.');
+        }
+
+        $available = $this->tablesInPlay($this->baseTable ?: $fallbackTable);
+        $declared = trim((string) ($definition['table'] ?? ''));
+
+        // Таблица названа явно — работаем с ней и только с ней. Подменять её
+        // другой, где случайно есть колонка с тем же именем, нельзя: автор
+        // получил бы молча не те числа.
+        if ($declared !== '') {
+            $this->requireTable($declared);
+
+            if (!in_array($declared, $available, true)
+                && !($independentTables && array_key_exists($declared, $this->schema))
+            ) {
+                throw new RuntimeException(
+                    "Таблица «{$declared}» не участвует в запросе — добавьте её связью."
+                );
+            }
+
+            return [
+                'table' => $declared,
+                'column' => $this->requireColumn($declared, $column),
+                'kind' => $this->schema[$declared][$column],
+            ];
+        }
+
+        // Таблица не названа или названа неверно — ищем колонку среди тех,
+        // что участвуют в запросе. Так конструктор перестал спотыкаться на
+        // виджетах, собранных до появления связей: там у колонок таблицы нет
+        // вовсе, и раньше они все искались в основной.
+        $found = [];
+
+        foreach ($available as $candidate) {
+            if (isset($this->schema[$candidate][$column])) {
+                $found[] = $candidate;
+            }
+        }
+
+        if (count($found) === 1) {
+            return [
+                'table' => $found[0],
+                'column' => $column,
+                'kind' => $this->schema[$found[0]][$column],
+            ];
+        }
+
+        // Одноимённые колонки в разных таблицах: гадать нельзя — какую
+        // из них имели в виду, знает только автор.
+        if (count($found) > 1) {
+            throw new RuntimeException(sprintf(
+                'Колонка «%s» есть в нескольких таблицах (%s) — уточните, из какой она.',
+                $column,
+                implode(', ', $found)
+            ));
+        }
+
+        throw new RuntimeException(sprintf(
+            'Колонки «%s» нет ни в одной из таблиц запроса (%s).',
+            $column,
+            implode(', ', $available)
+        ));
+    }
+
+    /**
+     * Имя колонки в запросе.
+     *
+     * Пока таблица одна, префикс не нужен и только зашумляет запрос. Как
+     * только появились связи, он обязателен: без него база не знает, чей
+     * это «orderNumber».
+     */
+    private function columnRef(array $resolved): string
+    {
+        return $this->joins === []
+            ? $this->quote($resolved['column'])
+            : $this->quote($resolved['table']).'.'.$this->quote($resolved['column']);
     }
 
     private function quote(string $identifier): string

@@ -327,7 +327,8 @@ it('не собирает запрос по колонке, которой не�
         ->assertStatus(422)
         ->json();
 
-    expect($response['errors'][0])->toContain('нет колонки')
+    // Колонки нет ни в одной таблице запроса — виджет не сохраняется.
+    expect($response['errors'][0])->toContain('secret_column')
         ->and($widget->fresh()->query_spec)->toBeNull();
 });
 
@@ -417,4 +418,25 @@ it('находит сломанный виджет на проверке даш�
         ->and($broken['errors'][0])->toContain('nope')
         // Реквизиты подключения не должны попадать даже в служебный отчёт.
         ->and($broken['errors'][0])->not->toContain('Host:');
+});
+
+it('отдаёт конструктору граф связей вместе со схемой', function () {
+    [, $user, , $dashboard] = makeQueryFixture();
+
+    $response = $this->actingAs($user)
+        ->getJson("/api/company/dashboards/{$dashboard->id}/schema")
+        ->assertOk()
+        ->json();
+
+    // Без графа конструктор предлагал бы связать несвязуемое и заставлял бы
+    // вспоминать, какой ключ куда смотрит.
+    expect($response)->toHaveKey('relations')
+        ->and($response)->toHaveKey('join_types')
+        ->and($response['join_types'])->toHaveKeys(['left', 'inner', 'cross'])
+        ->and($response['tables'])->not->toBeEmpty();
+
+    // Связи описаны парами колонок — этого хватает, чтобы собрать условие.
+    foreach ($response['relations'] as $relation) {
+        expect($relation)->toHaveKeys(['from_table', 'from_column', 'to_table', 'to_column']);
+    }
 });

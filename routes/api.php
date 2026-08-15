@@ -73,6 +73,8 @@ Route::middleware(['auth:sanctum', 'active'])->prefix('company')->group(function
     Route::middleware('permission:edit dashboards')->group(function () {
         Route::get('dashboards/{dashboard}/edit', [DashboardBuilderController::class, 'edit']);
         Route::get('dashboards/{dashboard}/schema', [DashboardBuilderController::class, 'schema']);
+        // Связи между таблицами — конструктор предлагает условие соединения.
+        Route::post('dashboards/{dashboard}/relations', [DashboardBuilderController::class, 'relations']);
         Route::post('dashboards/{dashboard}/query', [DashboardBuilderController::class, 'query']);
 
         Route::post('dashboards/{dashboard}/widgets', [DashboardWidgetController::class, 'store']);

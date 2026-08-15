@@ -102,6 +102,8 @@ async function loadSchema() {
             aggregates: data.aggregates ?? {},
             grains: data.grains ?? {},
             operators: data.operators ?? {},
+            join_types: data.join_types ?? {},
+            relations: data.relations ?? [],
             default_limit: data.default_limit ?? 100,
         };
     } catch (err) {
