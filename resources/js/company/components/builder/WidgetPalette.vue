@@ -10,6 +10,12 @@ import api from "../../api.js";
  * человеку доступны и те виджеты, которые пока скрыты от модели.
  */
 
+defineProps({
+    // Внутри выдвижной панели у каталога уже есть рамка и заголовок —
+    // вторые такие же только съедают место.
+    embedded: { type: Boolean, default: false },
+});
+
 const emit = defineEmits(["add"]);
 
 const families = ref([]);
@@ -56,12 +62,12 @@ onMounted(async () => {
 </script>
 
 <template>
-    <div class="card">
-        <div class="card-header">
+    <div :class="embedded ? '' : 'card'">
+        <div v-if="!embedded" class="card-header">
             <h3 class="card-title">Виджеты</h3>
         </div>
 
-        <div class="card-body p-2 border-bottom">
+        <div class="card-body p-2 border-bottom" :class="{ 'px-0': embedded }">
             <input
                 v-model="search"
                 type="search"
@@ -81,7 +87,8 @@ onMounted(async () => {
             <div class="alert alert-danger mb-0">{{ error }}</div>
         </div>
 
-        <div v-else class="list-group list-group-flush builder-palette">
+        <div v-else class="list-group list-group-flush builder-palette"
+             :class="{ 'builder-palette--embedded': embedded }">
             <button
                 v-for="family in visible"
                 :key="family.id"
@@ -110,6 +117,12 @@ onMounted(async () => {
 .builder-palette {
     max-height: 60vh;
     overflow-y: auto;
+}
+
+/* В выдвижной панели прокрутка своя — ограничивать высоту второй раз незачем. */
+.builder-palette--embedded {
+    max-height: none;
+    overflow-y: visible;
 }
 
 /* Описание семейства — подсказка, а не текст для чтения: две строки хватает,

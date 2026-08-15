@@ -452,3 +452,83 @@ it('требует у комбо две метрики, а у точечной �
         // Карте нужен код страны, а не любая подпись — об этом сказано сразу.
         ->and(WidgetQueryComposer::slotsFor('map')['hint'])->toContain('код страны');
 });
+
+it('считает процент выполнения у счётчика с полосой', function () {
+    // Виду with-progress нужна третья колонка. Пока конструктор её не
+    // добавлял, такой счётчик собрать было нельзя вовсе: запрос отдавал
+    // name и value, а проверка формы требовала percent.
+    $result = $this->composer->compose([
+        'table' => 'orders',
+        'metrics' => [['agg' => 'count', 'label' => 'Заказов', 'target' => 200]],
+    ], 'mini-counters', 'with-progress');
+
+    expect($result['ok'])->toBeTrue()
+        ->and($result['sql'])->toContain('AS `percent`')
+        ->and($result['sql'])->toContain('ROUND(100 * COUNT(*) / 200, 1)')
+        // Полоса, залитая на 300%, не читается — процент держим в шкале.
+        ->and($result['sql'])->toContain('LEAST(100, GREATEST(0,');
+});
+
+it('без цели считает процентом саму метрику', function () {
+    // Так задают показатель, который уже посчитан в процентах:
+    // средняя загрузка, доля выполненных.
+    $result = $this->composer->compose([
+        'table' => 'orders',
+        'metrics' => [['agg' => 'avg', 'column' => 'amount', 'label' => 'Загрузка']],
+    ], 'mini-counters', 'with-progress');
+
+    expect($result['ok'])->toBeTrue()
+        ->and($result['sql'])->toContain('LEAST(100, GREATEST(0, AVG(`amount`))) AS `percent`')
+        ->and($result['sql'])->not->toContain('ROUND(100 *');
+});
+
+it('не добавляет процент обычному счётчику', function () {
+    $result = $this->composer->compose([
+        'table' => 'orders',
+        'metrics' => [['agg' => 'count', 'label' => 'Заказов', 'target' => 200]],
+    ], 'mini-counters', 'cards');
+
+    expect($result['sql'])->not->toContain('percent');
+});
+
+it('добавляет процент каждой плитке и разбивке', function () {
+    $many = $this->composer->compose([
+        'table' => 'orders',
+        'metrics' => [
+            ['agg' => 'count', 'label' => 'Заказов', 'target' => 100],
+            ['agg' => 'sum', 'column' => 'amount', 'label' => 'Выручка', 'target' => 5000],
+        ],
+    ], 'mini-counters', 'with-progress');
+
+    // По плитке на метрику — процент нужен в каждой части объединения.
+    expect(substr_count($many['sql'], 'AS `percent`'))->toBe(2);
+
+    $byDimension = $this->composer->compose([
+        'table' => 'orders',
+        'metrics' => [['agg' => 'count', 'label' => 'Заказов', 'target' => 50]],
+        'dimensions' => [['column' => 'country']],
+    ], 'mini-counters', 'with-progress');
+
+    expect($byDimension['ok'])->toBeTrue()
+        ->and($byDimension['sql'])->toContain('AS `percent`')
+        ->and($byDimension['sql'])->toContain('GROUP BY `country`');
+});
+
+it('игнорирует цель, которой нельзя пользоваться', function () {
+    // Ноль и текст в цели: делить на них нечем, поэтому метрика считается
+    // процентом сама — виджет остаётся рабочим.
+    foreach ([0, -5, 'много', ''] as $target) {
+        $result = $this->composer->compose([
+            'table' => 'orders',
+            'metrics' => [['agg' => 'count', 'label' => 'Заказов', 'target' => $target]],
+        ], 'mini-counters', 'with-progress');
+
+        expect($result['ok'])->toBeTrue()
+            ->and($result['sql'])->not->toContain('ROUND(100 *');
+    }
+});
+
+it('говорит конструктору, что виду нужна цель', function () {
+    expect(WidgetQueryComposer::slotsFor('mini-counters', 'with-progress')['needs_target'])->toBeTrue()
+        ->and(WidgetQueryComposer::slotsFor('mini-counters', 'cards')['needs_target'])->toBeFalse();
+});

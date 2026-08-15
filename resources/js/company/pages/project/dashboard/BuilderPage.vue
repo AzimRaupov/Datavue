@@ -1,5 +1,7 @@
 <script setup>
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from "vue";
+import { Offcanvas } from "bootstrap";
+import Sortable from "sortablejs";
 import { useRoute, useRouter } from "vue-router";
 import api from "../../../api.js";
 import WidgetContainer from "../../../components/WidgetContainer.vue";
@@ -38,6 +40,18 @@ const refreshToken = ref(0);
 const queryModal = ref(null);
 const codeModal = ref(null);
 const editingWidget = ref(null);
+
+/**
+ * Каталог виджетов лежит в выдвижной панели справа и открывается кнопкой.
+ * Постоянно висящий список занимает место и отвлекает: на дашборд смотрят
+ * чаще, чем добавляют виджеты.
+ */
+const paletteEl = ref(null);
+let palette = null;
+
+/** Холст с виджетами — по нему работает перетаскивание. */
+const canvas = ref(null);
+let sortable = null;
 
 const currentUser = JSON.parse(localStorage.getItem("user") || "null");
 const permissions = computed(() => currentUser?.permissions ?? []);
@@ -111,7 +125,13 @@ async function addWidget({ widget_id, widget_type_id, family }) {
         });
 
         widgets.value.push(data);
-        notice.value = "Виджет добавлен. Напишите ему код, чтобы появились данные.";
+        notice.value = "Виджет добавлен. Настройте данные, чтобы он посчитался.";
+
+        // Панель закрывается сама: добавили — вернулись к дашборду.
+        palette?.hide();
+
+        await nextTick();
+        setupSortable();
     } catch (err) {
         notice.value = err.response?.data?.message || "Не удалось добавить виджет.";
     } finally {
@@ -167,16 +187,15 @@ async function removeWidget(widget) {
 }
 
 /**
- * Перестановка соседей. Позиции пересчитываются подряд и уходят на сервер
+ * Перестановка мышью. Позиции пересчитываются подряд и уходят на сервер
  * одним запросом: половина сохранённого порядка хуже, чем несохранённый.
  */
-async function move(index, direction) {
-    const target = index + direction;
-
-    if (target < 0 || target >= widgets.value.length) return;
+async function moveWidget(from, to) {
+    if (from === to || from < 0 || to < 0) return;
 
     const list = [...widgets.value];
-    [list[index], list[target]] = [list[target], list[index]];
+    const [moved] = list.splice(from, 1);
+    list.splice(to, 0, moved);
 
     widgets.value = list.map((widget, position) => ({ ...widget, position }));
 
@@ -187,6 +206,46 @@ async function move(index, direction) {
     } catch (err) {
         notice.value = "Порядок не сохранён — обновите страницу.";
     }
+}
+
+/**
+ * Перетаскивание карточек.
+ *
+ * Хват — за шапку карточки: тянуть за область графика неудобно, там
+ * начинаются собственные жесты диаграммы.
+ */
+function setupSortable() {
+    sortable?.destroy();
+
+    if (!canvas.value) return;
+
+    sortable = Sortable.create(canvas.value, {
+        handle: ".builder-drag",
+        draggable: ".builder-card",
+        // Заголовок, выбор вида и меню лежат в самой ручке: без этого
+        // клик по ним начинал бы перетаскивание вместо редактирования.
+        filter: "input, select, button, .dropdown-menu",
+        preventOnFilter: false,
+        animation: 150,
+        ghostClass: "builder-card--ghost",
+        onEnd: (event) => {
+            const { oldIndex, newIndex, item, from } = event;
+
+            if (oldIndex === newIndex) return;
+
+            // Sortable уже переставил узел в DOM, а список рисует Vue по
+            // своим данным. Возвращаем узел на место и меняем порядок в
+            // данных — иначе карточка «прыгает» дважды.
+            const anchor = from.children[oldIndex > newIndex ? oldIndex + 1 : oldIndex];
+            from.insertBefore(item, anchor ?? null);
+
+            moveWidget(oldIndex, newIndex);
+        },
+    });
+}
+
+function openPalette() {
+    palette?.show();
 }
 
 function replaceWidget(updated) {
@@ -230,6 +289,23 @@ onMounted(async () => {
     if (!error.value) {
         await loadSchema();
     }
+
+    await nextTick();
+
+    if (paletteEl.value) palette = new Offcanvas(paletteEl.value);
+
+    setupSortable();
+});
+
+// Список виджетов пересобрался — заново вешаем перетаскивание.
+watch(() => widgets.value.length, async () => {
+    await nextTick();
+    setupSortable();
+});
+
+onBeforeUnmount(() => {
+    sortable?.destroy();
+    palette?.dispose();
 });
 </script>
 
@@ -254,6 +330,15 @@ onMounted(async () => {
                             >
                                 Открыть просмотр
                             </router-link>
+                            <button class="btn btn-primary" type="button" @click="openPalette">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+                                     viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                     stroke-linecap="round" stroke-linejoin="round" class="icon icon-2">
+                                    <path d="M12 5l0 14" />
+                                    <path d="M5 12l14 0" />
+                                </svg>
+                                Виджет
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -276,48 +361,63 @@ onMounted(async () => {
                 </div>
             </div>
 
-            <div v-else-if="!error" class="row g-3">
-                <!-- ПАЛИТРА -->
-                <!-- На широком мониторе каталог не растёт вместе с экраном:
-                     лишнее место нужно виджетам, а не списку их названий. -->
-                <div class="col-12 col-lg-3 col-xxl-2">
-                    <WidgetPalette @add="addWidget" />
-                </div>
-
-                <!-- ХОЛСТ -->
-                <div class="col-12 col-lg-9 col-xxl-10">
-                    <div v-if="!widgets.length" class="card">
-                        <div class="card-body">
-                            <div class="empty">
-                                <p class="empty-title">Дашборд пока пуст</p>
-                                <p class="empty-subtitle text-secondary">
-                                    Выберите виджет слева, а потом напишите ему код — он посчитает данные
-                                    по источнику «{{ dashboard?.data_source?.name }}».
-                                </p>
+            <div v-else-if="!error">
+                <div v-if="!widgets.length" class="card">
+                    <div class="card-body">
+                        <div class="empty">
+                            <p class="empty-title">Дашборд пока пуст</p>
+                            <p class="empty-subtitle text-secondary">
+                                Добавьте виджет и настройте данные — он посчитает их
+                                по источнику «{{ dashboard?.data_source?.name }}».
+                            </p>
+                            <div class="empty-action">
+                                <button class="btn btn-primary" type="button" @click="openPalette">
+                                    Добавить виджет
+                                </button>
                             </div>
                         </div>
                     </div>
+                </div>
 
+                <!-- ХОЛСТ: карточки переставляются мышью за шапку -->
+                <div ref="canvas">
                     <div
-                        v-for="(widget, index) in widgets"
+                        v-for="widget in widgets"
                         :key="widget.id"
-                        class="card mb-3"
+                        class="card mb-3 builder-card"
                     >
-                        <div class="card-header d-flex flex-wrap gap-2 align-items-center">
+                        <div class="card-header builder-drag d-flex align-items-center gap-2">
+                            <!-- Хват: за него карточку тянут -->
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+                                 fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                 stroke-linejoin="round" class="text-muted builder-grip flex-shrink-0"
+                                 aria-hidden="true">
+                                <path d="M9 5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
+                                <path d="M9 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
+                                <path d="M9 19m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
+                                <path d="M15 5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
+                                <path d="M15 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
+                                <path d="M15 19m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
+                            </svg>
+
                             <input
-                                class="form-control form-control-flush fw-bold w-auto flex-fill"
+                                class="form-control form-control-flush fw-bold flex-fill builder-title"
                                 :value="widget.title"
                                 aria-label="Заголовок виджета"
                                 @change="renameWidget(widget, $event.target.value)"
                             />
 
-                            <span class="badge" :class="statusOf(widget).cls">
+                            <!-- Статус остаётся на виду: по нему сразу видно,
+                                 посчитался виджет или нет. -->
+                            <span class="badge flex-shrink-0" :class="statusOf(widget).cls">
                                 {{ statusOf(widget).text }}
                             </span>
 
+                            <!-- Вид меняют часто и сравнивают на глаз, поэтому
+                                 выбор остаётся под рукой, а не в меню. -->
                             <select
                                 v-if="typesOf(widget).length > 1"
-                                class="form-select form-select-sm w-auto"
+                                class="form-select form-select-sm w-auto flex-shrink-0"
                                 :value="widget.widget_type_id"
                                 :aria-label="`Тип виджета «${widget.title}»`"
                                 @change="changeType(widget, $event.target.value)"
@@ -327,28 +427,38 @@ onMounted(async () => {
                                 </option>
                             </select>
 
-                            <div class="btn-list">
-                                <button class="btn btn-sm" type="button" title="Выше"
-                                        :disabled="index === 0" @click="move(index, -1)">
-                                    ↑
+                            <!-- Всё управление спрятано в меню: на дашборд смотрят
+                                 чаще, чем правят, и кнопки мешали смотреть. -->
+                            <div class="dropdown flex-shrink-0">
+                                <button class="btn btn-sm btn-ghost-secondary px-2" type="button"
+                                        data-bs-toggle="dropdown" aria-label="Действия с виджетом"
+                                        aria-expanded="false">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"
+                                         viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                        <path d="M12 6m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
+                                        <path d="M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
+                                        <path d="M12 18m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
+                                    </svg>
                                 </button>
-                                <button class="btn btn-sm" type="button" title="Ниже"
-                                        :disabled="index === widgets.length - 1" @click="move(index, 1)">
-                                    ↓
-                                </button>
-                                <button v-if="canWriteCode" class="btn btn-sm btn-primary" type="button"
-                                        @click="openQuery(widget)">
-                                    Настроить
-                                </button>
-                                <button v-if="canWriteCode && hasPythonCode(widget)" class="btn btn-sm"
-                                        type="button" title="Виджет написан на Python до перехода на запросы"
-                                        @click="openCode(widget)">
-                                    Код
-                                </button>
-                                <button class="btn btn-sm btn-ghost-danger" type="button"
-                                        :disabled="busy" @click="removeWidget(widget)">
-                                    Удалить
-                                </button>
+
+                                <div class="dropdown-menu dropdown-menu-end">
+                                    <button v-if="canWriteCode" class="dropdown-item" type="button"
+                                            @click="openQuery(widget)">
+                                        Настроить данные
+                                    </button>
+
+                                    <button v-if="canWriteCode && hasPythonCode(widget)" class="dropdown-item"
+                                            type="button" @click="openCode(widget)">
+                                        Код на Python
+                                    </button>
+
+                                    <div class="dropdown-divider"></div>
+                                    <button class="dropdown-item text-danger" type="button"
+                                            :disabled="busy" @click="removeWidget(widget)">
+                                        Удалить виджет
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
@@ -374,6 +484,19 @@ onMounted(async () => {
             </div>
         </div>
 
+        <!-- КАТАЛОГ ВИДЖЕТОВ: выдвигается справа по кнопке -->
+        <div ref="paletteEl" class="offcanvas offcanvas-end" tabindex="-1"
+             aria-labelledby="builder-palette-title">
+            <div class="offcanvas-header">
+                <h2 class="offcanvas-title" id="builder-palette-title">Добавить виджет</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="offcanvas"
+                        aria-label="Закрыть"></button>
+            </div>
+            <div class="offcanvas-body">
+                <WidgetPalette embedded @add="addWidget" />
+            </div>
+        </div>
+
         <WidgetQueryModal
             ref="queryModal"
             :dashboard-id="dashboardId"
@@ -394,6 +517,41 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+/* Шапка карточки — она же ручка перетаскивания. */
+.builder-drag {
+    cursor: grab;
+}
+
+.builder-drag:active {
+    cursor: grabbing;
+}
+
+/* Поле заголовка внутри ручки не должно перехватывать перетаскивание
+   курсором, но должно оставаться редактируемым. */
+.builder-title {
+    cursor: text;
+}
+
+/* Выбор вида — тоже элемент управления, а не место для хвата. */
+.builder-drag select {
+    cursor: pointer;
+}
+
+.builder-card--ghost {
+    opacity: 0.4;
+}
+
+/* Точки-хват заметны только когда карточка под курсором: в покое
+   они не отвлекают от самих данных. */
+.builder-grip {
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.builder-card:hover .builder-grip {
+    opacity: 1;
+}
+
 .builder-widget-error {
     font-size: 12px;
     white-space: pre-wrap;

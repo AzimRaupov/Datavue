@@ -83,6 +83,8 @@ Route::middleware(['auth:sanctum', 'active'])->prefix('company')->group(function
         Route::middleware('permission:write widget code')->group(function () {
             // Основной способ задать содержимое виджета — SQL-запрос.
             Route::post('dashboards/{dashboard}/widgets/{widget}/query/run', [DashboardWidgetController::class, 'runQuery']);
+            // Сборка запроса без выполнения — показать SQL во время настройки.
+            Route::post('dashboards/{dashboard}/widgets/{widget}/query/compose', [DashboardWidgetController::class, 'composeQuery']);
             Route::put('dashboards/{dashboard}/widgets/{widget}/query', [DashboardWidgetController::class, 'saveQuery']);
 
             // Python остался у виджетов, написанных до перехода на запросы.

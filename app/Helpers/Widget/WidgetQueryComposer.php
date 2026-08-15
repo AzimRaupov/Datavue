@@ -137,7 +137,7 @@ class WidgetQueryComposer
             $sql = match ($shape) {
                 WidgetShapeMapper::SHAPE_SERIES_MATRIX => $this->composeMatrix($table, $metrics, $dimensions, $where, $builder, $limit),
                 WidgetShapeMapper::SHAPE_SERIES_VALUES => $this->composeValues($table, $metrics, $dimensions, $where, $builder, $limit),
-                WidgetShapeMapper::SHAPE_COUNTERS => $this->composeCounters($table, $metrics, $dimensions, $where, $builder, $limit),
+                WidgetShapeMapper::SHAPE_COUNTERS => $this->composeCounters($table, $metrics, $dimensions, $where, $builder, $limit, $type),
                 WidgetShapeMapper::SHAPE_POINTS => $this->composePoints($table, $metrics, $dimensions, $where, $builder, $limit, $type),
                 WidgetShapeMapper::SHAPE_ROWS => $this->composeRows($table, $metrics, $dimensions, $where, $builder, $limit),
                 default => throw new RuntimeException("Для этого виджета конструктор пока не поддерживается."),
@@ -223,7 +223,12 @@ class WidgetQueryComposer
             WidgetShapeMapper::SHAPE_COUNTERS => [
                 'dimensions' => ['min' => 0, 'max' => 1],
                 'metrics' => ['min' => 1, 'max' => 10],
-                'hint' => 'Каждая метрика — отдельная плитка. С разбивкой плитки берутся из её значений.',
+                'needs_target' => $type === 'with-progress',
+                'hint' => $type === 'with-progress'
+                    ? 'Каждая метрика — плитка с полосой выполнения. Укажите цель, '
+                        . 'от которой считается процент; без цели значение метрики '
+                        . 'само считается процентом.'
+                    : 'Каждая метрика — отдельная плитка. С разбивкой плитки берутся из её значений.',
             ],
             WidgetShapeMapper::SHAPE_POINTS => [
                 'dimensions' => ['min' => 1, 'max' => 1],
@@ -373,18 +378,29 @@ class WidgetQueryComposer
         array $dimensions,
         array $where,
         array $builder,
-        int $limit
+        int $limit,
+        ?string $type = null
     ): string {
+        // Вариант с полосой выполнения требует третью колонку — процент.
+        // Без неё виджет не рисуется: полосе нечего показывать.
+        $withProgress = $type === 'with-progress';
+
         if ($dimensions !== []) {
             if (count($metrics) > 1) {
                 throw new RuntimeException('С разбивкой оставьте одну метрику — плитки берутся из её значений.');
             }
 
+            $columns = [
+                $dimensions[0]['expression'].' AS '.$this->alias('name'),
+                $metrics[0]['expression'].' AS '.$this->alias('value'),
+            ];
+
+            if ($withProgress) {
+                $columns[] = $this->percentExpression($metrics[0]).' AS '.$this->alias('percent');
+            }
+
             return $this->select(
-                [
-                    $dimensions[0]['expression'].' AS '.$this->alias('name'),
-                    $metrics[0]['expression'].' AS '.$this->alias('value'),
-                ],
+                $columns,
                 $table,
                 $where,
                 [$dimensions[0]['expression']],
@@ -393,7 +409,41 @@ class WidgetQueryComposer
             );
         }
 
-        return $this->unionOfMetrics($table, $metrics, $where, 'name', $limit);
+        return $this->unionOfMetrics($table, $metrics, $where, 'name', $limit, $withProgress);
+    }
+
+    /**
+     * Процент выполнения для полосы.
+     *
+     * Цель задаёт автор: «сделано 42 из 100». Если цели нет, значение метрики
+     * и есть процент — так считают, когда метрика уже посчитана в процентах
+     * (средняя загрузка, доля выполненных). Проценту не дают уйти за пределы
+     * шкалы: полоса, залитая на 300%, не читается.
+     */
+    private function percentExpression(array $metric): string
+    {
+        $expression = $metric['expression'];
+
+        if (!empty($metric['target'])) {
+            $expression = 'ROUND(100 * '.$expression.' / '.$metric['target'].', 1)';
+        }
+
+        return 'LEAST(100, GREATEST(0, '.$expression.'))';
+    }
+
+    /**
+     * Цель метрики — положительное число или ничего.
+     */
+    private function readTarget(mixed $target): ?float
+    {
+        if ($target === null || $target === '' || !is_numeric($target)) {
+            return null;
+        }
+
+        $value = (float) $target;
+
+        // Ноль целью быть не может: делить на него нечем.
+        return $value > 0 ? $value : null;
     }
 
     /**
@@ -488,8 +538,14 @@ class WidgetQueryComposer
     /**
      * Каждая метрика — отдельная строка результата.
      */
-    private function unionOfMetrics(string $table, array $metrics, array $where, string $nameAlias, int $limit): string
-    {
+    private function unionOfMetrics(
+        string $table,
+        array $metrics,
+        array $where,
+        string $nameAlias,
+        int $limit,
+        bool $withProgress = false
+    ): string {
         // Здесь строка результата — это метрика, а не запись данных. Лимит,
         // меньший числа метрик, молча срезал бы плитки: пользователь просил
         // три показателя, а получал два.
@@ -498,17 +554,16 @@ class WidgetQueryComposer
         $parts = [];
 
         foreach ($metrics as $metric) {
-            $parts[] = $this->select(
-                [
-                    $this->literalString($metric['label']).' AS '.$this->alias($nameAlias),
-                    $metric['expression'].' AS '.$this->alias('value'),
-                ],
-                $table,
-                $where,
-                [],
-                null,
-                null
-            );
+            $columns = [
+                $this->literalString($metric['label']).' AS '.$this->alias($nameAlias),
+                $metric['expression'].' AS '.$this->alias('value'),
+            ];
+
+            if ($withProgress) {
+                $columns[] = $this->percentExpression($metric).' AS '.$this->alias('percent');
+            }
+
+            $parts[] = $this->select($columns, $table, $where, [], null, null);
         }
 
         return implode("\nUNION ALL\n", $parts)."\nLIMIT ".$limit;
@@ -559,6 +614,7 @@ class WidgetQueryComposer
                 $result[] = [
                     'expression' => 'COUNT(*)',
                     'label' => trim((string) ($metric['label'] ?? '')) ?: 'Количество',
+                    'target' => $this->readTarget($metric['target'] ?? null),
                 ];
 
                 continue;
@@ -580,6 +636,9 @@ class WidgetQueryComposer
             $result[] = [
                 'expression' => $expression,
                 'label' => trim((string) ($metric['label'] ?? '')) ?: self::AGGREGATES[$agg].' '.$column,
+                // Цель нужна счётчику с полосой выполнения: от неё считается
+                // процент. У остальных виджетов поле просто не используется.
+                'target' => $this->readTarget($metric['target'] ?? null),
             ];
         }
 

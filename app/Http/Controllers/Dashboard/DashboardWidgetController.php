@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Dashboard;
 
 use App\Events\DashboardWidgetChanged;
 use App\Helpers\Widget\ManualWidgetAuthor;
+use App\Helpers\Widget\WidgetQueryComposer;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Dashboard\Concerns\PresentsWidgetContent;
 use App\Models\Dashboard;
@@ -69,7 +70,7 @@ class DashboardWidgetController extends Controller
     public function update(Request $request, $dashboardId, $widgetId)
     {
         $dashboard = $this->findDashboard($request, $dashboardId);
-        $widget = $this->findWidget($dashboard, $widgetId);
+        $widget = $this->findWidget($dashboard, $widgetId, ['widget.types', 'widgetType']);
 
         $data = $request->validate([
             'title' => 'sometimes|required|string|max:255',
@@ -89,6 +90,7 @@ class DashboardWidgetController extends Controller
                 ]);
             }
 
+            $typeChanged = $widget->widget_type_id !== $type->id;
             $widget->widget_type_id = $type->id;
         }
 
@@ -102,9 +104,67 @@ class DashboardWidgetController extends Controller
 
         $widget->save();
 
+        // Вариант отрисовки может требовать других колонок: у счётчика
+        // с полосой выполнения появляется процент, у пузырьковой — размер
+        // точки. Запрос, собранный под прежний вид, после смены просто
+        // перестал бы рисоваться, поэтому пересобираем его здесь.
+        if (!empty($typeChanged)) {
+            $this->rebuildForType($dashboard, $widget->fresh(['widget.types', 'widgetType']));
+        }
+
         event(new DashboardWidgetChanged($dashboard));
 
         return response()->json($this->present($widget->fresh(['widget.types', 'widgetType'])));
+    }
+
+    /**
+     * Пересобирает запрос виджета под новый вариант отрисовки.
+     *
+     * Работает только для виджетов из конструктора: их настройки известны.
+     * Виджету с запросом, написанным вручную, платформа запрос не переписывает —
+     * там автор сам решает, какие колонки возвращать.
+     */
+    private function rebuildForType(Dashboard $dashboard, DashboardWidget $widget): void
+    {
+        $builder = $widget->query_spec['builder'] ?? null;
+
+        if (!$builder) {
+            return;
+        }
+
+        $dataSource = $dashboard->resolveDataSource();
+
+        if (!$dataSource) {
+            return;
+        }
+
+        $composed = (new WidgetQueryComposer($dataSource))->compose(
+            $builder,
+            $widget->widget->name,
+            $widget->effectiveType()?->name
+        );
+
+        if (!$composed['ok']) {
+            // Настройки не годятся новому виду — говорим об этом прямо,
+            // а не оставляем молча сломанный виджет.
+            $widget->last_error = $composed['errors'][0] ?? null;
+            $widget->status = 'failed';
+            $widget->save();
+
+            return;
+        }
+
+        $spec = $widget->query_spec;
+        $spec['queries'] = ['main' => $composed['sql']];
+
+        if (($composed['presentation'] ?? []) !== []) {
+            $spec['presentation'] = array_replace($spec['presentation'] ?? [], $composed['presentation']);
+        }
+
+        $widget->query_spec = $spec;
+        $widget->last_error = null;
+        $widget->status = 'active';
+        $widget->save();
     }
 
     public function destroy(Request $request, $dashboardId, $widgetId, ManualWidgetAuthor $author)
@@ -190,6 +250,42 @@ class DashboardWidgetController extends Controller
             : $author->runQueryDraft($widget, $data['query'], $data['presentation'], $source);
 
         return response()->json($result, $result['ok'] ? 200 : 422);
+    }
+
+    /**
+     * Собирает запрос из настроек, но не выполняет его.
+     *
+     * Нужен, чтобы показывать SQL прямо во время настройки: выбрал метрику —
+     * увидел, во что она превратилась. Выполнять для этого запрос нельзя,
+     * иначе каждое нажатие в форме било бы по базе клиента.
+     */
+    public function composeQuery(Request $request, $dashboardId, $widgetId)
+    {
+        $dashboard = $this->findDashboard($request, $dashboardId);
+        $widget = $this->findWidget($dashboard, $widgetId, ['widget.types', 'widgetType']);
+
+        $data = $this->validateQuery($request);
+
+        if ($data['builder'] === null) {
+            return response()->json(['sql' => $data['query']]);
+        }
+
+        $family = $widget->widget?->name;
+
+        if (!$family) {
+            return response()->json(['sql' => null, 'errors' => ['У виджета не задано семейство.']], 422);
+        }
+
+        $composed = (new WidgetQueryComposer($this->requireDataSource($dashboard)))->compose(
+            $data['builder'],
+            $family,
+            $widget->effectiveType()?->name
+        );
+
+        return response()->json([
+            'sql' => $composed['sql'],
+            'errors' => $composed['errors'],
+        ], $composed['ok'] ? 200 : 422);
     }
 
     /**
