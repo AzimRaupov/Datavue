@@ -22,24 +22,12 @@ Route::get('/user', function (Request $request) {
 })->middleware('auth:sanctum');
 
 
-Route::post('/test', function (Request $request) {
-
-    $user = $request->user();
-
-    return response()->json([
-        'user' => $user,
-
-        'roles' => $user->getRoleNames(),
-
-        'permissions' => $user->getAllPermissions()
-            ->pluck('name'),
-    ]);
-})->middleware('auth:sanctum');
-
-
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
-Route::post('/get-user', [AuthController::class, 'getUser'])->middleware('auth:sanctum');
+// 'active' обязателен и здесь: без него отключённый сотрудник загружал бы
+// интерфейс целиком и упирался в 403 на каждом действии вместо понятного
+// «учётная запись отключена».
+Route::post('/get-user', [AuthController::class, 'getUser'])->middleware(['auth:sanctum', 'active']);
 
 // Метод в контроллере был, а маршрута к нему не существовало — выйти из
 // аккаунта было невозможно, токен оставался действительным навсегда.
@@ -197,6 +185,9 @@ Route::middleware(['auth:sanctum', 'active'])->prefix('company')->group(function
         Route::get('users/{user}', [\App\Http\Controllers\Company\UsersController::class, 'show'])
             ->middleware('permission:view users');
 
+        // Заведение и правка сотрудников. Сборка доступа галочками требует
+        // вдобавок права 'manage roles' — оно проверяется в контроллере,
+        // потому что зависит от тела запроса (UsersController::authorizeAccessChange).
         Route::middleware('permission:manage users')->group(function () {
             Route::post('users', [\App\Http\Controllers\Company\UsersController::class, 'store']);
             Route::match(['put', 'patch'], 'users/{user}', [\App\Http\Controllers\Company\UsersController::class, 'update']);

@@ -59,6 +59,10 @@ class DashboardController extends Controller
                         'title',
                         'position',
                         'status',
+                        // Нужен ради оформления: из него берутся цвета виджета
+                        // (см. DashboardWidget::presentation()). Наружу сама
+                        // спецификация не уходит — она в $hidden.
+                        'query_spec',
                         // updated_at обязателен: по нему фронт понимает, какие
                         // виджеты реально изменились. Без него WidgetContainer
                         // сравнивал undefined с undefined, granular-обновление

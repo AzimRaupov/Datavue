@@ -28,6 +28,19 @@ class DashboardWidget extends Model
         'content_mode' => 'python',
     ];
 
+    /**
+     * Спецификация наружу не отдаётся: в ней лежит SQL виджета, а его незачем
+     * знать тому, кто просто смотрит дашборд. В PHP она читается как обычно —
+     * $hidden влияет только на превращение модели в JSON.
+     */
+    protected $hidden = ['query_spec'];
+
+    /**
+     * Оформление — единственная часть спецификации, которую фронт обязан
+     * видеть: по ней виджет рисуется своими цветами (см. widgets/palette.js).
+     */
+    protected $appends = ['presentation'];
+
     /** Содержимое виджета — SQL-спецификация: запрос плюс оформление. */
     public const MODE_SQL = 'sql';
 
@@ -58,6 +71,19 @@ class DashboardWidget extends Model
      * массив, строку или уже закодированный JSON, — в базе окажется корректный
      * JSON-массив, а чтение всегда вернёт массив.
      */
+    /**
+     * Оформление виджета: цвета рядов, префиксы счётчиков.
+     *
+     * null, когда спецификации нет или её колонку не выбирали запросом, —
+     * виджет тогда рисуется общей палитрой.
+     */
+    protected function presentation(): Attribute
+    {
+        return Attribute::make(
+            get: fn () => $this->query_spec['presentation'] ?? null,
+        );
+    }
+
     protected function tables(): Attribute
     {
         return Attribute::make(

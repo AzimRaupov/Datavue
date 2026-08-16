@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Dashboard;
 use App\Events\DashboardWidgetChanged;
 use App\Helpers\Widget\ManualWidgetAuthor;
 use App\Helpers\Widget\WidgetQueryComposer;
+use App\Helpers\Widget\WidgetSpecValidator;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Dashboard\Concerns\PresentsWidgetContent;
 use App\Models\Dashboard;
@@ -76,6 +77,15 @@ class DashboardWidgetController extends Controller
             'title' => 'sometimes|required|string|max:255',
             'widget_type_id' => 'sometimes|nullable|integer|exists:widget_types,id',
             'instruction' => 'sometimes|nullable|string',
+
+            // Оформление правится здесь, а не через сохранение запроса:
+            // сменить цвет ряда — это не повод заново гонять запрос в базу
+            // и перепроверять форму результата. Список цветов ограничен
+            // палитрой ряда, всё остальное оформление приходит вместе
+            // с запросом (см. saveQuery).
+            'presentation' => 'sometimes|nullable|array',
+            'presentation.colors' => 'nullable|array|max:12',
+            'presentation.colors.*' => 'nullable|string|max:32',
         ]);
 
         if (array_key_exists('widget_type_id', $data) && $data['widget_type_id']) {
@@ -100,6 +110,13 @@ class DashboardWidgetController extends Controller
 
         if (array_key_exists('instruction', $data)) {
             $widget->instruction = $data['instruction'] ?? '';
+        }
+
+        if (array_key_exists('presentation', $data)) {
+            $widget->query_spec = WidgetSpecValidator::withColors(
+                $widget->query_spec ?? [],
+                $data['presentation']['colors'] ?? null
+            );
         }
 
         $widget->save();

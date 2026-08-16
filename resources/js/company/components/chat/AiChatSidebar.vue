@@ -1,12 +1,10 @@
 <script setup>
 import { ref, onMounted, nextTick, onUnmounted } from "vue"
 import api from '../../api.js';
-import Echo from 'laravel-echo';
-import Pusher from 'pusher-js';
+import { useEcho } from '../../echo.js';
 import { useI18n } from 'vue-i18n'
 import MarkdownText from './MarkdownText.vue';
 
-window.Pusher = Pusher;
 const { t, locale } = useI18n()
 
 const props = defineProps({
@@ -51,16 +49,7 @@ const loading = ref(false);
 const chatMessagesEl = ref(null);
 const error = ref(null);
 
-const echo = new Echo({
-    broadcaster: 'reverb',
-    key: import.meta.env.VITE_REVERB_APP_KEY,
-    wsHost: import.meta.env.VITE_REVERB_HOST || '127.0.0.1',
-    wsPort: import.meta.env.VITE_REVERB_PORT || 8080,
-    wssPort: import.meta.env.VITE_REVERB_PORT || 8080,
-    forceTLS: false,
-    disableStats: true,
-    enabledTransports: ['ws'],
-});
+const echo = useEcho();
 
 const sidebarWidth = ref(parseInt(localStorage.getItem('aiChatWidth')) || 360);
 const isResizing = ref(false);
@@ -239,7 +228,7 @@ onMounted(async () => {
     await getChat();
 
     if (chatId) {
-        echo.channel(`tasks.${chatId}`)
+        echo.private(`tasks.${chatId}`)
             .listen('.MessageTasksChanged', (e) => {
                 console.log('--- РЕАЛТАЙМ ИЗМЕНЕНИЕ ЗАДАЧИ ПОЙМАНО! ---', e);
                 applyTaskUpdate(e);
@@ -261,7 +250,7 @@ onUnmounted(() => {
     window.removeEventListener('mousemove', onResize);
     window.removeEventListener('mouseup', stopResize);
     if (chatId) {
-        echo.leaveChannel(`tasks.${chatId}`);
+        echo.leave(`tasks.${chatId}`);
     }
 });
 </script>

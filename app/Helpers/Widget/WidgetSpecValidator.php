@@ -109,6 +109,58 @@ class WidgetSpecValidator
         return null;
     }
 
+    /**
+     * Записывает палитру виджета в спецификацию, не трогая ничего вокруг.
+     *
+     * Точечность здесь принципиальна. В оформлении, кроме цветов, лежит то,
+     * что выбрала модель при генерации: чем рисовать ряды комбинированного
+     * графика (series_kinds) и единицы измерения счётчиков (counters).
+     * Записывать оформление целиком значило бы стирать это каждый раз, когда
+     * человек в шторке поменял цвет, — а он о существовании тех настроек
+     * даже не знает.
+     *
+     * Пустой список — «вернуть стандартные»: ключ убирается, и виджет снова
+     * следует палитре темы (см. resources/js/company/components/widgets/palette.js).
+     *
+     * @param  array<string, mixed>  $spec
+     * @param  array<int, mixed>|null  $colors  null — цвета не присылали вовсе
+     * @return array<string, mixed>
+     */
+    public static function withColors(array $spec, ?array $colors): array
+    {
+        if ($colors === null) {
+            return $spec;
+        }
+
+        // Позиция цвета — это номер ряда, поэтому пустые ячейки в середине
+        // сохраняются как есть: выкинь их, и цвет четвёртого ряда достался бы
+        // второму. Отбрасывается только пустой хвост.
+        $clean = array_map(
+            fn ($color) => is_string($color) ? trim($color) : '',
+            array_values($colors)
+        );
+
+        while ($clean !== [] && end($clean) === '') {
+            array_pop($clean);
+        }
+
+        $presentation = $spec['presentation'] ?? [];
+
+        if ($clean === []) {
+            unset($presentation['colors']);
+        } else {
+            $presentation['colors'] = $clean;
+        }
+
+        if ($presentation === []) {
+            unset($spec['presentation']);
+        } else {
+            $spec['presentation'] = $presentation;
+        }
+
+        return $spec;
+    }
+
     public function __construct(private DataSource $dataSource)
     {
     }

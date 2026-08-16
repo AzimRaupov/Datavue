@@ -2,7 +2,7 @@
 
 namespace App\Events;
 
-use Illuminate\Broadcasting\Channel;
+use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
@@ -39,11 +39,16 @@ class MessageTasksChanged implements ShouldBroadcastNow
         $this->dashboardId = $dashboardId;
     }
 
-    // Канал привязан к ID сообщения/чата. Публичный, как ты просил.
+    /**
+     * Канал приватный: в событии едет текст ответа агента, а имя канала —
+     * это всего лишь номер чата. На публичном канале его мог бы слушать кто
+     * угодно, зная только ключ приложения из собранного фронтенда.
+     * Кого пускать, решает routes/channels.php.
+     */
     public function broadcastOn(): array
     {
         return [
-            new Channel('tasks.' . $this->message->chat_id),
+            new PrivateChannel('tasks.' . $this->message->chat_id),
         ];
     }
 

@@ -2,11 +2,8 @@
 
 namespace App\Events;
 
-use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Broadcasting\PresenceChannel;
 use Illuminate\Broadcasting\PrivateChannel;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
@@ -27,11 +24,11 @@ class DashboardWidgetChanged implements ShouldBroadcastNow
     {
         return 'DashboardWidgetChanged';
     }
-    // Канал привязан к ID сообщения/чата. Публичный, как ты просил.
+    /** Приватный канал — см. routes/channels.php. */
     public function broadcastOn(): array
     {
         return [
-            new Channel('dashboard.' . $this->dashboard->id),
+            new PrivateChannel('dashboard.' . $this->dashboard->id),
         ];
     }
 

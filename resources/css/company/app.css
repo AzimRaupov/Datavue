@@ -252,6 +252,100 @@ html, body, #app {
     .chat-resize-handle { display: none; }
 }
 
+/* ── Шторка настройки виджета ──
+ *
+ * Не сосед дашборда во flex, как чат, а слой поверх него: настройка виджета
+ * шире чата и живёт недолго, поэтому сжимать под неё дашборд незачем —
+ * достаточно накрыть. Отсюда fixed и подложка.
+ */
+.widget-drawer {
+    position: fixed;
+    top: var(--tblr-navbar-height, 56px);
+    right: 0;
+    bottom: 0;
+    width: 640px;
+    max-width: 100%;
+    z-index: 1046;
+    display: flex;
+    flex-direction: column;
+    background: var(--tblr-bg-surface);
+    border-left: 1px solid var(--tblr-border-color);
+    box-shadow: -8px 0 32px rgba(0, 0, 0, .12);
+    transform: translateX(100%);
+    opacity: 0;
+    pointer-events: none;
+    transition: transform .28s ease, opacity .28s ease;
+}
+
+.widget-drawer.is-open {
+    transform: translateX(0);
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.widget-drawer-backdrop {
+    position: fixed;
+    inset: 0;
+    top: var(--tblr-navbar-height, 56px);
+    z-index: 1045;
+    background: rgba(0, 0, 0, .32);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .28s ease;
+}
+
+.widget-drawer-backdrop.is-open {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* Содержимое прокручивается само, шапка с подвалом остаются на месте:
+   кнопка «Сохранить» нужна и в середине длинной формы конструктора. */
+.widget-drawer-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.widget-drawer-body::-webkit-scrollbar { width: 4px; }
+.widget-drawer-body::-webkit-scrollbar-thumb {
+    background: var(--tblr-border-color);
+    border-radius: 4px;
+}
+
+/* Вкладки прижаты к нижней границе шапки — как в карточках Tabler. */
+.widget-drawer-tabs {
+    margin-bottom: 0;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+}
+
+.widget-drawer-tabs .nav-link {
+    white-space: nowrap;
+}
+
+.widget-drawer-resize {
+    position: absolute;
+    left: -3px;
+    top: 0;
+    bottom: 0;
+    width: 6px;
+    cursor: col-resize;
+    z-index: 5;
+}
+
+.widget-drawer-resize:hover {
+    background: rgba(var(--tblr-primary-rgb, 6, 111, 209), .25);
+}
+
+@media (max-width: 991.98px) {
+    .widget-drawer {
+        width: 100% !important;
+    }
+
+    .widget-drawer-resize { display: none; }
+}
+
 
 
 /*

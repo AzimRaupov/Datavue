@@ -18,13 +18,22 @@ use Illuminate\Validation\ValidationException;
  */
 class UsersController extends Controller
 {
+    /**
+     * Псевдороль «особые права»: доступ собран галочками, роль не назначена.
+     * Настоящей ролью быть не может — роли в spatie общие на всю платформу.
+     */
+    private const CUSTOM_ROLE = 'custom';
+
     public function index(Request $request)
     {
         $user = $request->user();
 
         $employees = User::query()
             ->ofCompany($user->company_id)
-            ->with('roles:id,name')
+            // Права тянем вместе со списком: present() показывает действующий
+            // доступ каждого, и без этого он спрашивал бы базу на каждого
+            // сотрудника отдельно.
+            ->with(['roles:id,name', 'roles.permissions:id,name', 'permissions:id,name'])
             ->orderBy('name')
             ->get()
             ->map(fn (User $employee) => $this->present($employee, $user));
@@ -32,6 +41,12 @@ class UsersController extends Controller
         return response()->json([
             'users' => $employees,
             'assignable_roles' => $this->assignableRoles(),
+            // Каталог для режима особых прав. Отдаём всем, кто видит список:
+            // подписи нужны и просто чтобы показать, что у сотрудника открыто.
+            'permission_groups' => $this->permissionGroups(),
+            // Настраивать доступ вправе не каждый, кто заводит сотрудников,
+            // — фронт по этому флагу прячет редактор прав.
+            'can_manage_roles' => $user->can('manage roles'),
         ]);
     }
 
@@ -39,13 +54,9 @@ class UsersController extends Controller
     {
         $user = $request->user();
 
-        $data = $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|email|unique:users,email',
-            'password' => 'required|string|min:6|confirmed',
-            'role' => ['required', 'string', Rule::in(RolePermissionSeeder::ASSIGNABLE_ROLES)],
-            'is_active' => 'sometimes|boolean',
-        ]);
+        $data = $request->validate($this->rules($request));
+
+        $this->authorizeAccessChange($request, $data);
 
         $employee = User::create([
             'name' => $data['name'],
@@ -57,10 +68,10 @@ class UsersController extends Controller
             'is_active' => $data['is_active'] ?? true,
         ]);
 
-        $employee->syncRoles([$data['role']]);
+        $this->applyAccess($employee, $data['role'], $data['permissions'] ?? []);
 
         return response()->json([
-            'user' => $this->present($employee->load('roles:id,name'), $user),
+            'user' => $this->present($this->reloadAccess($employee), $user),
         ], 201);
     }
 
@@ -70,7 +81,7 @@ class UsersController extends Controller
         $employee = $this->findEmployee($request, $id);
 
         return response()->json([
-            'user' => $this->present($employee->load('roles:id,name'), $user),
+            'user' => $this->present($this->reloadAccess($employee), $user),
         ]);
     }
 
@@ -79,13 +90,9 @@ class UsersController extends Controller
         $user = $request->user();
         $employee = $this->findEmployee($request, $id);
 
-        $data = $request->validate([
-            'name' => 'sometimes|required|string|max:255',
-            'email' => ['sometimes', 'required', 'email', Rule::unique('users', 'email')->ignore($employee->id)],
-            'password' => 'sometimes|nullable|string|min:6|confirmed',
-            'role' => ['sometimes', 'required', 'string', Rule::in(RolePermissionSeeder::ASSIGNABLE_ROLES)],
-            'is_active' => 'sometimes|boolean',
-        ]);
+        $data = $request->validate($this->rules($request, $employee));
+
+        $this->authorizeAccessChange($request, $data);
 
         $isOwner = $employee->isCompanyOwner();
 
@@ -105,16 +112,25 @@ class UsersController extends Controller
 
         // Запрет снять права с самого себя — чтобы админ не заблокировал себе доступ.
         if ($employee->id === $user->id) {
-            if (isset($data['role']) && $data['role'] !== 'company_admin') {
-                throw ValidationException::withMessages([
-                    'role' => 'Нельзя понизить собственную роль.',
-                ]);
-            }
-
             if (array_key_exists('is_active', $data) && !$data['is_active']) {
                 throw ValidationException::withMessages([
                     'is_active' => 'Нельзя отключить собственную учётную запись.',
                 ]);
+            }
+
+            // Роль менять себе можно только на особые права — и только такие,
+            // в которых управление доступом осталось. Иначе компания остаётся
+            // без единого человека, способного что-то раздать.
+            if (isset($data['role']) && $data['role'] !== 'company_admin') {
+                $kept = $data['role'] === self::CUSTOM_ROLE
+                    ? array_diff(RolePermissionSeeder::SELF_LOCKOUT_PERMISSIONS, $data['permissions'] ?? [])
+                    : RolePermissionSeeder::SELF_LOCKOUT_PERMISSIONS;
+
+                if ($kept !== []) {
+                    throw ValidationException::withMessages([
+                        'role' => 'Нельзя снять с себя управление доступом — иначе вернуть его будет некому.',
+                    ]);
+                }
             }
         }
 
@@ -136,11 +152,11 @@ class UsersController extends Controller
         $employee->save();
 
         if (isset($data['role'])) {
-            $employee->syncRoles([$data['role']]);
+            $this->applyAccess($employee, $data['role'], $data['permissions'] ?? []);
         }
 
         return response()->json([
-            'user' => $this->present($employee->load('roles:id,name'), $user),
+            'user' => $this->present($this->reloadAccess($employee), $user),
         ]);
     }
 
@@ -168,6 +184,122 @@ class UsersController extends Controller
     }
 
     /**
+     * Правила запроса. Общие для создания и правки — расходятся только
+     * в обязательности полей.
+     *
+     * @return array<string, mixed>
+     */
+    private function rules(Request $request, ?User $employee = null): array
+    {
+        $isUpdate = $employee !== null;
+        $sometimes = $isUpdate ? 'sometimes|' : '';
+
+        return [
+            'name' => $sometimes.'required|string|max:255',
+            'email' => $isUpdate
+                ? ['sometimes', 'required', 'email', Rule::unique('users', 'email')->ignore($employee->id)]
+                : ['required', 'email', 'unique:users,email'],
+            'password' => $isUpdate
+                ? 'sometimes|nullable|string|min:6|confirmed'
+                : 'required|string|min:6|confirmed',
+
+            // Кроме готовых ролей допустим режим особых прав: тогда доступ
+            // задаётся списком ниже, а роль сотруднику не назначается вовсе.
+            'role' => array_values(array_filter([
+                $isUpdate ? 'sometimes' : null,
+                'required',
+                'string',
+                Rule::in([...RolePermissionSeeder::ASSIGNABLE_ROLES, self::CUSTOM_ROLE]),
+            ])),
+
+            // Список закрыт каталогом: произвольную строку в права не записать,
+            // иначе появилось бы «право», под которое нет ни одной проверки.
+            'permissions' => 'array',
+            'permissions.*' => ['string', Rule::in(RolePermissionSeeder::PERMISSIONS)],
+
+            'is_active' => 'sometimes|boolean',
+        ];
+    }
+
+    /**
+     * Настройка доступа по галочкам — отдельное право, более сильное, чем
+     * заведение сотрудников.
+     *
+     * Разница по смыслу: «manage users» позволяет выдать один из готовых
+     * наборов, где что можно, а чего нельзя, решено заранее. «manage roles» —
+     * собрать набор самому, включая право раздавать доступ дальше. Второе
+     * должно выдаваться отдельно и осознанно.
+     */
+    private function authorizeAccessChange(Request $request, array $data): void
+    {
+        $actor = $request->user();
+        $role = $data['role'] ?? null;
+
+        if ($role === null) {
+            return;
+        }
+
+        if ($role === self::CUSTOM_ROLE && !$actor->can('manage roles')) {
+            abort(403, 'Нужно право «Настраивать доступ сотрудников».');
+        }
+
+        // Выдать можно только то, что есть у самого себя.
+        //
+        // Без этой проверки право «Заводить сотрудников» означало бы полный
+        // захват компании: достаточно завести сотрудника с ролью
+        // администратора, задав ему пароль, и войти под ним. Ровно так же
+        // и с особыми правами — набор не должен выходить за пределы своего.
+        $granting = $role === self::CUSTOM_ROLE
+            ? ($data['permissions'] ?? [])
+            : (RolePermissionSeeder::ROLE_PERMISSIONS[$role] ?? []);
+
+        $excess = array_diff($granting, $actor->getAllPermissions()->pluck('name')->all());
+
+        if ($excess !== []) {
+            abort(403, 'Нельзя выдать доступ шире собственного: '.implode(', ', $excess));
+        }
+    }
+
+    /**
+     * Записывает доступ сотрудника: готовая роль или особый набор прав.
+     *
+     * Сотрудник всегда в одном из двух состояний, и смешивать их нельзя.
+     * У роли есть свои права; выдай мы поверх неё ещё и личные, снять
+     * что-то, входящее в роль, стало бы невозможно — spatie складывает
+     * права роли и личные, а не вычитает. Поэтому при переходе в особый
+     * режим роль снимается, а при возврате к роли личные права стираются.
+     *
+     * @param  array<int, string>  $permissions
+     */
+    private function applyAccess(User $employee, string $role, array $permissions): void
+    {
+        if ($role === self::CUSTOM_ROLE) {
+            $employee->syncRoles([]);
+            $employee->syncPermissions($permissions);
+
+            return;
+        }
+
+        $employee->syncPermissions([]);
+        $employee->syncRoles([$role]);
+    }
+
+    /**
+     * Перечитывает роли и права после записи.
+     *
+     * Без сброса связей ответ показывал бы доступ, который был до сохранения:
+     * отношения уже загружены в память, и обновление их не трогает.
+     */
+    private function reloadAccess(User $employee): User
+    {
+        return $employee->load([
+            'roles:id,name',
+            'roles.permissions:id,name',
+            'permissions:id,name',
+        ]);
+    }
+
+    /**
      * Находит сотрудника ТОЛЬКО внутри компании текущего пользователя.
      * Для чужого сотрудника вернётся 404 — существование чужих учёток не раскрывается.
      */
@@ -180,16 +312,48 @@ class UsersController extends Controller
 
     private function present(User $employee, User $currentUser): array
     {
+        $role = $employee->roles->pluck('name')->first();
+
         return [
             'id' => $employee->id,
             'name' => $employee->name,
             'email' => $employee->email,
             'is_active' => (bool) $employee->is_active,
-            'role' => $employee->roles->pluck('name')->first(),
+            // Роли нет — значит доступ собран галочками (см. applyAccess).
+            'role' => $role ?? self::CUSTOM_ROLE,
+            // Действующий доступ, а не то, что подразумевает роль: по нему
+            // видно, что сотруднику реально открыто, без чтения таблицы ролей.
+            'permissions' => $employee->getAllPermissions()
+                ->pluck('name')
+                ->sort()
+                ->values()
+                ->all(),
             'is_owner' => $employee->isCompanyOwner(),
             'is_self' => $employee->id === $currentUser->id,
             'created_at' => $employee->created_at,
         ];
+    }
+
+    /**
+     * Каталог прав по разделам — для редактора особых прав.
+     *
+     * @return array<int, array{key: string, label: string, items: array<int, array{name: string, label: string}>}>
+     */
+    private function permissionGroups(): array
+    {
+        $groups = [];
+
+        foreach (RolePermissionSeeder::PERMISSION_GROUPS as $key => $group) {
+            $items = [];
+
+            foreach ($group['items'] as $name => $label) {
+                $items[] = ['name' => $name, 'label' => $label];
+            }
+
+            $groups[] = ['key' => $key, 'label' => $group['label'], 'items' => $items];
+        }
+
+        return $groups;
     }
 
     private function assignableRoles(): array
@@ -211,6 +375,16 @@ class UsersController extends Controller
                 'name' => $role,
                 'label' => $labels[$role] ?? $role,
                 'description' => $descriptions[$role] ?? '',
+                // Состав роли показываем сразу: администратор должен видеть,
+                // что именно выдаёт, не сверяясь с документацией. Он же
+                // становится отправной точкой при переходе к особым правам.
+                'permissions' => RolePermissionSeeder::ROLE_PERMISSIONS[$role] ?? [],
+            ])
+            ->push([
+                'name' => self::CUSTOM_ROLE,
+                'label' => 'Особые права',
+                'description' => 'Доступ собирается галочками — когда ни один готовый набор не подходит.',
+                'permissions' => [],
             ])
             ->all();
     }

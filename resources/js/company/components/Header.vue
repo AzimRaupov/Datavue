@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import axios from 'axios'
 import { useI18n } from 'vue-i18n'
+import { disconnectEcho } from '../echo.js'
 
 const logo = '/logos/logo.png'
 
@@ -60,6 +61,10 @@ const logout = async () => {
     } catch (e) {
         // намеренно тихо, см. комментарий выше
     } finally {
+        // Сокет авторизован ушедшим токеном и без этого продолжил бы получать
+        // события компании до самой перезагрузки страницы.
+        disconnectEcho()
+
         localStorage.removeItem('token')
         localStorage.removeItem('user')
         window.location.href = '/login'

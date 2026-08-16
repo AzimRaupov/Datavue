@@ -1,12 +1,9 @@
 <script setup>
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
-import Echo from 'laravel-echo';
-import Pusher from 'pusher-js';
 import api from '../../api.js';
+import { useEcho } from '../../echo.js';
 import ProviderIcon from '../../components/source/ProviderIcon.vue';
-
-window.Pusher = Pusher;
 
 /**
  * Мастер подключения источника данных.
@@ -264,18 +261,9 @@ async function startGrouping() {
 function listenGrouping() {
     const id = createdSource.value.id;
 
-    echo = new Echo({
-        broadcaster: 'reverb',
-        key: import.meta.env.VITE_REVERB_APP_KEY,
-        wsHost: import.meta.env.VITE_REVERB_HOST || '127.0.0.1',
-        wsPort: import.meta.env.VITE_REVERB_PORT || 8080,
-        wssPort: import.meta.env.VITE_REVERB_PORT || 8080,
-        forceTLS: false,
-        disableStats: true,
-        enabledTransports: ['ws'],
-    });
+    echo = useEcho();
 
-    echo.channel(`data_source.${id}`)
+    echo.private(`data_source.${id}`)
         .listen('.DataSourceGroupingProgress', (e) => applyProgress(e));
 
     // Запасной путь: сокет мог не подняться или событие потеряться.
@@ -323,7 +311,7 @@ function stopListening() {
     }
 
     if (echo && createdSource.value) {
-        echo.leaveChannel(`data_source.${createdSource.value.id}`);
+        echo.leave(`data_source.${createdSource.value.id}`);
     }
 }
 

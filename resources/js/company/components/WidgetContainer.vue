@@ -45,11 +45,17 @@ const family = computed(() => familyOf(familyName.value));
 const typeOptions = computed(() => {
     const chosen = widget.value?.widget_type;
 
-    if (chosen?.options) return chosen.options;
+    const base = chosen?.options
+        ?? (widget.value?.widget?.types ?? []).find(t => t.is_default)?.options
+        ?? {};
 
-    const fallback = (widget.value?.widget?.types ?? []).find(t => t.is_default);
+    // Своя палитра виджета живёт в оформлении, а не в типе отрисовки: тип
+    // общий на все виджеты семейства, а цвета выбираются штучно. Подмешиваем
+    // её здесь, чтобы компоненты семейств получали цвета там же, где и
+    // остальные параметры отрисовки, — см. widgets/palette.js.
+    const colors = widget.value?.presentation?.colors;
 
-    return fallback?.options ?? {};
+    return Array.isArray(colors) && colors.length ? { ...base, colors } : base;
 });
 
 const isReady = computed(() =>

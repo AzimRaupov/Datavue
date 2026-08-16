@@ -8,6 +8,7 @@ import WorkspacesIndex from '../pages/workspace/IndexPage.vue';
 import WorkspacePage from '../pages/workspace/WorkspacePage.vue';
 import Profile from "../pages/settings/Profile.vue";
 import Users from "../pages/settings/Users.vue";
+import UserForm from "../pages/settings/UserForm.vue";
 import AllWidgets from "../pages/AllWidgets.vue";
 import SourcesIndex from "../pages/sources/IndexPage.vue";
 import SourceShow from "../pages/sources/ShowPage.vue";
@@ -118,6 +119,19 @@ const routes = [
         path: '/settings/users',
         name: 'settings.users',
         component: Users
+    },
+    // Заведение и правка сотрудника — отдельные адреса, а не окно поверх
+    // списка: у формы доступа полтора десятка переключателей, и на неё
+    // должна работать ссылка и кнопка «назад».
+    {
+        path: '/settings/users/new',
+        name: 'settings.users.create',
+        component: UserForm
+    },
+    {
+        path: '/settings/users/:id(\\d+)/edit',
+        name: 'settings.users.edit',
+        component: UserForm
     },
     {
         path: '/widgets',

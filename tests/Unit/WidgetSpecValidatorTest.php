@@ -61,6 +61,50 @@ it('не знает формы для незарегистрированного
     WidgetSpecValidator::requiredColumns('несуществующее');
 })->throws(RuntimeException::class);
 
+it('меняет цвета, не трогая остальное оформление', function () {
+    // series_kinds выбрала модель при генерации, и человек в шторке о нём
+    // не знает — правка цвета не должна его стирать.
+    $spec = [
+        'queries' => ['main' => 'SELECT 1'],
+        'shape' => 'series_matrix',
+        'presentation' => ['series_kinds' => ['Выручка' => 'column']],
+    ];
+
+    $result = WidgetSpecValidator::withColors($spec, ['#ff0000', '', '#00ff00', '', '']);
+
+    expect($result['presentation']['series_kinds'])->toBe(['Выручка' => 'column'])
+        // Пустой хвост отброшен, пустая ячейка в середине сохранена:
+        // позиция цвета — это номер ряда.
+        ->and($result['presentation']['colors'])->toBe(['#ff0000', '', '#00ff00'])
+        ->and($result['queries'])->toBe(['main' => 'SELECT 1']);
+});
+
+it('возвращает стандартную палитру пустым списком', function () {
+    $spec = [
+        'queries' => ['main' => 'SELECT 1'],
+        'presentation' => ['series_kinds' => ['Выручка' => 'column'], 'colors' => ['#ff0000']],
+    ];
+
+    $result = WidgetSpecValidator::withColors($spec, []);
+
+    expect($result['presentation'])->toBe(['series_kinds' => ['Выручка' => 'column']]);
+});
+
+it('убирает оформление целиком, когда в нём ничего не осталось', function () {
+    $spec = ['queries' => ['main' => 'SELECT 1'], 'presentation' => ['colors' => ['#ff0000']]];
+
+    $result = WidgetSpecValidator::withColors($spec, ['', '']);
+
+    expect($result)->not->toHaveKey('presentation')
+        ->and($result['queries'])->toBe(['main' => 'SELECT 1']);
+});
+
+it('не трогает спецификацию, когда цвета не присылали', function () {
+    $spec = ['queries' => ['main' => 'SELECT 1'], 'presentation' => ['colors' => ['#ff0000']]];
+
+    expect(WidgetSpecValidator::withColors($spec, null))->toBe($spec);
+});
+
 it('показывает первый именной запрос спецификации', function () {
     // У счётчиков запросов бывает несколько — редактор видит только первый
     // (см. ManualWidgetAuthor::nextQuerySpec()), поэтому 'main' всегда

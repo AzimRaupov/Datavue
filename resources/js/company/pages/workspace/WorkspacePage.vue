@@ -3,13 +3,12 @@ import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from "vue"
 import { Modal, Offcanvas } from "bootstrap";
 import { useRoute, useRouter } from "vue-router";
 import Sortable from "sortablejs";
-import Echo from "laravel-echo";
-import Pusher from "pusher-js";
 
 import api from "../../api.js";
+import { useEcho } from "../../echo.js";
 import WidgetContainer from "../../components/WidgetContainer.vue";
 import WidgetPalette from "../../components/builder/WidgetPalette.vue";
-import WidgetQueryModal from "../../components/builder/WidgetQueryModal.vue";
+import WidgetSettingsDrawer from "../../components/builder/WidgetSettingsDrawer.vue";
 import WidgetCodeModal from "../../components/builder/WidgetCodeModal.vue";
 import AiChatSidebar from "../../components/chat/AiChatSidebar.vue";
 
@@ -29,24 +28,13 @@ import AiChatSidebar from "../../components/chat/AiChatSidebar.vue";
  * открытым дашбордом, поэтому и чат, и конструктор говорят об одном и том же.
  */
 
-window.Pusher = Pusher;
-
 const route = useRoute();
 const router = useRouter();
 
 const empty_img = "/static/illustrations/light/chart-circle.png";
 const generate_img = "/static/illustrations/light/boy-and-laptop.png";
 
-const echo = new Echo({
-    broadcaster: "reverb",
-    key: import.meta.env.VITE_REVERB_APP_KEY,
-    wsHost: import.meta.env.VITE_REVERB_HOST || "127.0.0.1",
-    wsPort: import.meta.env.VITE_REVERB_PORT || 8080,
-    wssPort: import.meta.env.VITE_REVERB_PORT || 8080,
-    forceTLS: false,
-    disableStats: true,
-    enabledTransports: ["ws"],
-});
+const echo = useEcho();
 
 // --- Права ------------------------------------------------------------------
 
@@ -250,7 +238,7 @@ function subscribeToDashboard() {
 
     currentChannelName = `dashboard.${dashboardId.value}`;
 
-    echo.channel(currentChannelName).listen(".DashboardWidgetChanged", () => {
+    echo.private(currentChannelName).listen(".DashboardWidgetChanged", () => {
         // Только структура: данные перезапросит сам WidgetContainer и только
         // у виджетов, у которых изменился updated_at.
         refreshDashboard();
@@ -350,7 +338,7 @@ let palette = null;
 const canvas = ref(null);
 let sortable = null;
 
-const queryModal = ref(null);
+const settingsDrawer = ref(null);
 const codeModal = ref(null);
 const editingWidget = ref(null);
 
@@ -496,9 +484,9 @@ function setupSortable() {
     });
 }
 
-function openQuery(widget) {
+function openSettings(widget) {
     editingWidget.value = widget;
-    queryModal.value?.show();
+    settingsDrawer.value?.show();
 }
 
 function openCode(widget) {
@@ -988,8 +976,8 @@ onBeforeUnmount(() => {
 
                                         <div class="dropdown-menu dropdown-menu-end">
                                             <button v-if="canWriteCode" class="dropdown-item" type="button"
-                                                    @click="openQuery(widget)">
-                                                Настроить данные
+                                                    @click="openSettings(widget)">
+                                                Настроить виджет
                                             </button>
 
                                             <button v-if="canWriteCode && hasPythonCode(widget)"
@@ -1019,7 +1007,7 @@ onBeforeUnmount(() => {
                                     />
 
                                     <div v-if="widget.status === 'draft' && canWriteCode" class="mt-2">
-                                        <button class="btn btn-sm" type="button" @click="openQuery(widget)">
+                                        <button class="btn btn-sm" type="button" @click="openSettings(widget)">
                                             Настроить данные
                                         </button>
                                     </div>
@@ -1111,9 +1099,9 @@ onBeforeUnmount(() => {
         </div>
 
         <!-- НАСТРОЙКА ВИДЖЕТА -->
-        <WidgetQueryModal
+        <WidgetSettingsDrawer
             v-if="canWriteCode && dashboardId"
-            ref="queryModal"
+            ref="settingsDrawer"
             :dashboard-id="dashboardId"
             :widget="editingWidget"
             :schema="schema"

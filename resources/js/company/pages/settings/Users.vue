@@ -1,42 +1,33 @@
 <script setup>
-import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { Modal } from 'bootstrap';
 import api from '../../api.js';
+
+/**
+ * Список сотрудников компании.
+ *
+ * Заведение и правка живут на отдельной странице (UserForm.vue): форма
+ * доступа переросла модальное окно, и на неё должна работать ссылка.
+ * Здесь остаётся только список и подтверждение удаления — оно короткое
+ * и обратного пути не имеет, окну там самое место.
+ */
 
 const users = ref([]);
 const assignableRoles = ref([]);
 const loading = ref(false);
-const saving = ref(false);
 const deleting = ref(false);
 const listError = ref(null);
-const formErrors = ref({});
-const formError = ref(null);
 const search = ref('');
 
-// null — форма закрыта, 'create' — новый сотрудник, число — id редактируемого
-const editing = ref(null);
 const pendingDelete = ref(null);
 
-const formModalEl = ref(null);
 const deleteModalEl = ref(null);
-let formModal = null;
 let deleteModal = null;
 
 const currentUser = JSON.parse(localStorage.getItem('user') || 'null');
 
 const permissions = computed(() => currentUser?.permissions ?? []);
 const canManage = computed(() => permissions.value.includes('manage users'));
-
-const emptyForm = () => ({
-    name: '',
-    email: '',
-    password: '',
-    password_confirmation: '',
-    role: 'analyst',
-    is_active: true,
-});
-
-const form = reactive(emptyForm());
 
 const filteredUsers = computed(() => {
     const query = search.value.trim().toLowerCase();
@@ -59,7 +50,13 @@ const roleBadgeClass = (name) =>
         company_admin: 'bg-purple-lt',
         analyst: 'bg-azure-lt',
         viewer: 'bg-secondary-lt',
+        custom: 'bg-orange-lt',
     }[name] ?? 'bg-secondary-lt');
+
+/** Сколько прав реально открыто сотруднику — для строки в таблице. */
+function permissionCount(user) {
+    return user.permissions?.length ?? 0;
+}
 
 function initials(name) {
     return (name || '?')
@@ -86,65 +83,6 @@ async function fetchUsers() {
                 : 'Не удалось загрузить список сотрудников.';
     } finally {
         loading.value = false;
-    }
-}
-
-async function openForm(user = null) {
-    formErrors.value = {};
-    formError.value = null;
-
-    if (user) {
-        Object.assign(form, {
-            name: user.name,
-            email: user.email,
-            password: '',
-            password_confirmation: '',
-            role: user.role ?? 'analyst',
-            is_active: user.is_active,
-        });
-        editing.value = user.id;
-    } else {
-        Object.assign(form, emptyForm());
-        editing.value = 'create';
-    }
-
-    await nextTick();
-    formModal?.show();
-}
-
-async function submitForm() {
-    if (saving.value) return;
-
-    saving.value = true;
-    formErrors.value = {};
-    formError.value = null;
-
-    // Пустой пароль при редактировании означает «не менять» — не отправляем его.
-    const payload = { ...form };
-    if (editing.value !== 'create' && !payload.password) {
-        delete payload.password;
-        delete payload.password_confirmation;
-    }
-
-    try {
-        if (editing.value === 'create') {
-            await api.post('/settings/users', payload);
-        } else {
-            await api.put(`/settings/users/${editing.value}`, payload);
-        }
-
-        formModal?.hide();
-        await fetchUsers();
-    } catch (err) {
-        const data = err.response?.data;
-
-        if (data?.errors) {
-            formErrors.value = data.errors;
-        } else {
-            formError.value = data?.message || 'Не удалось сохранить сотрудника.';
-        }
-    } finally {
-        saving.value = false;
     }
 }
 
@@ -177,12 +115,10 @@ onMounted(async () => {
     await fetchUsers();
     await nextTick();
 
-    if (formModalEl.value) formModal = new Modal(formModalEl.value);
     if (deleteModalEl.value) deleteModal = new Modal(deleteModalEl.value);
 });
 
 onBeforeUnmount(() => {
-    formModal?.dispose();
     deleteModal?.dispose();
 });
 </script>
@@ -210,7 +146,8 @@ onBeforeUnmount(() => {
                                 placeholder="Поиск сотрудника…"
                                 aria-label="Поиск сотрудника"
                             />
-                            <button v-if="canManage" class="btn btn-primary" @click="openForm()">
+                            <router-link v-if="canManage" class="btn btn-primary"
+                                         :to="{ name: 'settings.users.create' }">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
                                      fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
                                      stroke-linejoin="round" aria-hidden="true" focusable="false" class="icon icon-2">
@@ -218,7 +155,7 @@ onBeforeUnmount(() => {
                                     <path d="M5 12l14 0" />
                                 </svg>
                                 Добавить сотрудника
-                            </button>
+                            </router-link>
                         </div>
                     </div>
                 </div>
@@ -253,7 +190,7 @@ onBeforeUnmount(() => {
                                     : 'Добавьте сотрудников и выдайте им нужные роли и доступы.' }}
                             </p>
                             <div class="empty-action" v-if="canManage && !search">
-                                <button class="btn btn-primary" @click="openForm()">
+                                <router-link class="btn btn-primary" :to="{ name: 'settings.users.create' }">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
                                          fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
                                          stroke-linejoin="round" aria-hidden="true" focusable="false" class="icon icon-2">
@@ -261,7 +198,7 @@ onBeforeUnmount(() => {
                                         <path d="M5 12l14 0" />
                                     </svg>
                                     Добавить сотрудника
-                                </button>
+                                </router-link>
                             </div>
                         </div>
                     </div>
@@ -298,6 +235,9 @@ onBeforeUnmount(() => {
                                     <span class="badge" :class="roleBadgeClass(user.role)">
                                         {{ roleLabel(user.role) }}
                                     </span>
+                                    <div class="text-secondary small mt-1">
+                                        прав: {{ permissionCount(user) }}
+                                    </div>
                                 </td>
                                 <td>
                                     <span v-if="user.is_active" class="badge bg-success me-1"></span>
@@ -306,9 +246,10 @@ onBeforeUnmount(() => {
                                 </td>
                                 <td>
                                     <div v-if="canManage" class="btn-list flex-nowrap justify-content-end">
-                                        <button class="btn btn-sm" @click="openForm(user)">
+                                        <router-link class="btn btn-sm"
+                                                     :to="{ name: 'settings.users.edit', params: { id: user.id } }">
                                             Изменить
-                                        </button>
+                                        </router-link>
                                         <button
                                             v-if="!user.is_owner && !user.is_self"
                                             class="btn btn-sm btn-ghost-danger"
@@ -326,101 +267,6 @@ onBeforeUnmount(() => {
             </div>
         </main>
         <!-- END PAGE BODY -->
-
-        <!-- BEGIN MODAL: форма сотрудника -->
-        <div ref="formModalEl" class="modal modal-blur fade" tabindex="-1" role="dialog" aria-hidden="true">
-            <div class="modal-dialog modal-lg modal-dialog-centered" role="document">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title">
-                            {{ editing === 'create' ? 'Новый сотрудник' : 'Редактирование сотрудника' }}
-                        </h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
-                    </div>
-
-                    <div class="modal-body">
-                        <div class="row">
-                            <div class="col-lg-6">
-                                <div class="mb-3">
-                                    <label class="form-label required">Имя</label>
-                                    <input v-model="form.name" type="text" class="form-control"
-                                           :class="{ 'is-invalid': formErrors.name }" placeholder="Иван Иванов" />
-                                    <div v-if="formErrors.name" class="invalid-feedback">{{ formErrors.name[0] }}</div>
-                                </div>
-                            </div>
-
-                            <div class="col-lg-6">
-                                <div class="mb-3">
-                                    <label class="form-label required">E-mail</label>
-                                    <input v-model="form.email" type="email" class="form-control"
-                                           :class="{ 'is-invalid': formErrors.email }" placeholder="ivan@company.com" />
-                                    <div v-if="formErrors.email" class="invalid-feedback">{{ formErrors.email[0] }}</div>
-                                </div>
-                            </div>
-
-                            <div class="col-lg-6">
-                                <div class="mb-3">
-                                    <label class="form-label" :class="{ required: editing === 'create' }">Пароль</label>
-                                    <input v-model="form.password" type="password" class="form-control"
-                                           :class="{ 'is-invalid': formErrors.password }"
-                                           :placeholder="editing === 'create' ? 'Минимум 6 символов' : 'Оставьте пустым, чтобы не менять'" />
-                                    <div v-if="formErrors.password" class="invalid-feedback">{{ formErrors.password[0] }}</div>
-                                </div>
-                            </div>
-
-                            <div class="col-lg-6">
-                                <div class="mb-3">
-                                    <label class="form-label">Подтверждение пароля</label>
-                                    <input v-model="form.password_confirmation" type="password" class="form-control" />
-                                </div>
-                            </div>
-
-                            <div class="col-12">
-                                <div class="mb-3">
-                                    <label class="form-label required">Роль и доступы</label>
-                                    <div class="row g-2">
-                                        <div class="col-md-4" v-for="role in assignableRoles" :key="role.name">
-                                            <label class="form-selectgroup-item flex-fill">
-                                                <input type="radio" :value="role.name" v-model="form.role"
-                                                       class="form-selectgroup-input" />
-                                                <span class="form-selectgroup-label d-flex align-items-start p-3 text-start">
-                                                    <span>
-                                                        <span class="d-block fw-bold">{{ role.label }}</span>
-                                                        <span class="d-block text-secondary small mt-1">{{ role.description }}</span>
-                                                    </span>
-                                                </span>
-                                            </label>
-                                        </div>
-                                    </div>
-                                    <div v-if="formErrors.role" class="invalid-feedback d-block">{{ formErrors.role[0] }}</div>
-                                </div>
-                            </div>
-
-                            <div class="col-12">
-                                <label class="form-check form-switch">
-                                    <input class="form-check-input" type="checkbox" v-model="form.is_active" />
-                                    <span class="form-check-label">Учётная запись активна</span>
-                                </label>
-                                <small class="form-hint">
-                                    Отключённый сотрудник не сможет войти, но его данные и история сохранятся.
-                                </small>
-                                <div v-if="formErrors.is_active" class="invalid-feedback d-block">{{ formErrors.is_active[0] }}</div>
-                            </div>
-                        </div>
-
-                        <div v-if="formError" class="alert alert-danger mt-3 mb-0" role="alert">{{ formError }}</div>
-                    </div>
-
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">Отмена</button>
-                        <button type="button" class="btn btn-primary ms-auto" :disabled="saving" @click="submitForm">
-                            {{ saving ? 'Сохранение…' : 'Сохранить' }}
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <!-- END MODAL -->
 
         <!-- BEGIN MODAL: подтверждение удаления -->
         <div ref="deleteModalEl" class="modal modal-blur fade" tabindex="-1" role="dialog" aria-hidden="true">
