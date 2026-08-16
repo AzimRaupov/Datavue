@@ -7,6 +7,7 @@ use App\Http\Controllers\Chat\MessageController;
 use App\Http\Controllers\Dashboard\DashboardBuilderController;
 use App\Http\Controllers\Dashboard\DashboardController;
 use App\Http\Controllers\Dashboard\DashboardWidgetController;
+use App\Http\Controllers\Dashboard\WorkspaceController;
 use App\Http\Controllers\DataSource\DataSourceConnectionController;
 use App\Http\Controllers\DataSource\DataSourceController;
 use App\Http\Controllers\DataSource\DataSourceTypeController;
@@ -53,6 +54,34 @@ Route::middleware(['auth:sanctum', 'active'])->prefix('company')->group(function
     Route::post('chats', [ChatController::class, 'store'])->middleware('permission:create chats');
     Route::match(['put', 'patch'], 'chats/{chat}', [ChatController::class, 'update'])->middleware('permission:edit chats');
     Route::delete('chats/{chat}', [ChatController::class, 'destroy'])->middleware('permission:delete chats');
+
+    /*
+    | Рабочие пространства: задача, её дашборды и разговор с агентом.
+    |
+    | Страница пространства собирается одним запросом, а не набором: она
+    | открывается на каждом переключении дашборда, и ходить за одним и тем же
+    | четыре раза незачем.
+    |
+    | Маршруты по дашборду и по чату объявлены ДО '{workspace}', иначе
+    | 'by-dashboard' попадёт в параметр id.
+    */
+    Route::get('workspaces', [WorkspaceController::class, 'index'])
+        ->middleware('permission:view dashboards');
+    Route::post('workspaces', [WorkspaceController::class, 'store'])
+        ->middleware('permission:create dashboards');
+    Route::get('workspaces/by-dashboard/{dashboard}', [WorkspaceController::class, 'byDashboard'])
+        ->middleware('permission:view dashboards');
+    Route::get('workspaces/by-chat/{chat}', [WorkspaceController::class, 'byChat'])
+        ->middleware('permission:view chats');
+    Route::get('workspaces/{workspace}', [WorkspaceController::class, 'show'])
+        ->middleware('permission:view dashboards');
+    Route::match(['put', 'patch'], 'workspaces/{workspace}', [WorkspaceController::class, 'update'])
+        ->middleware('permission:edit dashboards');
+    Route::delete('workspaces/{workspace}', [WorkspaceController::class, 'destroy'])
+        ->middleware('permission:delete dashboards');
+    // Разговор пространства — заводится по кнопке «AI Ассистент».
+    Route::post('workspaces/{workspace}/chat', [WorkspaceController::class, 'attachChat'])
+        ->middleware('permission:create chats');
 
     Route::get('dashboards', [DashboardController::class, 'index'])->middleware('permission:view dashboards');
     Route::get('dashboards/{dashboard}', [DashboardController::class, 'show'])->middleware('permission:view dashboards');

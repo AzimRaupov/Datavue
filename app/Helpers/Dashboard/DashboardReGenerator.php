@@ -459,6 +459,10 @@ class DashboardReGenerator
                 'chat_id' => $this->chat->id,
                 'name' => $this->dashboard->name,
                 'company_id' => $this->chat->company_id,
+                // Следующая версия остаётся в том же пространстве, что и та,
+                // из которой выросла: это одна и та же работа.
+                'workspace_id' => $this->dashboard->workspace_id ?? $this->chat->workspace_id,
+                'data_source_id' => $this->dashboard->data_source_id,
                 'status' => 'empty'
             ]);
 

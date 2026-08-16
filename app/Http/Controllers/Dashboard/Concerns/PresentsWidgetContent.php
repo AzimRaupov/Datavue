@@ -23,19 +23,7 @@ trait PresentsWidgetContent
      */
     protected function queryOf(DashboardWidget $widget): ?string
     {
-        $queries = $widget->query_spec['queries'] ?? $widget->query_spec['query'] ?? null;
-
-        if (is_string($queries)) {
-            return $queries;
-        }
-
-        if (is_array($queries)) {
-            $first = $queries['main'] ?? reset($queries);
-
-            return is_string($first) ? $first : null;
-        }
-
-        return null;
+        return WidgetSpecValidator::primaryQueryOf($widget->query_spec ?? []);
     }
 
     /**

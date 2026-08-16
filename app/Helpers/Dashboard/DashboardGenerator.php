@@ -83,6 +83,9 @@ class DashboardGenerator
         $this->dashboard = Dashboard::query()->create([
             'chat_id' => $chat_id,
             'company_id' => $this->chat->company_id,
+            // Дашборд появляется В рабочем пространстве разговора: без этого
+            // он не попал бы ни в один список и открыть его было бы негде.
+            'workspace_id' => $this->chat->workspace_id,
             'status' => 'empty',
         ]);
 

@@ -15,6 +15,7 @@ class Dashboard extends Model
      */
     protected $fillable = [
         'company_id',
+        'workspace_id',
         'created_by',
         'chat_id',
         'data_source_id',
@@ -62,6 +63,14 @@ class Dashboard extends Model
 
     public function widgets(){
         return $this->hasMany(DashboardWidget::class, 'dashboard_id');
+    }
+
+    /**
+     * Рабочее пространство, в котором лежит дашборд.
+     */
+    public function workspace(): BelongsTo
+    {
+        return $this->belongsTo(Workspace::class);
     }
 
     public function chat(): BelongsTo

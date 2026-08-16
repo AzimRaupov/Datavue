@@ -484,6 +484,21 @@ const logout = async () => {
                     </li>
 
                     <li v-if="canViewDashboards" class="nav-item">
+                        <router-link class="nav-link" :to="{ name: 'company.workspaces' }">
+                            <span class="nav-link-icon d-md-none d-lg-inline-block">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                                     fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                     stroke-linejoin="round" aria-hidden="true" class="icon icon-2">
+                                    <path d="M3 7m0 2a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v9a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2z" />
+                                    <path d="M3 11h18" />
+                                    <path d="M9 7v-2a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v2" />
+                                </svg>
+                            </span>
+                            <span class="nav-link-title">Пространства</span>
+                        </router-link>
+                    </li>
+
+                    <li v-if="canViewDashboards" class="nav-item">
                         <router-link class="nav-link" :to="{ name: 'company.dashboards' }">
                             <span class="nav-link-icon d-md-none d-lg-inline-block">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"

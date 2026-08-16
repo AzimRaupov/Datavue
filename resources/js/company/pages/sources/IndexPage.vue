@@ -206,7 +206,7 @@ async function createChat() {
         });
 
         chatModal?.hide();
-        router.push({ name: 'company.chat', params: { id: data.chat.id } });
+        router.push({ name: 'company.workspace', params: { workspace: data.workspace.id } });
     } catch (err) {
         chatError.value = err.response?.data?.message || 'Не удалось создать чат.';
     } finally {

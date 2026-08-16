@@ -133,7 +133,7 @@ async function createChat() {
         });
 
         chatModal?.hide();
-        router.push({ name: 'company.chat', params: { id: data.chat.id } });
+        router.push({ name: 'company.workspace', params: { workspace: data.workspace.id } });
     } catch (err) {
         chatError.value = err.response?.data?.message || 'Не удалось создать чат.';
     } finally {
@@ -509,7 +509,7 @@ onBeforeUnmount(() => {
                                                 </span>
                                                 <div class="flex-fill">
                                                     <router-link
-                                                        :to="{ name: 'company.chat', params: { id: chat.id } }"
+                                                        :to="{ name: 'company.workspace.chat', params: { chat: chat.id } }"
                                                         class="text-reset font-weight-medium"
                                                     >
                                                         {{ chat.title || `Чат #${chat.id}` }}
@@ -526,8 +526,8 @@ onBeforeUnmount(() => {
                                                     v-for="dashboard in chat.dashboards"
                                                     :key="dashboard.id"
                                                     :to="{
-                                                        name: 'company.chat',
-                                                        params: { id: chat.id, dashboard: dashboard.id },
+                                                        name: 'company.workspace.dashboard',
+                                                        params: { dashboard: dashboard.id },
                                                     }"
                                                     class="badge text-truncate"
                                                     :class="dashboardStatus(dashboard.status).badge"
@@ -545,7 +545,7 @@ onBeforeUnmount(() => {
                                         <td>
                                             <div class="btn-list flex-nowrap justify-content-end">
                                                 <router-link
-                                                    :to="{ name: 'company.chat', params: { id: chat.id } }"
+                                                    :to="{ name: 'company.workspace.chat', params: { chat: chat.id } }"
                                                     class="btn btn-sm"
                                                 >
                                                     Открыть

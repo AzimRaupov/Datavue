@@ -9,6 +9,7 @@ use App\Models\Dashboard;
 use App\Models\DashboardWidget;
 use App\Models\DataSource;
 use App\Models\WidgetType;
+use App\Models\Workspace;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -93,26 +94,40 @@ class DashboardController extends Controller
         $data = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
+            // Дашборд заводится В рабочем пространстве: источник и разговор
+            // он берёт оттуда.
+            'workspace_id' => [
+                'required_without_all:chat_id,data_source_id',
+                'nullable',
+                Rule::exists('workspaces', 'id')->where('company_id', $user->company_id),
+            ],
             'chat_id' => [
                 'nullable',
                 // Чат обязан принадлежать той же компании — иначе можно было бы
                 // привязать дашборд к чужому чату.
                 Rule::exists('ai_chats', 'id')->where('company_id', $user->company_id),
             ],
-            // Источник обязателен, когда дашборд собирают руками: чата у него
-            // нет, и виджетам иначе не по чему считать.
+            // Источник обязателен, когда дашборд собирают руками вне
+            // пространства: виджетам иначе не по чему считать.
             'data_source_id' => [
-                'required_without:chat_id',
+                'required_without_all:chat_id,workspace_id',
                 'nullable',
                 Rule::exists('data_sources', 'id')->where('company_id', $user->company_id),
             ],
         ]);
 
+        $workspace = !empty($data['workspace_id'])
+            ? Workspace::query()->ofCompany($user->company_id)->find($data['workspace_id'])
+            : null;
+
         $dashboard = Dashboard::query()->create([
             'company_id' => $user->company_id,
+            'workspace_id' => $workspace?->id,
             'created_by' => $user->id,
             'chat_id' => $data['chat_id'] ?? null,
-            'data_source_id' => $data['data_source_id'] ?? null,
+            // Источник наследуется от пространства: разные источники у соседних
+            // дашбордов означали бы, что это разные задачи.
+            'data_source_id' => $data['data_source_id'] ?? $workspace?->data_source_id,
             'name' => $data['name'],
             'description' => $data['description'] ?? null,
             'status' => 'empty',

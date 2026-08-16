@@ -279,7 +279,7 @@ class ManualWidgetAuthor
 
         $family = $widget->widget->name;
 
-        $widget->query_spec = WidgetSpecValidator::build($family, $sql, $presentation);
+        $widget->query_spec = $this->nextQuerySpec($widget, $family, $sql, $presentation);
         $widget->content_mode = DashboardWidget::MODE_SQL;
         $widget->origin = DashboardWidget::ORIGIN_MANUAL;
         $widget->status = 'active';
@@ -300,6 +300,49 @@ class ManualWidgetAuthor
             'data' => $run['data'],
             'errors' => [],
         ];
+    }
+
+    /**
+     * Спецификация, которую нужно записать при сохранении SQL-редактора.
+     *
+     * У счётчиков query_spec может содержать НЕСКОЛЬКО именных запросов —
+     * по одному на карточку (см. WidgetQueryAi::countersContract()). Поле
+     * SQL в редакторе одно, и показывает только первый из них
+     * (WidgetSpecValidator::primaryQueryOf()) — остальные автор физически
+     * не видит. Если просто перегенерировать спецификацию из текста этого
+     * поля, «открыл редактор и сразу нажал сохранить» молча стирает все
+     * запросы, кроме первого — три карточки становятся одной, хотя автор
+     * ничего не менял.
+     *
+     * Поэтому здесь запрос из формы сверяется с тем, что редактор показал
+     * изначально. Совпадает — автор его не трогал, и весь набор запросов
+     * остаётся как был, меняется только оформление. Отличается — это
+     * осознанная правка, и спецификация пересобирается заново обычным
+     * образом (в том числе если она сводит несколько запросов к одному —
+     * тогда это решение автора, а не потеря данных).
+     */
+    private function nextQuerySpec(DashboardWidget $widget, string $family, string $sql, array $presentation): array
+    {
+        $existingQueries = $widget->query_spec['queries'] ?? null;
+
+        $untouched = is_array($existingQueries)
+            && count($existingQueries) > 1
+            && trim($sql) === trim((string) WidgetSpecValidator::primaryQueryOf($widget->query_spec ?? []));
+
+        if (!$untouched) {
+            return WidgetSpecValidator::build($family, $sql, $presentation);
+        }
+
+        $spec = $widget->query_spec;
+        $spec['shape'] = WidgetShapeMapper::shapeFor($family);
+
+        if ($presentation !== []) {
+            $spec['presentation'] = $presentation;
+        } else {
+            unset($spec['presentation']);
+        }
+
+        return $spec;
     }
 
     /**

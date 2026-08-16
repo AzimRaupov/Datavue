@@ -79,8 +79,9 @@ async function submitCreate() {
 
         // Сразу в рабочее место: пустой дашборд в списке пользы не приносит.
         router.push({
-            name: 'company.dashboard.edit',
+            name: 'company.workspace.dashboard',
             params: { dashboard: data.id },
+            query: { mode: 'edit' },
         });
     } catch (err) {
         const body = err.response?.data;
@@ -440,7 +441,7 @@ onBeforeUnmount(() => {
                                     </div>
                                     <h3 class="card-title mb-1">
                                         <router-link
-                                            :to="{ name: 'company.chat', params: { id: chat.id } }"
+                                            :to="{ name: 'company.workspace.chat', params: { chat: chat.id } }"
                                             class="text-reset"
                                         >
                                             {{ chat.title || `Чат #${chat.id}` }}
@@ -460,7 +461,7 @@ onBeforeUnmount(() => {
                                     <router-link
                                         v-for="dashboard in chat.dashboards"
                                         :key="dashboard.id"
-                                        :to="{ name: 'company.chat', params: { id: chat.id, dashboard: dashboard.id } }"
+                                        :to="{ name: 'company.workspace.dashboard', params: { dashboard: dashboard.id } }"
                                         class="list-group-item list-group-item-action d-flex align-items-center py-2 px-3"
                                     >
                                         <span class="badge bg-primary me-2" style="border-radius: 2.2px;"></span>
@@ -530,7 +531,7 @@ onBeforeUnmount(() => {
 
                                     <h3 class="card-title mb-1">
                                         <router-link
-                                            :to="{ name: 'project.dashboard.show', params: { dashboard: dashboard.id } }"
+                                            :to="{ name: 'company.workspace.dashboard', params: { dashboard: dashboard.id } }"
                                             class="text-reset"
                                         >
                                             {{ dashboard.name || `Дашборд #${dashboard.id}` }}

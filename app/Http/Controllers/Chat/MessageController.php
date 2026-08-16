@@ -82,8 +82,20 @@ class MessageController extends Controller
         // и до того, как построен хотя бы один дашборд.
         $taskNames = ['response_in_chat', 'generate_dashboard', 'export_data'];
 
-        $dashboard_count = Dashboard::query()->where('chat_id', $chat->id)->count();
-        if ($dashboard_count > 0) {
+        // Перестраивать есть что, если в этой работе уже есть дашборд. Работа —
+        // это рабочее пространство: рядом с построенными агентом там стоят
+        // и собранные руками, и их он тоже умеет править.
+        $hasDashboard = Dashboard::query()
+            ->where(function ($query) use ($chat) {
+                $query->where('chat_id', $chat->id);
+
+                if ($chat->workspace_id) {
+                    $query->orWhere('workspace_id', $chat->workspace_id);
+                }
+            })
+            ->exists();
+
+        if ($hasDashboard) {
             $taskNames[] = 're_generate_dashboard';
         }
 

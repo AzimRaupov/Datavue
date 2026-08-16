@@ -4499,3 +4499,33 @@
 "сделайвиджеты крупнее пожалуйста )","Вам нужна разбивка по месяцам или по кварталам?","dashboard"
 "хорошо","По этим данным хорошо ложится дашборд по клиентам и заказам. Собрать его?","dashboard"
 "то же самое","Могу убрать виджеты, которые дублируют друг друга. Убрать?","dashboard"
+исправь это,offer_question,dashboard
+испраф это,offer_question,dashboard
+испрафь это,offer_question,dashboard
+исправ это,offer_question,dashboard
+поправь это,offer_question,dashboard
+почини это,offer_question,dashboard
+переделай это,offer_question,dashboard
+поменяй это,offer_question,dashboard
+замени это,offer_question,dashboard
+исправь это,offer_dashboard,dashboard
+испраф это,offer_dashboard,dashboard
+почини это,offer_dashboard,dashboard
+поправь это,offer_export,dashboard
+исправь,offer_question,dashboard
+испраф,offer_question,dashboard
+почини,offer_question,dashboard
+поправь,offer_question,dashboard
+исправь это,"Итоговые агрегаты должны показывать три счётчика в одной панели. Если у вас видна только одна карточка, проверьте следующие моменты. Применить предложение?",dashboard
+испраф это,Могу проверить схему таблиц и подготовить точный SQL под ваши реальные имена столбцов. Применить предложение?,dashboard
+исправь это тоже,offer_question,dashboard
+испраф ево,offer_question,dashboard
+да испраф это,offer_question,dashboard
+удали виджет который не работает,,dashboard
+удали виджет с картой он не работает,,dashboard
+убери виджет с таблицей не работает же,,dashboard
+исправь виджет он не работает,,dashboard
+почини виджет не работает,,dashboard
+удали второй виджет он сломан,,dashboard
+поправь виджет барахлит,,dashboard
+замени виджет он неправильно считает,,dashboard

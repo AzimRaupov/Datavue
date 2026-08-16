@@ -65,9 +65,14 @@ class ChatContext
 
         $this->dataSource = $chat?->resolveDataSource(['type']);
 
+        // Дашборды теперь живут в рабочем пространстве, а не на чате: в одном
+        // пространстве рядом стоят и собранные агентом, и собранные руками,
+        // и агент обязан видеть их все.
+        $workspaceId = $chat?->workspace_id;
+
         $this->dashboard = $dashboardId
             ? Dashboard::query()->find($dashboardId)
-            : Dashboard::query()->where('chat_id', $chatId)->latest('id')->first();
+            : $this->dashboardsOf($chatId, $workspaceId)->latest('id')->first();
 
         $this->dashboardWidgets = $this->dashboard
             ? DashboardWidget::query()
@@ -78,8 +83,7 @@ class ChatContext
                 ->get()
             : collect();
 
-        $this->otherDashboards = Dashboard::query()
-            ->where('chat_id', $chatId)
+        $this->otherDashboards = $this->dashboardsOf($chatId, $workspaceId)
             ->when($this->dashboard, fn ($q) => $q->where('id', '!=', $this->dashboard->id))
             ->get(['id', 'name', 'status']);
 
@@ -296,4 +300,23 @@ class ChatContext
             JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
         );
     }
+
+    /**
+     * Дашборды этой работы.
+     *
+     * Основной признак — рабочее пространство. Запасной, по chat_id, оставлен
+     * для дашбордов, созданных до пространств, у которых новая колонка могла
+     * остаться пустой.
+     */
+    private function dashboardsOf(int $chatId, ?int $workspaceId)
+    {
+        return Dashboard::query()->where(function ($query) use ($chatId, $workspaceId) {
+            $query->where('chat_id', $chatId);
+
+            if ($workspaceId) {
+                $query->orWhere('workspace_id', $workspaceId);
+            }
+        });
+    }
+
 }

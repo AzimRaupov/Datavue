@@ -60,3 +60,17 @@ it('кладёт оформление в спецификацию отдельн
 it('не знает формы для незарегистрированного семейства', function () {
     WidgetSpecValidator::requiredColumns('несуществующее');
 })->throws(RuntimeException::class);
+
+it('показывает первый именной запрос спецификации', function () {
+    // У счётчиков запросов бывает несколько — редактор видит только первый
+    // (см. ManualWidgetAuthor::nextQuerySpec()), поэтому 'main' всегда
+    // приоритетнее, а без него берётся первый по порядку.
+    expect(WidgetSpecValidator::primaryQueryOf(['queries' => ['main' => 'SELECT 1', 'extra' => 'SELECT 2']]))
+        ->toBe('SELECT 1')
+        ->and(WidgetSpecValidator::primaryQueryOf(['queries' => ['clients' => 'SELECT 1', 'orders' => 'SELECT 2']]))
+        ->toBe('SELECT 1')
+        ->and(WidgetSpecValidator::primaryQueryOf(['query' => 'SELECT 3']))
+        ->toBe('SELECT 3')
+        ->and(WidgetSpecValidator::primaryQueryOf([]))
+        ->toBeNull();
+});

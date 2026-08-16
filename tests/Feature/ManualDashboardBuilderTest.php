@@ -8,6 +8,7 @@ use App\Models\DataSource;
 use App\Models\DataSourceType;
 use App\Models\User;
 use App\Models\Widget;
+use App\Models\Workspace;
 use Database\Seeders\DashboardStatusesSeeder;
 use Database\Seeders\RolePermissionSeeder;
 use Database\Seeders\Widgets\BarChartSeeder;
@@ -424,6 +425,221 @@ it('не пускает к коду виджета без права write widge
         ])
         ->assertOk();
 });
+
+// ---------------------------------------------------------------------------
+// Рабочие пространства
+// ---------------------------------------------------------------------------
+
+/** Пространство вместе с его источником. */
+function makeWorkspace(Company $company, User $user, DataSource $source, string $name = 'Продажи'): Workspace
+{
+    return Workspace::query()->create([
+        'company_id' => $company->id,
+        'created_by' => $user->id,
+        'data_source_id' => $source->id,
+        'name' => $name,
+    ]);
+}
+
+it('заводит пространство и дашборд внутри него', function () {
+    [$company, $user] = makeBuilderCompany();
+    $source = makeBuilderSource($company, $user);
+
+    $workspace = $this->actingAs($user)
+        ->postJson('/api/company/workspaces', [
+            'name' => 'Продажи',
+            'description' => 'Для еженедельной планёрки',
+            'data_source_id' => $source->id,
+        ])
+        ->assertCreated()
+        ->json();
+
+    $dashboard = $this->actingAs($user)
+        ->postJson('/api/company/dashboards', [
+            'name' => 'Выручка по регионам',
+            'workspace_id' => $workspace['id'],
+        ])
+        ->assertCreated()
+        ->json();
+
+    // Источник наследуется от пространства: свой у соседнего дашборда означал бы,
+    // что это уже другая задача.
+    expect($dashboard['workspace_id'])->toBe($workspace['id'])
+        ->and($dashboard['data_source_id'])->toBe($source->id)
+        ->and($dashboard['origin'])->toBe(Dashboard::ORIGIN_MANUAL);
+});
+
+it('показывает в пространстве только его дашборды', function () {
+    [$company, $user] = makeBuilderCompany();
+    $source = makeBuilderSource($company, $user);
+
+    $workspace = makeWorkspace($company, $user, $source);
+
+    $manual = Dashboard::query()->create([
+        'company_id' => $company->id,
+        'workspace_id' => $workspace->id,
+        'data_source_id' => $source->id,
+        'name' => 'Собран руками',
+        'status' => 'empty',
+        'origin' => Dashboard::ORIGIN_MANUAL,
+    ]);
+
+    // Собран агентом — в том же пространстве, рядом с ручным.
+    $chat = AiChat::query()->create([
+        'user_id' => $user->id,
+        'company_id' => $company->id,
+        'workspace_id' => $workspace->id,
+        'data_source_id' => $source->id,
+        'title' => 'Разговор',
+    ]);
+
+    $generated = Dashboard::query()->create([
+        'company_id' => $company->id,
+        'workspace_id' => $workspace->id,
+        'chat_id' => $chat->id,
+        'name' => 'Собран агентом',
+        'status' => 'completed',
+    ]);
+
+    // Соседнее пространство на том же источнике — это другая задача,
+    // и попадать сюда его дашборды не должны.
+    $other = makeWorkspace($company, $user, $source, 'Склад');
+
+    $foreign = Dashboard::query()->create([
+        'company_id' => $company->id,
+        'workspace_id' => $other->id,
+        'data_source_id' => $source->id,
+        'name' => 'Чужой',
+        'status' => 'empty',
+    ]);
+
+    $response = $this->actingAs($user)
+        ->getJson("/api/company/workspaces/{$workspace->id}")
+        ->assertOk()
+        ->json();
+
+    $ids = collect($response['dashboards'])->pluck('id');
+
+    expect($response['workspace']['name'])->toBe('Продажи')
+        ->and($response['data_source']['id'])->toBe($source->id)
+        ->and($ids)->toContain($manual->id)
+        ->and($ids)->toContain($generated->id)
+        ->and($ids)->not->toContain($foreign->id)
+        // Новые сверху: перегенерация создаёт следующую версию дашборда,
+        // и открывать надо именно её.
+        ->and($response['current_dashboard_id'])->toBe($generated->id)
+        ->and($response['chat']['id'])->toBe($chat->id);
+});
+
+it('находит пространство по дашборду и по чату', function () {
+    [$company, $user] = makeBuilderCompany();
+    $source = makeBuilderSource($company, $user);
+    $workspace = makeWorkspace($company, $user, $source);
+
+    $chat = AiChat::query()->create([
+        'user_id' => $user->id,
+        'company_id' => $company->id,
+        'workspace_id' => $workspace->id,
+        'data_source_id' => $source->id,
+        'title' => 'Разговор',
+    ]);
+
+    $dashboard = Dashboard::query()->create([
+        'company_id' => $company->id,
+        'workspace_id' => $workspace->id,
+        'chat_id' => $chat->id,
+        'name' => 'Продажи',
+        'status' => 'completed',
+    ]);
+
+    // Ссылка знает только дашборд — этого достаточно, чтобы открыть работу целиком.
+    $byDashboard = $this->actingAs($user)
+        ->getJson("/api/company/workspaces/by-dashboard/{$dashboard->id}")
+        ->assertOk()
+        ->json();
+
+    $byChat = $this->actingAs($user)
+        ->getJson("/api/company/workspaces/by-chat/{$chat->id}")
+        ->assertOk()
+        ->json();
+
+    expect($byDashboard['workspace']['id'])->toBe($workspace->id)
+        ->and($byDashboard['current_dashboard_id'])->toBe($dashboard->id)
+        ->and($byChat['workspace']['id'])->toBe($workspace->id);
+});
+
+it('заводит пространству разговор — один на всю работу', function () {
+    [$company, $user] = makeBuilderCompany();
+    $source = makeBuilderSource($company, $user);
+    $workspace = makeWorkspace($company, $user, $source);
+
+    $created = $this->actingAs($user)
+        ->postJson("/api/company/workspaces/{$workspace->id}/chat")
+        ->assertCreated()
+        ->json();
+
+    $chat = AiChat::query()->find($created['chat']['id']);
+
+    expect($chat->workspace_id)->toBe($workspace->id)
+        ->and($chat->data_source_id)->toBe($source->id);
+
+    // Повторное нажатие не плодит разговоры: он один на задачу.
+    $again = $this->actingAs($user)
+        ->postJson("/api/company/workspaces/{$workspace->id}/chat")
+        ->assertOk()
+        ->json();
+
+    expect($again['chat']['id'])->toBe($created['chat']['id'])
+        ->and(AiChat::query()->where('workspace_id', $workspace->id)->count())->toBe(1);
+});
+
+it('удаляет пространство вместе с дашбордами и перепиской, но не с источником', function () {
+    [$company, $user] = makeBuilderCompany();
+    $source = makeBuilderSource($company, $user);
+    $workspace = makeWorkspace($company, $user, $source);
+
+    $chat = AiChat::query()->create([
+        'user_id' => $user->id,
+        'company_id' => $company->id,
+        'workspace_id' => $workspace->id,
+        'data_source_id' => $source->id,
+        'title' => 'Разговор',
+    ]);
+
+    $dashboard = Dashboard::query()->create([
+        'company_id' => $company->id,
+        'workspace_id' => $workspace->id,
+        'name' => 'Продажи',
+        'status' => 'empty',
+    ]);
+
+    $this->actingAs($user)
+        ->deleteJson("/api/company/workspaces/{$workspace->id}")
+        ->assertOk();
+
+    expect(Workspace::query()->find($workspace->id))->toBeNull()
+        ->and(Dashboard::query()->find($dashboard->id))->toBeNull()
+        ->and(AiChat::query()->find($chat->id))->toBeNull()
+        // Источник принадлежит компании, а не пространству: на нём работают другие.
+        ->and(DataSource::query()->find($source->id))->not->toBeNull();
+});
+
+it('не отдаёт пространство чужой компании', function () {
+    [$company, $owner] = makeBuilderCompany('Acme');
+    $source = makeBuilderSource($company, $owner);
+    $workspace = makeWorkspace($company, $owner, $source);
+
+    [, $stranger] = makeBuilderCompany('Stranger');
+
+    $this->actingAs($stranger)
+        ->getJson("/api/company/workspaces/{$workspace->id}")
+        ->assertNotFound();
+
+    $this->actingAs($stranger)
+        ->deleteJson("/api/company/workspaces/{$workspace->id}")
+        ->assertNotFound();
+});
+
 
 // ---------------------------------------------------------------------------
 // Настройки конструктора доезжают до сборщика запроса

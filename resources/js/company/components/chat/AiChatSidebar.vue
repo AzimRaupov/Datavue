@@ -1,6 +1,5 @@
 <script setup>
 import { ref, onMounted, nextTick, onUnmounted } from "vue"
-import { useRoute,useRouter } from 'vue-router';
 import api from '../../api.js';
 import Echo from 'laravel-echo';
 import Pusher from 'pusher-js';
@@ -38,13 +37,14 @@ const props = defineProps({
         default: () => [],
     },
 });
-const emit = defineEmits(['close']);
-
-const route = useRoute();
-const router = useRouter();
+/**
+ * dashboard — агент построил дашборд (или следующую его версию). Раньше сайдбар
+ * сам уходил на другую страницу; теперь он живёт в рабочем пространстве и просто
+ * сообщает о новом дашборде, а переключает его страница — без перезагрузки чата.
+ */
+const emit = defineEmits(['close', 'dashboard']);
 
 const chatId = props.chatId;
-const dashboardId = props.dashboardId
 const messages = ref([]);
 const chatInput = ref('');
 const loading = ref(false);
@@ -251,14 +251,7 @@ onMounted(async () => {
                 }
 
                 if (e.dashboard_id) {
-                    router.push({
-                        name: 'company.chat',
-                        params: {
-                            id: chatId,
-                            dashboard: e.dashboard_id,
-                        },
-                    });
-
+                    emit('dashboard', e.dashboard_id);
                 }
             });
     }

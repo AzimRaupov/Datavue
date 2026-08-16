@@ -80,6 +80,35 @@ class WidgetSpecValidator
         return $spec;
     }
 
+    /**
+     * Запрос, который видит редактор в поле SQL, — первый именной запрос
+     * спецификации (или единственный, если он один).
+     *
+     * У счётчиков запросов бывает несколько — по одному на карточку
+     * (см. WidgetQueryAi::countersContract()), а текстовое поле редактора
+     * одно. Эта функция — единственное место, где решается, какой из них
+     * показать; ManualWidgetAuthor::saveQuery() сверяет с ней входящий текст,
+     * чтобы отличить «автор ничего не менял» от настоящей правки запроса.
+     * Разъедься это по двум местам — и на сохранении редактор бы решил,
+     * что запрос изменился, хотя автор его даже не открывал.
+     */
+    public static function primaryQueryOf(array $querySpec): ?string
+    {
+        $queries = $querySpec['queries'] ?? $querySpec['query'] ?? null;
+
+        if (is_string($queries)) {
+            return $queries;
+        }
+
+        if (is_array($queries)) {
+            $first = $queries['main'] ?? reset($queries);
+
+            return is_string($first) ? $first : null;
+        }
+
+        return null;
+    }
+
     public function __construct(private DataSource $dataSource)
     {
     }
