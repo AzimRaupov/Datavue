@@ -4,7 +4,6 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class DashboardWidget extends Model
 {
@@ -179,10 +178,5 @@ class DashboardWidget extends Model
     public function effectiveSchemeDescription(): ?string
     {
         return $this->effectiveType()?->effectiveSchemeDescription() ?? $this->widget?->scheme_description;
-    }
-
-    public function tablesRole()
-    {
-        return $this->hasMany();
     }
 }

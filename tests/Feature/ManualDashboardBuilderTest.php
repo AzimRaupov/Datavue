@@ -13,6 +13,7 @@ use Database\Seeders\RolePermissionSeeder;
 use Database\Seeders\Widgets\BarChartSeeder;
 use Database\Seeders\Widgets\PieChartSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 
 uses(RefreshDatabase::class);
@@ -422,6 +423,83 @@ it('не пускает к коду виджета без права write widge
             'widgets' => [['id' => $widgetId, 'position' => 3]],
         ])
         ->assertOk();
+});
+
+// ---------------------------------------------------------------------------
+// Настройки конструктора доезжают до сборщика запроса
+// ---------------------------------------------------------------------------
+
+it('доносит связи, таблицы метрик и цели до сборщика запроса', function () {
+    [$company, $user] = makeBuilderCompany();
+    $source = makeBuilderSource($company, $user);
+    $dashboard = makeManualDashboard($company, $user, $source);
+
+    $bar = Widget::query()->where('name', 'bar')->with('types')->firstOrFail();
+
+    $widget = DashboardWidget::query()->create([
+        'dashboard_id' => $dashboard->id,
+        'widget_id' => $bar->id,
+        'widget_type_id' => $bar->defaultType()?->id,
+        'title' => 'Выручка по городам',
+        'instruction' => '',
+        'position' => 0,
+        'status' => 'draft',
+        'origin' => DashboardWidget::ORIGIN_MANUAL,
+    ]);
+
+    Cache::put("datasource:{$source->id}:schema", [
+        [
+            'name' => 'orders',
+            'columns' => [
+                ['name' => 'amount', 'type' => 'decimal(10,2)', 'kind' => 'number'],
+                ['name' => 'customer_id', 'type' => 'int', 'kind' => 'number'],
+            ],
+        ],
+        [
+            'name' => 'customers',
+            'columns' => [
+                ['name' => 'id', 'type' => 'int', 'kind' => 'number'],
+                ['name' => 'city', 'type' => 'varchar(64)', 'kind' => 'string'],
+            ],
+        ],
+    ], now()->addMinutes(5));
+
+    // Сборка без выполнения: запрос к базе клиента здесь не идёт, поэтому
+    // проверить можно ровно то, что нужно, — что настройки доехали целиком.
+    $response = $this->actingAs($user)
+        ->postJson("/api/company/dashboards/{$dashboard->id}/widgets/{$widget->id}/query/compose", [
+            'builder' => [
+                'table' => 'orders',
+                'joins' => [[
+                    'table' => 'customers',
+                    'type' => 'left',
+                    'on' => [[
+                        'left_table' => 'orders',
+                        'left' => 'customer_id',
+                        'right' => 'id',
+                    ]],
+                ]],
+                'metrics' => [[
+                    'agg' => 'sum',
+                    'column' => 'amount',
+                    'table' => 'orders',
+                    'label' => 'Выручка',
+                    'target' => 1000,
+                ]],
+                'dimensions' => [['column' => 'city', 'table' => 'customers']],
+                'filters' => [['column' => 'city', 'table' => 'customers', 'op' => '=', 'value' => 'Москва']],
+            ],
+        ])
+        ->assertOk()
+        ->json();
+
+    // Всё, чего нет в правилах validate(), по дороге отбрасывается: раньше
+    // связи и таблицы колонок исчезали молча, и виджет считался по одной
+    // таблице вместо двух.
+    expect($response['sql'])->toContain('LEFT JOIN `customers`')
+        ->toContain('`orders`.`customer_id` = `customers`.`id`')
+        ->toContain('`customers`.`city`')
+        ->toContain('SUM(`orders`.`amount`)');
 });
 
 // ---------------------------------------------------------------------------

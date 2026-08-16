@@ -556,7 +556,7 @@ class DashboardReGenerator
     {
         try {
             $scheme = $this->connectionProviderRouter->getSchema(
-                $dashboardWidget->tables ?? [],
+                $this->tablesFor($dashboardWidget),
                 SchemaOptions::basic()
             );
 
@@ -597,6 +597,47 @@ class DashboardReGenerator
         }
     }
 
+    /**
+     * Таблицы, по которым собирается содержимое виджета.
+     *
+     * Модель не всегда возвращает список таблиц для виджета. Пустой список
+     * означал бы пустую схему — и тогда выбрать таблицу было бы не из чего:
+     * виджет падал бы не потому, что задача сложная, а потому что мы ничего
+     * о данных не рассказали. Поэтому откатываемся на таблицы выбранных
+     * групп, а в крайнем случае — на весь источник.
+     *
+     * @return array<int, string>
+     */
+    private function tablesFor(DashboardWidget $dashboardWidget): array
+    {
+        $tables = array_values(array_filter((array) ($dashboardWidget->tables ?? [])));
+
+        if ($tables !== []) {
+            return $tables;
+        }
+
+        if (!empty($this->selectedGroupsTables)) {
+            $fromGroups = DataSourceTable::query()
+                ->whereIn('data_source_group_id', $this->selectedGroupsTables)
+                ->pluck('name')
+                ->all();
+
+            if ($fromGroups !== []) {
+                Log::info('DashboardReGenerator: у виджета нет таблиц, берём таблицы групп', [
+                    'widget_id' => $dashboardWidget->id,
+                ]);
+
+                return $fromGroups;
+            }
+        }
+
+        Log::warning('DashboardReGenerator: у виджета нет таблиц, берём весь источник', [
+            'widget_id' => $dashboardWidget->id,
+        ]);
+
+        return $this->tables ?? [];
+    }
+
     public function updateWidget(array $operation): ?array
     {
         $widgetDashboard = DashboardWidget::query()->with('widget.types', 'widgetType')->find($operation['widget_id'] ?? null);
@@ -618,14 +659,20 @@ class DashboardReGenerator
             ? $widgetDashboard->widgetType?->name
             : null;
 
+        // Содержимое переносится только внутри своего семейства. При смене
+        // bar → pie старый запрос возвращает series/category/value, а круговой
+        // нужны label/value: перенести его — значит показать виджет со
+        // сломанной формой до того, как он пересоберётся.
+        $carriedSpec = $newFamily === $currentFamily ? $widgetDashboard->query_spec : null;
+
         return [
             'title' => $operation['title'] ?? $widgetDashboard->title,
             'instruction' => $operation['operation_description'] ?? ($widgetDashboard->instruction ?? ''),
             'widget_name' => $newFamily,
             'widget_type' => $operation['widget_type'] ?? $carriedType,
             'tables' => $operation['tables'] ?? ($widgetDashboard->tables ?? []),
-            'query_spec' => $widgetDashboard->query_spec,
-            'content_mode' => $widgetDashboard->content_mode,
+            'query_spec' => $carriedSpec,
+            'content_mode' => $carriedSpec ? $widgetDashboard->content_mode : null,
             'position' => $operation['position'] ?? $widgetDashboard->position ?? 0,
             'status' => 'draft',
             // id исходного (старого) dashboard_widget, который редактировался
@@ -727,7 +774,11 @@ class DashboardReGenerator
             // здесь давал двойное кодирование, и tables читались строкой.
             'tables' => $item['tables'] ?? [],
             'query_spec' => $item['query_spec'] ?? null,
-            'content_mode' => $item['content_mode'] ?? DashboardWidget::MODE_SQL,
+            // Режим ставится вместе с содержимым. Виджет, которому его ещё
+            // не собрали, не должен называть себя запросом.
+            'content_mode' => $item['query_spec']
+                ? ($item['content_mode'] ?? DashboardWidget::MODE_SQL)
+                : DashboardWidget::MODE_PYTHON,
             'position' => $item['position'],
             'status' => $item['status'] ?? 'draft',
         ]);

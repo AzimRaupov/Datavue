@@ -387,7 +387,9 @@ function onTableChange() {
     dimensions.value = [];
     filters.value = [];
     joins.value = [];
-    relations.value = [];
+    // relations здесь не трогаем: это граф связей всего источника, он
+    // приходит со схемой и от выбранной таблицы не зависит. Присваивание
+    // в computed молча ничего не делало и роняло предупреждение Vue.
     composedSql.value = null;
     resetState();
 

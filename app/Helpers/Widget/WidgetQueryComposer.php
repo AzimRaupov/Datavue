@@ -413,7 +413,10 @@ class WidgetQueryComposer
                     $metrics[0]['expression'].' AS '.$this->alias('value'),
                 ],
                 $table,
-                $where,
+                // С разбивкой это одна выборка, а не объединение метрик:
+                // условия нужны текстом. Массив пар «таблица + условие»
+                // доходил сюда как есть и превращался в «WHERE Array».
+                $this->conditionsFor($where, $this->tablesInPlay($table)),
                 [$dimensions[0]['expression']],
                 $this->orderFor($builder, $dimensions[0], 'value'),
                 $limit
@@ -457,7 +460,9 @@ class WidgetQueryComposer
             return $this->select(
                 $columns,
                 $table,
-                $where,
+                // См. composeValues(): с разбивкой запрос один, и условия
+                // нужны строками, а не парами «таблица + условие».
+                $this->conditionsFor($where, $this->tablesInPlay($table)),
                 [$dimensions[0]['expression']],
                 $this->orderFor($builder, $dimensions[0], 'value'),
                 $limit
@@ -484,6 +489,25 @@ class WidgetQueryComposer
         }
 
         return 'LEAST(100, GREATEST(0, '.$expression.'))';
+    }
+
+    /**
+     * Подпись метрики.
+     *
+     * Первая буква поднимается здесь, а не выпрашивается у модели: подпись
+     * едет в легенду и на плитки, и «количество клиентов» рядом с «Заказы»
+     * выглядит небрежно. Просить об этом промптом — значит зависеть от
+     * настроения модели на каждом виджете.
+     */
+    private function label(mixed $label, string $fallback): string
+    {
+        $label = trim((string) ($label ?? ''));
+
+        if ($label === '') {
+            return $fallback;
+        }
+
+        return mb_strtoupper(mb_substr($label, 0, 1)).mb_substr($label, 1);
     }
 
     /**
@@ -828,7 +852,7 @@ class WidgetQueryComposer
             if (in_array($agg, self::AGGREGATES_WITHOUT_COLUMN, true)) {
                 $result[] = [
                     'expression' => 'COUNT(*)',
-                    'label' => trim((string) ($metric['label'] ?? '')) ?: 'Количество',
+                    'label' => $this->label($metric['label'] ?? null, 'Количество'),
                     'target' => $this->readTarget($metric['target'] ?? null),
                     'table' => $metricTable,
                 ];
@@ -854,7 +878,7 @@ class WidgetQueryComposer
 
             $result[] = [
                 'expression' => $expression,
-                'label' => trim((string) ($metric['label'] ?? '')) ?: self::AGGREGATES[$agg].' '.$column,
+                'label' => $this->label($metric['label'] ?? null, self::AGGREGATES[$agg].' '.$column),
                 // Цель нужна счётчику с полосой выполнения: от неё считается
                 // процент. У остальных виджетов поле просто не используется.
                 'target' => $this->readTarget($metric['target'] ?? null),
@@ -1358,15 +1382,37 @@ class WidgetQueryComposer
                 : SqlParameterBinder::TYPE_STRING;
         }
 
-        // Через apply(): плейсхолдер заменяется значением, прошедшим cast.
-        // Не прошло приведение — дальше значение не идёт.
-        $applied = $this->binder->apply(':v', ['v' => $value], ['v' => $type]);
+        // Приведение к типу — первая половина защиты: не прошло, значит
+        // дальше значение не идёт. Вторая половина — экранирование, и оно
+        // зависит от диалекта, поэтому делается здесь, а не в биндере.
+        $cast = $this->binder->cast($value, $type);
 
-        return $applied['sql'];
+        if ($cast === null) {
+            return 'NULL';
+        }
+
+        if (is_int($cast) || is_float($cast)) {
+            return (string) $cast;
+        }
+
+        return $this->literalString((string) $cast);
     }
 
+    /**
+     * Строковый литерал запроса.
+     *
+     * Одинарная кавычка удваивается — это стандарт. Обратный слэш отдельно:
+     * MySQL и MariaDB по умолчанию считают его экранирующим символом, и одной
+     * удвоенной кавычки там мало. Значение, оканчивающееся на «\», закрывало бы
+     * строку раньше времени, и всё, что идёт следом, читалось бы как часть
+     * запроса — в подписи метрики и в значении условия это открытая дверь.
+     */
     private function literalString(string $value): string
     {
+        if ($this->driver === 'mysql') {
+            $value = str_replace('\\', '\\\\', $value);
+        }
+
         return "'".str_replace("'", "''", $value)."'";
     }
 

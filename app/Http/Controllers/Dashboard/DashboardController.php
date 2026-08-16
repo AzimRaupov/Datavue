@@ -149,7 +149,7 @@ class DashboardController extends Controller
      * Сохранение пакетное: пользователь перебирает варианты на нескольких
      * виджетах сразу и жмёт «Сохранить» один раз.
      */
-    public function updateWidgets(Request $request, $id)
+    public function updateWidgets(Request $request, $id, ManualWidgetAuthor $author)
     {
         $dashboard = $this->findForCompany($request, $id);
 
@@ -162,6 +162,7 @@ class DashboardController extends Controller
         // Виджеты берём разом и только этого дашборда: чужой id в списке
         // не должен привести к правке чужого виджета.
         $widgets = DashboardWidget::query()
+            ->with(['widget.types', 'widgetType'])
             ->where('dashboard_id', $dashboard->id)
             ->whereIn('id', collect($data['widgets'])->pluck('id'))
             ->get()
@@ -173,8 +174,9 @@ class DashboardController extends Controller
             ->keyBy('id');
 
         $updated = 0;
+        $changed = [];
 
-        DB::transaction(function () use ($data, $widgets, $types, &$updated) {
+        DB::transaction(function () use ($data, $widgets, $types, &$updated, &$changed) {
             foreach ($data['widgets'] as $row) {
                 $widget = $widgets->get($row['id']);
                 $type = $types->get($row['widget_type_id']);
@@ -192,11 +194,23 @@ class DashboardController extends Controller
 
                 if ($widget->widget_type_id !== $type->id) {
                     $widget->widget_type_id = $type->id;
+                    $widget->setRelation('widgetType', $type);
                     $widget->save();
                     $updated++;
+                    $changed[] = $widget;
                 }
             }
         });
+
+        // Виджету из конструктора вместе с типом меняется и запрос: счётчику
+        // с полосой выполнения нужен процент, пузырьковой — размер точки.
+        // Смена типа отсюда и со страницы сборки обязана делать одно и то же,
+        // иначе с одной из них виджет оставался бы с неполным набором колонок
+        // и молча рисовал нули.
+        //
+        // Пересборка идёт после транзакции: она ходит в базу клиента,
+        // и держать ради этого открытой транзакцию нашей базы незачем.
+        $this->rebuildBuilderWidgets($dashboard, $changed, $author);
 
         return response()->json([
             'success' => true,
@@ -222,6 +236,28 @@ class DashboardController extends Controller
         $dashboard->delete();
 
         return response()->json(['message' => 'Дашборд удалён.']);
+    }
+
+    /**
+     * Пересобирает запросы виджетов, собранных конструктором.
+     *
+     * @param array<int, DashboardWidget> $widgets
+     */
+    private function rebuildBuilderWidgets(Dashboard $dashboard, array $widgets, ManualWidgetAuthor $author): void
+    {
+        if ($widgets === []) {
+            return;
+        }
+
+        $dataSource = $dashboard->resolveDataSource();
+
+        if (!$dataSource || $dataSource->company_id !== $dashboard->company_id) {
+            return;
+        }
+
+        foreach ($widgets as $widget) {
+            $author->rebuildForType($widget, $dataSource);
+        }
     }
 
     /**

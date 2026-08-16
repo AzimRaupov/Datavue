@@ -385,8 +385,10 @@ class DashboardGenerator
             $failed = 0;
 
             foreach ($widgets_dash as $index => $widget) {
-                $widget_tables = $widget->tables ?? [];
-                $tables_scheme = $this->connectionProviderRouter->getSchema($widget_tables, SchemaOptions::detailed());
+                $tables_scheme = $this->connectionProviderRouter->getSchema(
+                    $this->tablesFor($widget),
+                    SchemaOptions::detailed()
+                );
 
                 $widgetResult = $this->generateContentWidget($widget, $tables_scheme);
 
@@ -424,6 +426,34 @@ class DashboardGenerator
      * Теперь модель отвечает, ЧТО считать, а запрос собирает и проверяет
      * платформа — тем же кодом, что стоит за ручным конструктором.
      */
+    /**
+     * Таблицы, по которым собирается содержимое виджета.
+     *
+     * Модель не всегда возвращает список таблиц. Пустой список означал бы
+     * пустую схему — и виджет падал бы не потому, что задача сложная, а
+     * потому что о данных ему ничего не рассказали. Откатываемся на таблицы,
+     * отобранные на шаге выбора групп.
+     *
+     * @return array<int, string>
+     */
+    private function tablesFor(DashboardWidget $widget): array
+    {
+        $tables = array_values(array_filter((array) ($widget->tables ?? [])));
+
+        if ($tables !== []) {
+            return $tables;
+        }
+
+        $selected = collect($this->selectedTables)->pluck('name')->filter()->values()->all();
+
+        Log::warning('DashboardGenerator: у виджета нет таблиц, берём отобранные группы', [
+            'widget_id' => $widget->id,
+            'tables' => count($selected),
+        ]);
+
+        return $selected !== [] ? $selected : ($this->tables ?? []);
+    }
+
     public function generateContentWidget($dashboard_widget, $tables_scheme): array
     {
         try {

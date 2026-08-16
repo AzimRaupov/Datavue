@@ -67,7 +67,7 @@ class DashboardWidgetController extends Controller
         return response()->json($this->present($created->fresh(['widget.types', 'widgetType'])), 201);
     }
 
-    public function update(Request $request, $dashboardId, $widgetId)
+    public function update(Request $request, $dashboardId, $widgetId, ManualWidgetAuthor $author)
     {
         $dashboard = $this->findDashboard($request, $dashboardId);
         $widget = $this->findWidget($dashboard, $widgetId, ['widget.types', 'widgetType']);
@@ -109,62 +109,16 @@ class DashboardWidgetController extends Controller
         // точки. Запрос, собранный под прежний вид, после смены просто
         // перестал бы рисоваться, поэтому пересобираем его здесь.
         if (!empty($typeChanged)) {
-            $this->rebuildForType($dashboard, $widget->fresh(['widget.types', 'widgetType']));
+            $dataSource = $dashboard->resolveDataSource();
+
+            if ($dataSource) {
+                $author->rebuildForType($widget->fresh(['widget.types', 'widgetType']), $dataSource);
+            }
         }
 
         event(new DashboardWidgetChanged($dashboard));
 
         return response()->json($this->present($widget->fresh(['widget.types', 'widgetType'])));
-    }
-
-    /**
-     * Пересобирает запрос виджета под новый вариант отрисовки.
-     *
-     * Работает только для виджетов из конструктора: их настройки известны.
-     * Виджету с запросом, написанным вручную, платформа запрос не переписывает —
-     * там автор сам решает, какие колонки возвращать.
-     */
-    private function rebuildForType(Dashboard $dashboard, DashboardWidget $widget): void
-    {
-        $builder = $widget->query_spec['builder'] ?? null;
-
-        if (!$builder) {
-            return;
-        }
-
-        $dataSource = $dashboard->resolveDataSource();
-
-        if (!$dataSource) {
-            return;
-        }
-
-        $composed = (new WidgetQueryComposer($dataSource))->compose(
-            $builder,
-            $widget->widget->name,
-            $widget->effectiveType()?->name
-        );
-
-        if (!$composed['ok']) {
-            // Настройки не годятся новому виду — говорим об этом прямо,
-            // а не оставляем молча сломанный виджет.
-            $widget->last_error = $composed['errors'][0] ?? null;
-            $widget->status = 'failed';
-            $widget->save();
-
-            return;
-        }
-
-        $spec = $widget->query_spec;
-        $spec['queries'] = ['main' => $composed['sql']];
-
-        if (($composed['presentation'] ?? []) !== []) {
-            $spec['presentation'] = array_replace($spec['presentation'] ?? [], $composed['presentation']);
-        }
-
-        $widget->query_spec = $spec;
-        $widget->last_error = null;
-        $widget->status = 'active';
-        $widget->save();
     }
 
     public function destroy(Request $request, $dashboardId, $widgetId, ManualWidgetAuthor $author)
@@ -333,18 +287,43 @@ class DashboardWidgetController extends Controller
             'builder' => 'nullable|array',
             'builder.table' => 'required_with:builder|string|max:255',
 
+            // Источником может быть не таблица, а запрос: сборщик работает
+            // поверх него так же, как поверх таблицы.
+            'builder.subquery' => 'nullable|array',
+            'builder.subquery.query' => 'nullable|string|max:20000',
+            'builder.subquery.columns' => 'nullable|array|max:200',
+
+            // Связи между таблицами. Их обязательно перечислять поимённо:
+            // всё, чего нет в правилах, validate() отбрасывает, и до сборщика
+            // запроса связи не доезжали вовсе — виджет молча считался
+            // по одной таблице.
+            'builder.joins' => 'nullable|array|max:5',
+            'builder.joins.*.table' => 'required|string|max:255',
+            'builder.joins.*.type' => 'nullable|string|max:16',
+            'builder.joins.*.on' => 'nullable|array|max:5',
+            'builder.joins.*.on.*.left_table' => 'nullable|string|max:255',
+            'builder.joins.*.on.*.left' => 'required|string|max:255',
+            'builder.joins.*.on.*.right' => 'required|string|max:255',
+
             'builder.metrics' => 'nullable|array|max:20',
             'builder.metrics.*.agg' => 'required|string|max:32',
             'builder.metrics.*.column' => 'nullable|string|max:255',
+            // Таблица метрики: без неё счётчик «Клиентов» считался бы
+            // по таблице заказов.
+            'builder.metrics.*.table' => 'nullable|string|max:255',
             'builder.metrics.*.label' => 'nullable|string|max:255',
+            // Цель нужна счётчику с полосой выполнения: от неё считается процент.
+            'builder.metrics.*.target' => 'nullable|numeric',
 
             'builder.dimensions' => 'nullable|array|max:5',
             'builder.dimensions.*.column' => 'required|string|max:255',
+            'builder.dimensions.*.table' => 'nullable|string|max:255',
             'builder.dimensions.*.grain' => 'nullable|string|max:16',
             'builder.dimensions.*.label' => 'nullable|string|max:255',
 
             'builder.filters' => 'nullable|array|max:20',
             'builder.filters.*.column' => 'required|string|max:255',
+            'builder.filters.*.table' => 'nullable|string|max:255',
             'builder.filters.*.op' => 'required|string|max:16',
             'builder.filters.*.value' => 'nullable',
 

@@ -853,3 +853,52 @@ it('перечисляет таблицы запроса, когда колон�
         ->and($result['errors'][0])->toContain('ни в одной из таблиц запроса')
         ->and($result['errors'][0])->toContain('orders');
 });
+
+it('поднимает первую букву подписи метрики', function () {
+    // Подпись едет в легенду и на плитки: «количество клиентов» рядом
+    // с «Заказы» выглядит небрежно, а просить об этом модель — значит
+    // зависеть от её настроения на каждом виджете.
+    $result = $this->composer->compose([
+        'table' => 'orders',
+        'metrics' => [['agg' => 'count', 'label' => 'количество заказов']],
+        'dimensions' => [['column' => 'country']],
+    ], 'bar');
+
+    expect($result['sql'])->toContain("'Количество заказов' AS `series`");
+});
+
+it('применяет условия к виджетам с одной подписью и значением', function () {
+    // Круговая, воронка, treemap и счётчики с разбивкой — это одна выборка,
+    // а не объединение метрик. Условия доходили сюда парами «таблица +
+    // условие» и подставлялись в текст как «WHERE Array»: любой фильтр
+    // на таком виджете ронял сборку.
+    foreach (['pie', 'funnel', 'treemap', 'mini-counters'] as $family) {
+        $result = $this->composer->compose([
+            'table' => 'orders',
+            'metrics' => [['agg' => 'sum', 'column' => 'amount', 'label' => 'Выручка']],
+            'dimensions' => [['column' => 'country']],
+            'filters' => [['column' => 'status', 'op' => '=', 'value' => 'shipped']],
+        ], $family);
+
+        expect($result['ok'])->toBeTrue()
+            ->and($result['sql'])->toContain("WHERE `status` = 'shipped'")
+            ->and($result['sql'])->not->toContain('Array');
+    }
+});
+
+it('экранирует обратный слэш в значении и в подписи', function () {
+    // MySQL по умолчанию считает обратный слэш экранирующим символом:
+    // значение, оканчивающееся на «\», закрывало строку раньше времени,
+    // и всё, что шло следом, читалось как часть запроса.
+    $result = $this->composer->compose([
+        'table' => 'orders',
+        'metrics' => [['agg' => 'count', 'label' => 'Заказов']],
+        'dimensions' => [['column' => 'country']],
+        'filters' => [['column' => 'status', 'op' => '=', 'value' => "\\' OR 1=1 -- "]],
+    ], 'bar');
+
+    expect($result['ok'])->toBeTrue()
+        ->and($result['sql'])->toContain("'\\\\'' OR 1=1 -- '")
+        // Условие осталось одним литералом: ничего не «выскочило» наружу.
+        ->and(substr_count($result['sql'], 'OR 1=1'))->toBe(1);
+});

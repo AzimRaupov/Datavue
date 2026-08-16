@@ -128,6 +128,67 @@ class ManualWidgetAuthor
         return $saved + ['sql' => $run['sql']];
     }
 
+    /**
+     * Пересобирает запрос виджета под новый вариант отрисовки.
+     *
+     * Вариант отрисовки может требовать других колонок: у счётчика с полосой
+     * выполнения появляется процент, у пузырьковой — размер точки. Запрос,
+     * собранный под прежний вид, после смены типа отдавал бы неполный набор,
+     * и виджет молча рисовал бы нули там, где данных просто не спрашивали.
+     *
+     * Работает только для виджетов из конструктора: их настройки известны.
+     * Виджету с запросом, написанным вручную, платформа запрос не переписывает —
+     * там автор сам решает, какие колонки возвращать.
+     *
+     * @return bool Пересобирали ли запрос
+     */
+    public function rebuildForType(DashboardWidget $widget, DataSource $dataSource): bool
+    {
+        $builder = $widget->query_spec['builder'] ?? null;
+        $family = $widget->widget?->name;
+
+        if (!$builder || !$family) {
+            return false;
+        }
+
+        try {
+            $composed = (new WidgetQueryComposer($dataSource))->compose(
+                $builder,
+                $family,
+                $widget->effectiveType()?->name
+            );
+        } catch (Throwable $e) {
+            // До схемы источника не достучались — сам тип уже сменён и терять
+            // эту правку из-за недоступной базы клиента незачем. Причину
+            // записываем в виджет: она видна и в конструкторе, и на дашборде.
+            $composed = ['ok' => false, 'errors' => [$e->getMessage()]];
+        }
+
+        if (!$composed['ok']) {
+            // Настройки не годятся новому виду — говорим об этом прямо,
+            // а не оставляем молча сломанный виджет.
+            $widget->last_error = $composed['errors'][0] ?? null;
+            $widget->status = 'failed';
+            $widget->save();
+
+            return true;
+        }
+
+        $spec = $widget->query_spec;
+        $spec['queries'] = ['main' => $composed['sql']];
+
+        if (($composed['presentation'] ?? []) !== []) {
+            $spec['presentation'] = array_replace($spec['presentation'] ?? [], $composed['presentation']);
+        }
+
+        $widget->query_spec = $spec;
+        $widget->last_error = null;
+        $widget->status = 'active';
+        $widget->save();
+
+        return true;
+    }
+
     public function runQueryDraft(
         DashboardWidget $widget,
         string $sql,
