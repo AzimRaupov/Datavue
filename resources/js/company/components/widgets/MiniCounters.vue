@@ -7,7 +7,7 @@
                     <div class="row align-items-center">
                         <div class="col">
                             <h4 class="subheader mb-1">{{ counter.name }}</h4>
-                            <div class="h3 m-0">{{ formatValue(counter) }}</div>
+                            <div class="h3 m-0" :style="valueStyle(index)">{{ formatValue(counter) }}</div>
                         </div>
 
                         <div class="col-auto">
@@ -45,15 +45,15 @@
                     </div>
 
                     <div class="d-flex align-items-baseline justify-content-between">
-                        <div class="h3 m-0">{{ formatValue(counter) }}</div>
+                        <div class="h3 m-0" :style="valueStyle(index)">{{ formatValue(counter) }}</div>
                         <div class="text-secondary small">{{ percentOf(counter) }}%</div>
                     </div>
 
                     <div class="progress progress-sm mt-2">
                         <div
                             class="progress-bar"
-                            :class="percentOf(counter) >= 100 ? 'bg-success' : 'bg-primary'"
-                            :style="{ width: Math.min(percentOf(counter), 100) + '%' }"
+                            :class="ownColorAt(index) ? '' : (percentOf(counter) >= 100 ? 'bg-success' : 'bg-primary')"
+                            :style="barStyle(counter, index)"
                         ></div>
                     </div>
                 </div>
@@ -76,6 +76,7 @@
                     <div
                         class="h4 m-0"
                         :class="copiedIndex === index ? 'text-success' : ''"
+                        :style="copiedIndex === index ? {} : valueStyle(index)"
                     >
                         {{ formatValue(counter) }}
                     </div>
@@ -103,6 +104,44 @@ const props = defineProps({
 })
 
 const items = computed(() => props.counters?.counters ?? [])
+
+/**
+ * Цвет плитки — тот, что автор выбрал для ряда с этим номером.
+ *
+ * Счётчик — такой же ряд, как столбец или линия, просто нарисованный числом,
+ * поэтому и палитра, и порядок ячеек у него общие с графиками (см. palette.js).
+ * Красим само число, а не всю карточку: заливка целиком превратила бы сводку
+ * в набор ярких прямоугольников и убила бы читаемость цифр, ради которых
+ * виджет и существует.
+ *
+ * В отличие от графиков, незаполненную ячейку НЕ добираем из общей палитры.
+ * У графика ряд обязан быть каким-то цветом, и стандартный там — цвет палитры;
+ * у счётчика стандартный — цвет текста. Добери мы палитру, как в colorsFor(),
+ * и выбор цвета для третьей плитки перекрасил бы первые две в синий и оранжевый,
+ * о чём никто не просил.
+ */
+function ownColorAt(index) {
+    const chosen = props.options?.colors
+
+    if (!Array.isArray(chosen)) return null
+
+    const color = chosen[index]
+
+    return typeof color === "string" && color.trim() !== "" ? color.trim() : null
+}
+
+function valueStyle(index) {
+    const color = ownColorAt(index)
+
+    return color ? { color } : {}
+}
+
+function barStyle(counter, index) {
+    const width = Math.min(percentOf(counter), 100) + "%"
+    const color = ownColorAt(index)
+
+    return color ? { width, backgroundColor: color } : { width }
+}
 
 const layout = computed(() => {
     const value = props.options.layout

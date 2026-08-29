@@ -3,6 +3,7 @@ import { ref, computed, watch, onBeforeUnmount, nextTick } from "vue";
 import api from "../../api.js";
 import { queryTemplateFor, COLUMN_HINTS } from "./queryTemplates.js";
 import { CHART_COLORS } from "../widgets/palette.js";
+import { supportsColors } from "../widgets/registry.js";
 
 /**
  * Настройка виджета — боковая шторка на четыре раздела.
@@ -70,6 +71,20 @@ const errors = ref([]);
 const okMessage = ref(null);
 const composedSql = ref(null);
 
+/**
+ * Что вернул последний прогон: сырые строки базы и то, во что платформа их
+ * разложила для виджета.
+ *
+ * Сервер отдавал и то и другое с самого начала (rows и data в ответе
+ * runQuery), но ответ выбрасывался целиком — оставалось только «Готово».
+ * Автору запроса этого мало: ошибка формы («вернулось три ряда вместо
+ * одного») видна лишь при сравнении сырых строк с разложенным результатом.
+ */
+const runResult = ref(null);
+
+/** Какую половину результата показывать: сырые строки или готовый виджет. */
+const resultView = ref("rows");
+
 const aggregates = computed(() => props.dictionary.aggregates ?? {});
 const grains = computed(() => props.dictionary.grains ?? {});
 const operators = computed(() => props.dictionary.operators ?? {});
@@ -80,6 +95,17 @@ const slots = computed(() => props.widget?.slots ?? null);
 
 /** Варианты отрисовки внутри семейства: круг или кольцо, столбцы или полосы. */
 const widgetTypes = computed(() => props.widget?.widget?.types ?? []);
+
+/**
+ * Показывать ли палитру.
+ *
+ * Спрашиваем у реестра виджетов, а не у списка здесь: красит ряды сам
+ * компонент семейства, и только он знает, читает ли он options.colors.
+ * У таблицы рядов нет — восемь ячеек палитры там обещали то, чего виджет
+ * не делает: цвет сохранялся, отчёт «Оформление сохранено» приходил,
+ * а на виджете не менялось ничего.
+ */
+const canPickColors = computed(() => supportsColors(familyName.value));
 
 // Счётчику с полосой выполнения нужна цель: от неё считается процент.
 const needsTarget = computed(() => Boolean(slots.value?.needs_target));
@@ -347,6 +373,7 @@ function needsColumn(agg) {
 function resetState() {
     errors.value = [];
     okMessage.value = null;
+    runResult.value = null;
 }
 
 // --- Слоты ------------------------------------------------------------------
@@ -718,6 +745,12 @@ function applyFailure(err, fallbackMessage) {
 
     errors.value = body?.errors?.length ? body.errors : [body?.message || fallbackMessage];
     composedSql.value = body?.sql ?? composedSql.value;
+
+    // Даже у неудачного прогона бывают строки: база ответила, а споткнулась
+    // раскладка. Без них автор видит только текст ошибки и гадает, что пришло.
+    if (body && (Array.isArray(body.rows) || body.data)) {
+        applyRunResult(body);
+    }
 }
 
 async function run() {
@@ -733,6 +766,7 @@ async function run() {
         );
 
         composedSql.value = body.sql ?? composedSql.value;
+        applyRunResult(body);
         okMessage.value = "Готово — запрос отработал, данные подходят виджету.";
     } catch (err) {
         applyFailure(err, "Не удалось выполнить.");
@@ -740,6 +774,38 @@ async function run() {
         running.value = false;
     }
 }
+
+/**
+ * Складывает ответ прогона так, как его читает автор.
+ *
+ * Неудачный прогон тоже показываем: база могла ответить строками, а споткнуться
+ * уже раскладка по форме виджета — и тогда именно сырые строки объясняют, чего
+ * в них не хватило.
+ */
+function applyRunResult(body) {
+    if (!body) return;
+
+    runResult.value = {
+        rows: Array.isArray(body.rows) ? body.rows : [],
+        data: body.data ?? null,
+        columns: Array.isArray(body.columns) ? body.columns : [],
+    };
+
+    // По умолчанию открываем ту половину, которая сейчас важнее: разложенный
+    // результат есть — смотреть надо его, нет — причина в сырых строках.
+    resultView.value = runResult.value.data ? "data" : "rows";
+}
+
+/** Строки прогона в виде таблицы: заголовки берём из первой строки. */
+const rowColumns = computed(() => {
+    const first = runResult.value?.rows?.[0];
+
+    return first && typeof first === "object" ? Object.keys(first) : [];
+});
+
+const shapedJson = computed(() =>
+    runResult.value?.data ? JSON.stringify(runResult.value.data, null, 2) : ""
+);
 
 async function save() {
     if (saving.value || !canRun.value) return;
@@ -792,13 +858,18 @@ async function saveLook() {
 
         while (chosen.length && !chosen[chosen.length - 1]) chosen.pop();
 
+        const body = { title: trimmed, widget_type_id: typeId.value };
+
+        // Палитры у этого семейства нет — и присылать её нельзя: пустой список
+        // сервер понимает как «сбросить цвета», и сохранение заголовка стирало
+        // бы оформление, которого человек даже не видел.
+        if (canPickColors.value) {
+            body.presentation = { colors: chosen };
+        }
+
         const { data } = await api.patch(
             `/dashboards/${props.dashboardId}/widgets/${props.widget.id}`,
-            {
-                title: trimmed,
-                widget_type_id: typeId.value,
-                presentation: { colors: chosen },
-            }
+            body
         );
 
         okMessage.value = "Оформление сохранено.";
@@ -1104,7 +1175,7 @@ onBeforeUnmount(() => {
                         </div>
                     </div>
 
-                    <div class="mb-3">
+                    <div v-if="canPickColors" class="mb-3">
                         <div class="d-flex align-items-center mb-1">
                             <label class="form-label mb-0">Цвета рядов</label>
                             <button type="button" class="btn btn-sm btn-ghost-secondary ms-auto"
@@ -1345,12 +1416,78 @@ onBeforeUnmount(() => {
 
                 <!-- ============ 4. SQL ============ -->
                 <template v-else>
-                    <label class="form-label">SQL-запрос</label>
+                    <!-- Запуск стоит здесь, у самого запроса, а не только в подвале:
+                         запрос правят и проверяют одним движением, и уходить за
+                         кнопкой вниз, к «Сохранить», на каждой правке — лишний шаг. -->
+                    <div class="d-flex align-items-center mb-1">
+                        <label class="form-label mb-0">SQL-запрос</label>
+
+                        <button type="button" class="btn btn-sm btn-outline-primary ms-auto"
+                                :class="{ 'btn-loading': running }"
+                                :disabled="running || saving || !canRun" @click="run">
+                            Запустить
+                        </button>
+                    </div>
 
                     <textarea v-model="query" class="form-control builder-sql" spellcheck="false"
                               rows="16" aria-label="SQL-запрос виджета"
                               @input="sqlTouched = true"
                               @keydown.tab.prevent="onTab"></textarea>
+
+                    <!-- Результат прогона: слева то, что вернула база, справа то,
+                         во что это разложилось для виджета. Рядом, потому что
+                         ошибка формы видна только при сравнении этих двух. -->
+                    <div v-if="runResult" class="card mt-2">
+                        <div class="card-header p-0">
+                            <ul class="nav nav-tabs card-header-tabs px-2" role="tablist">
+                                <li class="nav-item">
+                                    <button class="nav-link" type="button"
+                                            :class="{ active: resultView === 'rows' }"
+                                            @click="resultView = 'rows'">
+                                        Ответ базы
+                                        <span class="badge bg-secondary-lt ms-1">{{ runResult.rows.length }}</span>
+                                    </button>
+                                </li>
+                                <li class="nav-item">
+                                    <button class="nav-link" type="button"
+                                            :class="{ active: resultView === 'data' }"
+                                            @click="resultView = 'data'">
+                                        Данные виджета
+                                    </button>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <div class="card-body p-2">
+                            <template v-if="resultView === 'rows'">
+                                <div v-if="!runResult.rows.length" class="text-secondary small">
+                                    Запрос не вернул ни одной строки.
+                                </div>
+
+                                <div v-else class="table-responsive builder-result">
+                                    <table class="table table-sm table-vcenter mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th v-for="column in rowColumns" :key="column">{{ column }}</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr v-for="(row, index) in runResult.rows" :key="index">
+                                                <td v-for="column in rowColumns" :key="column">{{ row[column] }}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </template>
+
+                            <template v-else>
+                                <div v-if="!shapedJson" class="text-secondary small">
+                                    Разложить в форму виджета не удалось — смотрите ответ базы и ошибку ниже.
+                                </div>
+                                <pre v-else class="mb-0 builder-result builder-sql">{{ shapedJson }}</pre>
+                            </template>
+                        </div>
+                    </div>
 
                     <div v-if="!sqlTouched && composedSql" class="form-hint mt-1">
                         Запрос собран конструктором. Правки здесь останутся —
@@ -1453,6 +1590,13 @@ onBeforeUnmount(() => {
     margin: 0;
     white-space: pre-wrap;
     word-break: break-word;
+}
+
+/* Результат прогона не должен выталкивать запрос за экран: смотрят их вместе. */
+.builder-result {
+    max-height: 260px;
+    overflow: auto;
+    font-size: 12px;
 }
 
 /* Ячейка палитры: образец цвета и крестик «вернуть стандартный». */

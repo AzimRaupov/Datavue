@@ -19,24 +19,42 @@ import Funnel from "./Funnel.vue";
  * виджетов — иначе галерея показывала бы не то, что реально отрисуется.
  *
  * placeholder — форма заглушки на время генерации.
+ *
+ * colors — умеет ли семейство красить ряды своей палитрой. Признак живёт
+ * здесь, рядом с компонентом, потому что отвечает на него именно компонент:
+ * если он не читает options.colors, шторка настройки не должна предлагать
+ * выбор цвета. Пока такого признака не было, у таблицы и счётчиков честно
+ * показывались восемь ячеек палитры и рапортовалось «Оформление сохранено»,
+ * а на виджете не менялось ничего — обещание, которого продукт не выполнял.
  */
 export const FAMILIES = {
-    "mini-counters": { component: MiniCounters, placeholder: "counters" },
-    "bar": { component: Bar, placeholder: "bars" },
-    "line": { component: Line, placeholder: "chart" },
-    "pie": { component: Pie, placeholder: "circle" },
-    "radial": { component: Radial, placeholder: "circle" },
-    "combo": { component: Combo, placeholder: "bars" },
-    "table": { component: Table, placeholder: "table" },
-    "scatter": { component: Scatter, placeholder: "chart" },
-    "radar": { component: Radar, placeholder: "chart" },
-    "heatmap": { component: Heatmap, placeholder: "bars" },
-    "treemap": { component: Treemap, placeholder: "chart" },
-    "funnel": { component: Funnel, placeholder: "bars" },
+    "mini-counters": { component: MiniCounters, placeholder: "counters", colors: true },
+    "bar": { component: Bar, placeholder: "bars", colors: true },
+    "line": { component: Line, placeholder: "chart", colors: true },
+    "pie": { component: Pie, placeholder: "circle", colors: true },
+    "radial": { component: Radial, placeholder: "circle", colors: true },
+    "combo": { component: Combo, placeholder: "bars", colors: true },
+    // У таблицы нет рядов — красить нечего.
+    "table": { component: Table, placeholder: "table", colors: false },
+    "scatter": { component: Scatter, placeholder: "chart", colors: true },
+    "radar": { component: Radar, placeholder: "chart", colors: true },
+    "heatmap": { component: Heatmap, placeholder: "bars", colors: true },
+    "treemap": { component: Treemap, placeholder: "chart", colors: true },
+    "funnel": { component: Funnel, placeholder: "bars", colors: true },
 };
 
 export function familyOf(name) {
     return FAMILIES[name] ?? null;
+}
+
+/**
+ * Красит ли это семейство ряды выбранной палитрой.
+ *
+ * Незнакомое семейство считаем красящим: скрытая настройка хуже лишней —
+ * новый виджет починят по жалобе «цвет не применился», а не по её отсутствию.
+ */
+export function supportsColors(name) {
+    return FAMILIES[name]?.colors !== false;
 }
 
 /**

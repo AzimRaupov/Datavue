@@ -119,7 +119,12 @@ class DashboardReGenerator
     }
 
 
-    public function determineChanges(string $instruction): void
+    /**
+     * @param \Illuminate\Support\Collection|iterable|null $history Последние сообщения
+     *   чата (message/answer/offer_type/offer_summary), собранные RouterTask ещё до
+     *   классификации, в порядке от новых к старым.
+     */
+    public function determineChanges(string $instruction, $history = null): void
     {
         $task = AiChatTask::query()->create([
             'chat_id' => $this->chat->id,
@@ -159,7 +164,8 @@ class DashboardReGenerator
             'dashboard_widgets' => $widgetsJson,
             'groups' => $groups,
             'widgets' => $widgets,
-            'text' => $instruction
+            'text' => $instruction,
+            'history' => $this->historyJson($history),
         ];
 
         $resultDefine = $this->dashboardReGeneratorAi->defineChanges($data);
@@ -721,6 +727,41 @@ class DashboardReGenerator
     private function widgetCatalogJson(): string
     {
         return (new WidgetCatalog($this->widgets))->compactJson();
+    }
+
+    /**
+     * История переписки для defineChanges() — тем же составом полей, что уже
+     * читают ChatAgentAi/DefineTaskAi (message/answer/offer_type/offer_summary).
+     *
+     * Без неё короткое подтверждение («давай», «давай но не трогай карточки»)
+     * долетает до модели голым текстом текущего сообщения: она видит список
+     * виджетов и «давай», но не видит, ЧТО именно агент предложил ходом раньше,
+     * и честно возвращает пустой operations — план из предыдущего ответа
+     * теряется, даже если сам агент только что подробно его расписал.
+     *
+     * RouterTask отдаёт сообщения от новых к старым — разворачиваем в
+     * хронологический порядок, чтобы модель читала переписку так же, как
+     * читал бы её человек: от первого сообщения к последнему перед текущим.
+     */
+    private function historyJson($history): string
+    {
+        $messages = $history instanceof \Illuminate\Support\Collection
+            ? $history
+            : collect($history ?? []);
+
+        return json_encode(
+            $messages
+                ->reverse()
+                ->values()
+                ->map(fn ($item) => [
+                    'message' => $item->message ?? null,
+                    'answer' => $item->answer ?? null,
+                    'offer_type' => $item->offer_type ?? null,
+                    'offer_summary' => $item->offer_summary ?? null,
+                ])
+                ->toArray(),
+            JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT
+        );
     }
 
     /**
