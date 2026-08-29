@@ -236,7 +236,7 @@ onBeforeUnmount(() => {
                             ></textarea>
 
                             <div class="d-flex gap-2 mt-2 flex-wrap">
-                                <button type="button" class="btn btn-outline-primary"
+                                <button type="button" class="btn"
                                         :class="{ 'btn-loading': running }"
                                         :disabled="running || saving" @click="runDraft">
                                     Выполнить
@@ -311,7 +311,7 @@ onBeforeUnmount(() => {
                                 <div class="form-label">Таблицы источника</div>
                                 <div class="builder-schema">
                                     <div v-for="table in schema" :key="table.name" class="mb-2">
-                                        <button type="button" class="btn btn-sm btn-ghost-secondary p-0"
+                                        <button type="button" class="btn btn-link p-0"
                                                 @click="insertTable(table)">
                                             {{ table.name }}
                                         </button>
@@ -342,6 +342,12 @@ onBeforeUnmount(() => {
     overflow-x: auto;
 }
 
+/*
+ * Голый <pre> Tabler отдаёт под примеры кода: тёмная заливка
+ * (--tblr-bg-surface-dark) и светлый текст (--tblr-light). Здесь заливка уже
+ * переопределялась на светлую, а цвет текста — нет, и он оставался почти белым
+ * на светлом фоне. Возвращаем и цвет тоже.
+ */
 .builder-preview,
 .builder-scheme,
 .builder-errors {
@@ -349,6 +355,7 @@ onBeforeUnmount(() => {
     max-height: 220px;
     overflow: auto;
     background: var(--tblr-bg-surface-secondary);
+    color: var(--tblr-body-color);
     border-radius: 4px;
     padding: 8px;
     margin: 0;

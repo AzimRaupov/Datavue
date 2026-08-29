@@ -34,7 +34,7 @@
  * занимала пол-экрана.
  */
 .empty-img img {
-    height: 8rem;
+    height: 12rem;
     width: auto;
     max-width: 100%;
 }

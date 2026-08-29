@@ -872,9 +872,9 @@ onBeforeUnmount(() => {
 
                 <!-- Пространство без дашбордов: так выглядит только что созданный
                      разговор — дашборд появится, как только его попросят. -->
-                <div v-else-if="!dashboard" class="empty">
+                <div v-else-if="!dashboard" class="empty workspace-empty">
                     <div class="empty-img">
-                        <img :src="empty_img" alt="" height="128" />
+                        <img :src="empty_img" alt="" height="192" />
                     </div>
                     <p class="empty-title">Дашбордов пока нет</p>
                     <p class="empty-subtitle text-secondary">
@@ -887,9 +887,9 @@ onBeforeUnmount(() => {
                     </div>
                 </div>
 
-                <div v-else-if="isGenerating && !widgets.length" class="empty">
+                <div v-else-if="isGenerating && !widgets.length" class="empty workspace-empty">
                     <div class="empty-img">
-                        <img :src="generate_img" alt="" height="128" />
+                        <img :src="generate_img" alt="" height="192" />
                     </div>
                     <p class="empty-title">Генерируем дашборд</p>
                     <p class="empty-subtitle text-secondary">Подбираем виджеты под ваш запрос.</p>
@@ -1127,7 +1127,6 @@ onBeforeUnmount(() => {
             :key="chat.id"
             class="d-print-none"
             :open="chatOpen"
-            :chat-title="chat.title"
             :chat-id="chat.id"
             :dashboard-id="dashboardId"
             :suggestions="chat.suggestions ?? []"
@@ -1224,6 +1223,14 @@ body.chat-page .page {
 
 .builder-card:hover .builder-grip {
     opacity: 1;
+}
+
+/* Пустое пространство должно стоять по центру видимой области, а не
+   прижиматься к шапке: у самого .empty (Tabler) высота 100% родителя,
+   а родитель — .container-xl — высоты не задаёт и подстраивается под
+   контент. */
+.workspace-empty {
+    min-height: calc(100vh - 200px);
 }
 
 .workspace-widget-error {

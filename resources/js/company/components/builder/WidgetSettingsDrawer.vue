@@ -995,15 +995,10 @@ onBeforeUnmount(() => {
                     </div>
                 </div>
 
-                <button class="btn btn-sm btn-ghost-secondary px-2 flex-shrink-0" title="Закрыть (Esc)"
-                        aria-label="Закрыть" @click="hide">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24"
-                         fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                         stroke-linejoin="round">
-                        <path d="M18 6l-12 12" />
-                        <path d="M6 6l12 12" />
-                    </svg>
-                </button>
+                <!-- Крестик закрытия — тот же .btn-close, что у offcanvas и модалок
+                     Tabler, а не кнопка со своей иконкой. -->
+                <button type="button" class="btn-close flex-shrink-0" title="Закрыть (Esc)"
+                        aria-label="Закрыть" @click="hide"></button>
             </div>
 
             <!-- РАЗДЕЛЫ -->
@@ -1037,11 +1032,17 @@ onBeforeUnmount(() => {
                         <div class="mb-3">
                             <div class="d-flex align-items-center mb-1">
                                 <label class="form-label mb-0">Связанные таблицы</label>
-                                <button type="button" class="btn btn-sm btn-ghost-primary ms-auto"
+                                <button type="button" class="btn btn-sm ms-auto"
                                         :disabled="!joinableTables('').length"
                                         :title="joinableTables('').length ? '' : 'С этой таблицей ничего не связано'"
                                         @click="addJoin">
-                                    + связать
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+                                         viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                         stroke-linecap="round" stroke-linejoin="round" class="icon">
+                                        <path d="M12 5l0 14" />
+                                        <path d="M5 12l14 0" />
+                                    </svg>
+                                    Связать
                                 </button>
                             </div>
 
@@ -1111,15 +1112,38 @@ onBeforeUnmount(() => {
                                     </select>
                                 </div>
 
-                                <div class="col-auto text-end">
-                                    <button type="button" class="btn btn-sm btn-ghost-secondary px-1"
-                                            :title="join.manual ? 'Выбрать из известных связей' : 'Указать колонки вручную'"
-                                            @click="join.manual = !join.manual">
-                                        {{ join.manual ? '↺' : '✎' }}
-                                    </button>
-                                    <button type="button" class="btn btn-sm btn-ghost-danger px-1"
-                                            aria-label="Убрать связь"
-                                            @click="removeAt(joins, index)">×</button>
+                                <div class="col-auto">
+                                    <div class="btn-list flex-nowrap">
+                                        <button type="button" class="btn btn-icon btn-sm"
+                                                :title="join.manual ? 'Выбрать из известных связей' : 'Указать колонки вручную'"
+                                                @click="join.manual = !join.manual">
+                                            <svg v-if="join.manual" xmlns="http://www.w3.org/2000/svg" width="24"
+                                                 height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                                                 class="icon">
+                                                <path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4" />
+                                                <path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4" />
+                                            </svg>
+                                            <svg v-else xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+                                                 viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                                                 class="icon">
+                                                <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+                                                <path d="M13.5 6.5l4 4" />
+                                            </svg>
+                                        </button>
+                                        <button type="button" class="btn btn-icon btn-sm"
+                                                aria-label="Убрать связь" title="Убрать связь"
+                                                @click="removeAt(joins, index)">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+                                                 viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                                                 class="icon">
+                                                <path d="M18 6l-12 12" />
+                                                <path d="M6 6l12 12" />
+                                            </svg>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
 
@@ -1142,7 +1166,7 @@ onBeforeUnmount(() => {
                         <div class="mb-2">
                             <div class="text-secondary small mb-1">В запросе участвуют:</div>
                             <div class="d-flex flex-wrap gap-1">
-                                <span v-for="name in tablesInPlay" :key="name" class="badge bg-blue-lt">
+                                <span v-for="name in tablesInPlay" :key="name" class="badge bg-secondary-lt">
                                     {{ name }}
                                 </span>
                             </div>
@@ -1178,7 +1202,7 @@ onBeforeUnmount(() => {
                     <div v-if="canPickColors" class="mb-3">
                         <div class="d-flex align-items-center mb-1">
                             <label class="form-label mb-0">Цвета рядов</label>
-                            <button type="button" class="btn btn-sm btn-ghost-secondary ms-auto"
+                            <button type="button" class="btn btn-sm ms-auto"
                                     :disabled="!colors.some(Boolean)" @click="resetAllColors">
                                 Сбросить
                             </button>
@@ -1216,9 +1240,14 @@ onBeforeUnmount(() => {
                         <div class="mb-3">
                             <div class="d-flex align-items-center mb-1">
                                 <label class="form-label mb-0">Метрики</label>
-                                <button type="button" class="btn btn-sm btn-ghost-primary ms-auto"
-                                        @click="addMetric">
-                                    + добавить
+                                <button type="button" class="btn btn-sm ms-auto" @click="addMetric">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+                                         viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                         stroke-linecap="round" stroke-linejoin="round" class="icon">
+                                        <path d="M12 5l0 14" />
+                                        <path d="M5 12l14 0" />
+                                    </svg>
+                                    Добавить
                                 </button>
                             </div>
 
@@ -1265,9 +1294,16 @@ onBeforeUnmount(() => {
                                            :aria-label="'Цель метрики ' + (metric.label || index + 1)" />
                                 </div>
                                 <div class="col-1 text-end">
-                                    <button type="button" class="btn btn-sm btn-ghost-danger px-1"
-                                            aria-label="Удалить метрику"
-                                            @click="removeAt(metrics, index)">×</button>
+                                    <button type="button" class="btn btn-icon btn-sm"
+                                            aria-label="Удалить метрику" title="Удалить метрику"
+                                            @click="removeAt(metrics, index)">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+                                             viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                             stroke-linecap="round" stroke-linejoin="round" class="icon">
+                                            <path d="M18 6l-12 12" />
+                                            <path d="M6 6l12 12" />
+                                        </svg>
+                                    </button>
                                 </div>
                             </div>
 
@@ -1284,10 +1320,16 @@ onBeforeUnmount(() => {
                         <div class="mb-3">
                             <div class="d-flex align-items-center mb-1">
                                 <label class="form-label mb-0">Разбивка</label>
-                                <button type="button" class="btn btn-sm btn-ghost-primary ms-auto"
+                                <button type="button" class="btn btn-sm ms-auto"
                                         :disabled="dimensions.length >= (slots?.dimensions?.max ?? 2)"
                                         @click="addDimension">
-                                    + добавить
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+                                         viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                         stroke-linecap="round" stroke-linejoin="round" class="icon">
+                                        <path d="M12 5l0 14" />
+                                        <path d="M5 12l14 0" />
+                                    </svg>
+                                    Добавить
                                 </button>
                             </div>
 
@@ -1314,9 +1356,16 @@ onBeforeUnmount(() => {
                                     </select>
                                 </div>
                                 <div class="col-1 text-end">
-                                    <button type="button" class="btn btn-sm btn-ghost-danger px-1"
-                                            aria-label="Удалить разбивку"
-                                            @click="removeAt(dimensions, index)">×</button>
+                                    <button type="button" class="btn btn-icon btn-sm"
+                                            aria-label="Удалить разбивку" title="Удалить разбивку"
+                                            @click="removeAt(dimensions, index)">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+                                             viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                             stroke-linecap="round" stroke-linejoin="round" class="icon">
+                                            <path d="M18 6l-12 12" />
+                                            <path d="M6 6l12 12" />
+                                        </svg>
+                                    </button>
                                 </div>
                             </div>
 
@@ -1333,9 +1382,14 @@ onBeforeUnmount(() => {
                         <div class="mb-3">
                             <div class="d-flex align-items-center mb-1">
                                 <label class="form-label mb-0">Условия</label>
-                                <button type="button" class="btn btn-sm btn-ghost-primary ms-auto"
-                                        @click="addFilter">
-                                    + добавить
+                                <button type="button" class="btn btn-sm ms-auto" @click="addFilter">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+                                         viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                         stroke-linecap="round" stroke-linejoin="round" class="icon">
+                                        <path d="M12 5l0 14" />
+                                        <path d="M5 12l14 0" />
+                                    </svg>
+                                    Добавить
                                 </button>
                             </div>
 
@@ -1364,9 +1418,16 @@ onBeforeUnmount(() => {
                                            placeholder="значение" aria-label="Значение условия" />
                                 </div>
                                 <div class="col-1 text-end">
-                                    <button type="button" class="btn btn-sm btn-ghost-danger px-1"
-                                            aria-label="Удалить условие"
-                                            @click="removeAt(filters, index)">×</button>
+                                    <button type="button" class="btn btn-icon btn-sm"
+                                            aria-label="Удалить условие" title="Удалить условие"
+                                            @click="removeAt(filters, index)">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+                                             viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                             stroke-linecap="round" stroke-linejoin="round" class="icon">
+                                            <path d="M18 6l-12 12" />
+                                            <path d="M6 6l12 12" />
+                                        </svg>
+                                    </button>
                                 </div>
                             </div>
 
@@ -1416,28 +1477,39 @@ onBeforeUnmount(() => {
 
                 <!-- ============ 4. SQL ============ -->
                 <template v-else>
-                    <!-- Запуск стоит здесь, у самого запроса, а не только в подвале:
-                         запрос правят и проверяют одним движением, и уходить за
-                         кнопкой вниз, к «Сохранить», на каждой правке — лишний шаг. -->
-                    <div class="d-flex align-items-center mb-1">
-                        <label class="form-label mb-0">SQL-запрос</label>
+                    <!-- Запрос, и сразу под ним — всё, что его описывает: подсказка
+                         про конструктор и колонки, которые он обязан вернуть.
+                         Результат прогона идёт ниже, отдельным блоком: раньше он
+                         вклинивался между запросом и подсказкой, и подсказка
+                         читалась как описание результата. -->
+                    <div class="mb-3">
+                        <label class="form-label">SQL-запрос</label>
 
-                        <button type="button" class="btn btn-sm btn-outline-primary ms-auto"
-                                :class="{ 'btn-loading': running }"
-                                :disabled="running || saving || !canRun" @click="run">
-                            Запустить
-                        </button>
+                        <textarea v-model="query" class="form-control builder-sql" spellcheck="false"
+                                  rows="14" aria-label="SQL-запрос виджета"
+                                  @input="sqlTouched = true"
+                                  @keydown.tab.prevent="onTab"></textarea>
+
+                        <div v-if="!sqlTouched && composedSql" class="form-hint">
+                            Запрос собран конструктором. Правки здесь останутся —
+                            настройки его больше не перезапишут.
+                        </div>
                     </div>
 
-                    <textarea v-model="query" class="form-control builder-sql" spellcheck="false"
-                              rows="16" aria-label="SQL-запрос виджета"
-                              @input="sqlTouched = true"
-                              @keydown.tab.prevent="onTab"></textarea>
+                    <div v-if="requiredColumns.length" class="mb-3">
+                        <div class="form-label">Запрос должен вернуть колонки</div>
+                        <div class="d-flex flex-wrap gap-2">
+                            <span v-for="column in requiredColumns" :key="column"
+                                  class="badge bg-secondary-lt" :title="hintFor(column)">
+                                {{ column }}
+                            </span>
+                        </div>
+                    </div>
 
-                    <!-- Результат прогона: слева то, что вернула база, справа то,
+                    <!-- Результат прогона: сначала то, что вернула база, затем то,
                          во что это разложилось для виджета. Рядом, потому что
                          ошибка формы видна только при сравнении этих двух. -->
-                    <div v-if="runResult" class="card mt-2">
+                    <div v-if="runResult" class="card mb-3">
                         <div class="card-header p-0">
                             <ul class="nav nav-tabs card-header-tabs px-2" role="tablist">
                                 <li class="nav-item">
@@ -1489,23 +1561,8 @@ onBeforeUnmount(() => {
                         </div>
                     </div>
 
-                    <div v-if="!sqlTouched && composedSql" class="form-hint mt-1">
-                        Запрос собран конструктором. Правки здесь останутся —
-                        настройки его больше не перезапишут.
-                    </div>
-
-                    <div v-if="requiredColumns.length" class="mt-2">
-                        <div class="text-secondary small mb-1">Запрос должен вернуть колонки:</div>
-                        <div class="d-flex flex-wrap gap-2">
-                            <span v-for="column in requiredColumns" :key="column"
-                                  class="badge bg-blue-lt" :title="hintFor(column)">
-                                {{ column }}
-                            </span>
-                        </div>
-                    </div>
-
-                    <div class="mt-3">
-                        <button type="button" class="btn btn-link link-secondary p-0"
+                    <div>
+                        <button type="button" class="btn btn-sm"
                                 @click="showPresentation = !showPresentation">
                             {{ showPresentation ? 'Скрыть оформление' : 'Оформление, JSON' }}
                         </button>
@@ -1547,7 +1604,7 @@ onBeforeUnmount(() => {
 
                 <template v-else>
                     <div class="d-flex gap-2 flex-wrap align-items-center">
-                        <button type="button" class="btn btn-outline-primary"
+                        <button type="button" class="btn"
                                 :class="{ 'btn-loading': running }"
                                 :disabled="running || saving || !canRun" @click="run">
                             Выполнить
@@ -1581,6 +1638,22 @@ onBeforeUnmount(() => {
     tab-size: 4;
     white-space: pre;
     overflow-x: auto;
+}
+
+/*
+ * Tabler красит ГОЛЫЙ <pre> в --tblr-bg-surface-dark (gray-900) со светлым
+ * текстом: это его стиль для примеров кода в документации. Здесь pre — не
+ * пример кода, а панель вывода: она стоит во вкладке рядом со светлой таблицей
+ * ответа базы и внутри красного alert'а с ошибкой. Тёмный прямоугольник посреди
+ * светлой шторки читался как поломка вёрстки, поэтому заливку снимаем и отдаём
+ * блоку фон контейнера.
+ */
+pre.builder-result,
+pre.builder-errors {
+    background: transparent;
+    color: inherit;
+    padding: 0;
+    border-radius: 0;
 }
 
 .builder-errors {
