@@ -233,6 +233,11 @@ class ReviewWidgetsDashboard
 
     /**
      * Схема таблиц виджета для повторной генерации.
+     *
+     * detailed(), а не basic(): чинить виджет с фильтром по выдуманному значению
+     * («Заявка», «Оплата»...) можно, только если модель на этом шаге видит
+     * реальные значения колонки (sample_values) — иначе она либо повторит ту
+     * же ошибку, либо угадает другое несуществующее значение.
      */
     private function schemeFor(DashboardWidget $widget): array
     {
@@ -243,7 +248,7 @@ class ReviewWidgetsDashboard
         }
 
         try {
-            return $this->connectionProviderRouter->getSchema($tables, SchemaOptions::basic());
+            return $this->connectionProviderRouter->getSchema($tables, SchemaOptions::detailed());
         } catch (Throwable $e) {
             Log::warning('ReviewWidgetsDashboard: не удалось прочитать схему', [
                 'widget_id' => $widget->id,

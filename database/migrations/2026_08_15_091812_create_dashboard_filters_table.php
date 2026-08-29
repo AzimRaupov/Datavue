@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::create('dashboard_filters', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('filter')->constrained('filers')->column('name');
+            $table->foreignId('filter_id')->constrained('filters');
             $table->foreignId('filter_connect_setting_id')->constrained('filter_connect_settings');
             $table->foreignId('dashboard_id')->constrained('dashboards');
             $table->enum('status', ['active', 'inactive'])->default('active');

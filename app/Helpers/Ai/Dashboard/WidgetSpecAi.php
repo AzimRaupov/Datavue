@@ -152,6 +152,12 @@ class WidgetSpecAi
 8. Если задача требует связи нескольких таблиц, окон или подзапросов —
    верни "needs_sql": true и объясни в "reason" одной фразой. Не пытайся
    выразить это настройками.
+9. Если для "filters" нужно конкретное значение колонки (статус, стадия,
+   категория и т.п.) — бери его СЛОВО В СЛОВО из "примеры значений" рядом
+   с этой колонкой в схеме выше. Нет секции "примеры значений" у колонки
+   или среди них нет нужного значения — НЕ пиши по нему фильтр со значением
+   (придуманное значение отфильтрует все строки и виджет останется пустым);
+   вместо этого используй колонку как разрез (dimension) без фильтра.
 TEXT;
     }
 
@@ -169,8 +175,23 @@ TEXT;
         foreach ($schema as $table => $columns) {
             $parts = [];
 
-            foreach ($columns as $name => $type) {
-                $parts[] = is_string($name) ? "{$name} ({$type})" : (string) $type;
+            foreach ($columns as $name => $meta) {
+                if (!is_string($name)) {
+                    $parts[] = is_array($meta) ? (string) ($meta['type'] ?? '') : (string) $meta;
+
+                    continue;
+                }
+
+                $type = is_array($meta) ? (string) ($meta['type'] ?? 'unknown') : (string) $meta;
+                $samples = is_array($meta) ? ($meta['samples'] ?? []) : [];
+
+                $part = "{$name} ({$type})";
+
+                if ($samples !== []) {
+                    $part .= ' — примеры значений: '.implode(', ', $samples);
+                }
+
+                $parts[] = $part;
             }
 
             $lines[] = $table.': '.implode(', ', $parts);

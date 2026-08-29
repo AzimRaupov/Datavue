@@ -31,13 +31,17 @@ class SchemaOptions
 
     /**
      * Используется при генерации/проверке контента виджета — включает дополнительные
-     * поля (default, confidence, match_rate), нужные модели для более точного связывания таблиц.
+     * поля (default, confidence, match_rate), нужные модели для более точного связывания таблиц,
+     * а также примеры реальных значений текстовых колонок (sample_values) — без них модель
+     * не знает, какие строки реально лежат в столбце типа "статус"/"категория", и на фильтрах
+     * по значению вынуждена их придумывать (см. WidgetSpecAi/WidgetQueryAi).
      */
     public static function detailed(): array
     {
         return [
             'count_rows',
             'columns',
+            'sample_values',
             'relations' => [
                 'column' => [
                     'type',

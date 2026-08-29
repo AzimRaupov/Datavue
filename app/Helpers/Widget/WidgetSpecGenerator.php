@@ -304,13 +304,17 @@ class WidgetSpecGenerator
     // -----------------------------------------------------------------
 
     /**
-     * Схема в виде «таблица => колонка => тип».
+     * Схема в виде «таблица => колонка => {type, samples?}».
      *
      * Из полной схемы выбрасывается всё, что не нужно для выбора метрики
      * и разреза: связи, число строк, уверенность сопоставления. На виджет
      * это экономит больше половины промпта.
      *
-     * @return array<string, array<string, string>>
+     * Примеры значений (samples) сохраняются нарочно — без них модель не
+     * знает, какие строки реально лежат в колонке-статусе/категории, и на
+     * фильтрах по значению вынуждена их придумывать (см. WidgetSpecAi).
+     *
+     * @return array<string, array<string, array{type: string, samples?: array<int, string>}>>
      */
     private function compactSchema(array $tablesScheme): array
     {
@@ -326,14 +330,24 @@ class WidgetSpecGenerator
             foreach ($columns as $name => $meta) {
                 if (is_int($name)) {
                     // Колонки могут прийти простым списком имён.
-                    $schema[$table][(string) $meta] = 'unknown';
+                    $schema[$table][(string) $meta] = ['type' => 'unknown'];
 
                     continue;
                 }
 
-                $schema[$table][$name] = is_array($meta)
-                    ? (string) ($meta['type'] ?? 'unknown')
-                    : (string) $meta;
+                if (!is_array($meta)) {
+                    $schema[$table][$name] = ['type' => (string) $meta];
+
+                    continue;
+                }
+
+                $entry = ['type' => (string) ($meta['type'] ?? 'unknown')];
+
+                if (!empty($meta['sample_values'])) {
+                    $entry['samples'] = array_values(array_map('strval', $meta['sample_values']));
+                }
+
+                $schema[$table][$name] = $entry;
             }
         }
 
