@@ -75,6 +75,14 @@ const workspaceId = computed(() => space.value?.id ?? null);
 const dataSource = computed(() => workspace.value.data_source ?? null);
 const chat = computed(() => workspace.value.chat ?? null);
 
+/**
+ * Голый адрес пространства (без дашборда в пути) — заход «в пространство
+ * вообще», а не по ссылке на конкретный дашборд или чат. Для него страница
+ * сначала показывает обзор (чат + список дашбордов), а не открывает молча
+ * последний дашборд — так пользователь сам решает, с чего начать.
+ */
+const isWorkspaceLanding = computed(() => !!route.params.workspace && !route.params.dashboard);
+
 const isGenerating = computed(() =>
     ["generating_scheme", "generating_widgets"].includes(dashboard.value?.status)
 );
@@ -170,18 +178,26 @@ async function load() {
     try {
         const current = await loadWorkspace();
 
-        await loadDashboard(current);
+        if (isWorkspaceLanding.value) {
+            // Обзор: дашборд открывается по клику, не молча по последнему.
+            dashboard.value = null;
+            widgets.value = [];
+            subscribeToDashboard();
+        } else {
+            await loadDashboard(current);
 
-        subscribeToDashboard();
+            subscribeToDashboard();
 
-        // Вход по дашборду или по чату — это ссылка со стороны; адрес приводим
-        // к каноническому, чтобы обновление страницы и «назад» вели туда же.
-        if (!route.params.workspace && workspaceId.value) {
-            await router.replace({
-                name: "company.workspace",
-                params: { workspace: workspaceId.value, dashboard: current ?? undefined },
-                query: route.query,
-            });
+            // Вход по дашборду или по чату — это ссылка со стороны; адрес
+            // приводим к каноническому, чтобы обновление страницы и «назад»
+            // вели туда же.
+            if (!route.params.workspace && workspaceId.value) {
+                await router.replace({
+                    name: "company.workspace",
+                    params: { workspace: workspaceId.value, dashboard: current ?? undefined },
+                    query: route.query,
+                });
+            }
         }
     } catch (err) {
         error.value =
@@ -278,9 +294,14 @@ watch(
     () => {
         // Приведение адреса к каноническому не должно грузить страницу второй
         // раз: открыто ровно то, что в адресе, — поменялась только форма ссылки.
+        // Голый адрес пространства (обзор) сверяем отдельно: у него в адресе
+        // дашборда нет вовсе, но это не значит «ничего не изменилось», если
+        // до этого был открыт конкретный дашборд.
         const sameWorkspace = Number(route.params.workspace) === workspaceId.value;
-        const sameDashboard = !route.params.dashboard
-            || Number(route.params.dashboard) === dashboardId.value;
+        const targetIsLanding = !!route.params.workspace && !route.params.dashboard;
+        const sameDashboard = targetIsLanding
+            ? dashboard.value === null
+            : Number(route.params.dashboard) === dashboardId.value;
 
         if (sameWorkspace && sameDashboard) return;
 
@@ -730,7 +751,14 @@ onBeforeUnmount(() => {
                                     {{ t('workspacePage.breadcrumb.workspaces') }}
                                 </router-link>
                                 <span class="text-secondary">/</span>
-                                <span class="fw-bold text-truncate">{{ space?.name }}</span>
+                                <router-link
+                                    v-if="dashboard && workspaceId"
+                                    :to="{ name: 'company.workspace', params: { workspace: workspaceId } }"
+                                    class="text-reset text-decoration-none fw-bold text-truncate"
+                                >
+                                    {{ space?.name }}
+                                </router-link>
+                                <span v-else class="fw-bold text-truncate">{{ space?.name }}</span>
 
                                 <template v-if="dataSource">
                                     <span class="text-secondary">·</span>
@@ -764,7 +792,7 @@ onBeforeUnmount(() => {
                                 <!-- Дашборды пространства. Переключение остаётся
                                      на странице: уходить ради этого некуда. -->
                                 <select
-                                    v-if="dashboards.length > 1"
+                                    v-if="dashboards.length > 1 && !isWorkspaceLanding"
                                     class="form-select"
                                     style="width: 240px; max-width: 100%;"
                                     :value="dashboardId"
@@ -870,6 +898,72 @@ onBeforeUnmount(() => {
                     <div class="card-body">
                         <div class="progress progress-sm">
                             <div class="progress-bar progress-bar-indeterminate"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ОБЗОР ПРОСТРАНСТВА: голый адрес без дашборда в пути. Чат и
+                     список дашбордов — дашборд открывается явным кликом, а не
+                     молча по последнему. -->
+                <div v-else-if="isWorkspaceLanding && dashboards.length" class="d-print-none">
+                    <div class="row row-cards mb-4">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-body d-flex align-items-center gap-3 flex-wrap">
+                                    <span class="avatar avatar-lg bg-primary-lt">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"
+                                             viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                            <path d="M12 8a4 4 0 0 1 4 4" />
+                                            <path d="M12 4a8 8 0 0 1 8 8" />
+                                            <path d="M12 20a8 8 0 0 1-8-8" />
+                                            <circle cx="12" cy="12" r="1" />
+                                        </svg>
+                                    </span>
+                                    <div class="flex-fill">
+                                        <h3 class="mb-1">{{ t('workspacePage.overview.chat_title') }}</h3>
+                                        <div class="text-secondary">
+                                            {{ chat ? t('workspacePage.overview.chat_subtitle_existing') : t('workspacePage.overview.chat_subtitle_new') }}
+                                        </div>
+                                    </div>
+                                    <button
+                                        class="btn btn-primary d-inline-flex align-items-center text-nowrap px-3"
+                                        type="button"
+                                        :class="{ 'btn-loading': openingChat }"
+                                        :disabled="openingChat || (!chat && !canChat)"
+                                        @click="openAssistant"
+                                    >
+                                        {{ chat ? t('workspacePage.overview.open_chat') : t('workspacePage.overview.start_chat') }}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <h3 class="mb-2">{{ t('workspacePage.overview.dashboards_title') }}</h3>
+                    <div class="row row-cards">
+                        <div v-for="item in dashboards" :key="item.id" class="col-sm-6 col-lg-4 col-xxl-3">
+                            <div class="card h-100 d-flex flex-column workspace-overview-card"
+                                 role="button" tabindex="0"
+                                 @click="openDashboard(item.id)"
+                                 @keydown.enter="openDashboard(item.id)">
+                                <div class="card-body pb-2">
+                                    <span class="badge mb-2" :class="dashboardStatus(item).cls">
+                                        {{ dashboardStatus(item).text }}
+                                    </span>
+                                    <h3 class="card-title mb-1">
+                                        {{ item.name || t('workspacePage.dashboard_fallback_name', { id: item.id }) }}
+                                    </h3>
+                                    <div class="text-secondary small">
+                                        {{ t('workspacePage.overview.widgets_count', { count: item.widgets_count ?? 0 }) }}
+                                    </div>
+                                </div>
+                                <div class="card-footer bg-transparent border-top">
+                                    <button class="btn btn-sm w-100" type="button" @click.stop="openDashboard(item.id)">
+                                        {{ t('workspacePage.overview.open_dashboard') }}
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1195,6 +1289,18 @@ body.chat-page .page {
 </style>
 
 <style scoped>
+/* Карточка дашборда в обзоре пространства кликабельна целиком. */
+.workspace-overview-card {
+    cursor: pointer;
+    transition: box-shadow 0.15s, border-color 0.15s;
+}
+
+.workspace-overview-card:hover,
+.workspace-overview-card:focus-visible {
+    border-color: var(--tblr-primary);
+    box-shadow: var(--tblr-box-shadow-sm);
+}
+
 /* Шапка карточки — она же ручка перетаскивания. */
 .builder-drag {
     cursor: grab;
