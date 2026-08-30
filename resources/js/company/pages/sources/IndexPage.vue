@@ -1,11 +1,9 @@
 <script setup>
 import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { Modal } from 'bootstrap';
-import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import api from '../../api.js';
 
-const router = useRouter();
 const { t } = useI18n();
 
 const sources = ref([]);
@@ -36,18 +34,9 @@ let deleteModal = null;
 const pendingDelete = ref(null);
 const deleting = ref(false);
 
-// Новый чат
-const chatModalEl = ref(null);
-let chatModal = null;
-const chatSource = ref(null);
-const chatTitle = ref('');
-const creatingChat = ref(false);
-const chatError = ref(null);
-
 const currentUser = JSON.parse(localStorage.getItem('user') || 'null');
 const permissions = computed(() => currentUser?.permissions ?? []);
 const canManage = computed(() => permissions.value.includes('manage data sources'));
-const canCreateChats = computed(() => permissions.value.includes('create chats'));
 
 const filteredSources = computed(() => {
     const query = search.value.trim().toLowerCase();
@@ -187,51 +176,17 @@ async function confirmDelete() {
     }
 }
 
-async function openChatModal(source) {
-    chatSource.value = source;
-    chatTitle.value = '';
-    chatError.value = null;
-    await nextTick();
-    chatModal?.show();
-}
-
-async function createChat() {
-    if (!chatSource.value || creatingChat.value) return;
-
-    creatingChat.value = true;
-    chatError.value = null;
-
-    try {
-        const { data } = await api.post('/chats', {
-            data_source_id: chatSource.value.id,
-            title: chatTitle.value || undefined,
-        });
-
-        chatModal?.hide();
-        router.push({ name: 'company.workspace', params: { workspace: data.workspace.id } });
-    } catch (err) {
-        chatError.value = err.response?.data?.message || t('sourcesIndex.errors.chat_failed');
-    } finally {
-        creatingChat.value = false;
-    }
-}
-
 onMounted(async () => {
     await fetchSources();
     await nextTick();
 
     if (editModalEl.value) editModal = new Modal(editModalEl.value);
     if (deleteModalEl.value) deleteModal = new Modal(deleteModalEl.value);
-    // См. ShowPage.vue: пока идёт подготовка вариантов, окно закрывать нельзя.
-    if (chatModalEl.value) {
-        chatModal = new Modal(chatModalEl.value, { backdrop: 'static', keyboard: false });
-    }
 });
 
 onBeforeUnmount(() => {
     editModal?.dispose();
     deleteModal?.dispose();
-    chatModal?.dispose();
 });
 </script>
 
@@ -373,13 +328,6 @@ onBeforeUnmount(() => {
                                 </td>
                                 <td>
                                     <div class="btn-list flex-nowrap justify-content-end">
-                                        <button
-                                            v-if="canCreateChats"
-                                            class="btn btn-sm btn-primary"
-                                            @click="openChatModal(source)"
-                                        >
-                                            {{ t('sourcesIndex.actions.new_chat') }}
-                                        </button>
                                         <button v-if="canManage" class="btn btn-sm" @click="openEdit(source)">
                                             {{ t('sourcesIndex.actions.edit') }}
                                         </button>
@@ -516,57 +464,6 @@ onBeforeUnmount(() => {
                                 </div>
                             </div>
                         </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <!-- END MODAL -->
-
-        <!-- BEGIN MODAL: новый чат на источнике -->
-        <div ref="chatModalEl" class="modal modal-blur fade" tabindex="-1" role="dialog" aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered" role="document">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title">{{ t('sourcesIndex.chat_modal.title') }}</h5>
-                        <button v-if="!creatingChat" type="button" class="btn-close" data-bs-dismiss="modal"
-                                :aria-label="t('sourcesIndex.actions.close')"></button>
-                    </div>
-
-                    <!-- См. ShowPage.vue: пока готовятся варианты дашбордов,
-                         форма заменяется прогрессом и окно не закрывается. -->
-                    <div v-if="creatingChat" class="modal-body text-center py-4">
-                        <div class="spinner-border text-primary mb-3" role="status"></div>
-                        <h3 class="mb-1">{{ t('sourcesIndex.chat_modal.preparing_title') }}</h3>
-                        <div class="text-secondary">
-                            {{ t('sourcesIndex.chat_modal.preparing_body', { name: chatSource?.name }) }}
-                        </div>
-                        <div class="progress progress-sm mt-3">
-                            <div class="progress-bar progress-bar-indeterminate"></div>
-                        </div>
-                    </div>
-
-                    <div v-else class="modal-body">
-                        <div class="mb-3">
-                            <label class="form-label">{{ t('sourcesIndex.chat_modal.source_label') }}</label>
-                            <input type="text" class="form-control" :value="chatSource?.name" disabled />
-                        </div>
-                        <div class="mb-1">
-                            <label class="form-label">{{ t('sourcesIndex.chat_modal.title_label') }}</label>
-                            <input v-model="chatTitle" type="text" class="form-control"
-                                   :placeholder="t('sourcesIndex.chat_modal.title_placeholder')"
-                                   @keydown.enter.prevent="createChat" />
-                            <small class="form-hint">
-                                {{ t('sourcesIndex.chat_modal.title_hint') }}
-                            </small>
-                        </div>
-                        <div v-if="chatError" class="alert alert-danger mt-3 mb-0" role="alert">{{ chatError }}</div>
-                    </div>
-
-                    <div v-if="!creatingChat" class="modal-footer">
-                        <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">{{ t('sourcesIndex.actions.cancel') }}</button>
-                        <button type="button" class="btn btn-primary ms-auto" @click="createChat">
-                            {{ t('sourcesIndex.chat_modal.submit') }}
-                        </button>
                     </div>
                 </div>
             </div>

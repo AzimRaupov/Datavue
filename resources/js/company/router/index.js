@@ -13,6 +13,7 @@ import AllWidgets from "../pages/AllWidgets.vue";
 import SourcesIndex from "../pages/sources/IndexPage.vue";
 import SourceShow from "../pages/sources/ShowPage.vue";
 import SourceCreate from "../pages/sources/CreatePage.vue";
+import ChatsIndex from "../pages/chats/IndexPage.vue";
 
 const routes = [
     {
@@ -45,6 +46,15 @@ const routes = [
         path: '/sources/:id',
         name: 'company.source.show',
         component: SourceShow,
+    },
+
+    // Чаты — отдельная страница: список того, что уже есть, и создание
+    // нового (заводит пространство и сразу готовит варианты дашбордов —
+    // тот же процесс, что раньше жил на странице источников).
+    {
+        path: '/chats',
+        name: 'company.chats',
+        component: ChatsIndex,
     },
 
     /*

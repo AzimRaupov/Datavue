@@ -21,6 +21,7 @@ const permissions = computed(() => user?.permissions ?? [])
 const canViewUsers = computed(() => permissions.value.includes('view users'))
 const canViewSources = computed(() => permissions.value.includes('view data sources'))
 const canViewDashboards = computed(() => permissions.value.includes('view dashboards'))
+const canViewChats = computed(() => permissions.value.includes('view chats'))
 
 // Выпадающие меню работают на штатном data-api Bootstrap (data-bs-toggle="dropdown").
 // Раньше здесь была своя реализация через Dropdown.getOrCreateInstance(), потому что
@@ -500,6 +501,22 @@ const logout = async () => {
                                 </svg>
                             </span>
                             <span class="nav-link-title">{{ t('header.workspaces') }}</span>
+                        </router-link>
+                    </li>
+
+                    <li v-if="canViewChats" class="nav-item">
+                        <router-link class="nav-link" :to="{ name: 'company.chats' }">
+                            <span class="nav-link-icon d-md-none d-lg-inline-block">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                                     fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                     stroke-linejoin="round" aria-hidden="true" class="icon icon-2">
+                                    <path d="M8 9h8" />
+                                    <path d="M8 13h6" />
+                                    <path d="M9 18h-3a3 3 0 0 1 -3 -3v-8a3 3 0 0 1 3 -3h10a3 3 0 0 1 3 3v3.5" />
+                                    <path d="M15 19l2 2l4 -4" />
+                                </svg>
+                            </span>
+                            <span class="nav-link-title">{{ t('header.chats') }}</span>
                         </router-link>
                     </li>
 
