@@ -47,14 +47,11 @@ class DataSourceController extends Controller
     {
         $source = $this->findForCompany($request, $id);
 
+        // Чаты теперь заводятся в рабочем пространстве (см. WorkspaceController),
+        // источник ими больше не грузим — только его собственные атрибуты.
         $source->load([
             'type:id,name,label',
             'creator:id,name',
-            // Чаты источника с их дашбордами — на странице источника это
-            // основной список: «на этой базе уже спрашивали вот что».
-            'chats' => fn ($query) => $query->latest('id')->with([
-                'dashboards' => fn ($q) => $q->select('id', 'name', 'chat_id', 'status')->latest('id'),
-            ]),
         ]);
 
         // Разобранная схема: сколько смысловых групп и таблиц нашлось.

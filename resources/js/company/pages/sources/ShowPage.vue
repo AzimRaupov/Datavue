@@ -1,12 +1,11 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { Modal } from 'bootstrap';
-import { useRoute, useRouter } from 'vue-router';
+import { useRoute } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import api from '../../api.js';
 
 const route = useRoute();
-const router = useRouter();
 const { t } = useI18n();
 
 const sourceId = route.params.id;
@@ -17,18 +16,12 @@ const tablesCount = ref(0);
 const loading = ref(false);
 const pageError = ref(null);
 
-// Новый чат
-const chatModalEl = ref(null);
-let chatModal = null;
-const chatTitle = ref('');
-const creatingChat = ref(false);
-const chatError = ref(null);
-
-// Удаление чата
-const deleteModalEl = ref(null);
-let deleteModal = null;
-const pendingDelete = ref(null);
-const deleting = ref(false);
+// SQL-консоль: пробный SELECT прямо к источнику, тот же ReadOnlyQueryRunner,
+// что и у пробного запроса в конструкторе виджета.
+const sqlQuery = ref('');
+const sqlRunning = ref(false);
+const sqlError = ref(null);
+const sqlResult = ref(null);
 
 // Обновление данных
 const refreshModalEl = ref(null);
@@ -40,8 +33,6 @@ const refreshFileEl = ref(null);
 
 const currentUser = JSON.parse(localStorage.getItem('user') || 'null');
 const permissions = computed(() => currentUser?.permissions ?? []);
-const canCreateChats = computed(() => permissions.value.includes('create chats'));
-const canDeleteChats = computed(() => permissions.value.includes('delete chats'));
 const canManageSources = computed(() => permissions.value.includes('manage data sources'));
 
 const canRefresh = computed(() => canManageSources.value && !!source.value);
@@ -66,28 +57,6 @@ function formatDateTime(value) {
         day: '2-digit', month: '2-digit', year: 'numeric',
         hour: '2-digit', minute: '2-digit',
     });
-}
-
-const chats = computed(() => source.value?.chats ?? []);
-
-const dashboardsTotal = computed(() =>
-    chats.value.reduce((sum, chat) => sum + (chat.dashboards?.length ?? 0), 0)
-);
-
-const DASHBOARD_STATUS_BADGE = {
-    empty: 'bg-secondary-lt',
-    generating_scheme: 'bg-azure-lt',
-    generating_widgets: 'bg-azure-lt',
-    reviewing: 'bg-yellow-lt',
-    completed: 'bg-success-lt',
-    failed: 'bg-danger-lt',
-};
-
-function dashboardStatus(status) {
-    return {
-        label: DASHBOARD_STATUS_BADGE[status] ? t(`sourcesShow.status.${status}`) : (status ?? '—'),
-        badge: DASHBOARD_STATUS_BADGE[status] ?? 'bg-secondary-lt',
-    };
 }
 
 function formatDate(value) {
@@ -118,31 +87,36 @@ async function fetchSource() {
     }
 }
 
-async function openChatModal() {
-    chatTitle.value = '';
-    chatError.value = null;
-    await nextTick();
-    chatModal?.show();
+/** Tab в поле запроса — отступ, а не переход к следующему полю. */
+function onSqlTab(event) {
+    const field = event.target;
+    const start = field.selectionStart;
+    const end = field.selectionEnd;
+
+    sqlQuery.value = sqlQuery.value.slice(0, start) + '    ' + sqlQuery.value.slice(end);
+
+    nextTick(() => {
+        field.selectionStart = field.selectionEnd = start + 4;
+    });
 }
 
-async function createChat() {
-    if (creatingChat.value) return;
+async function runSqlConsoleQuery() {
+    if (sqlRunning.value || !sqlQuery.value.trim()) return;
 
-    creatingChat.value = true;
-    chatError.value = null;
+    sqlRunning.value = true;
+    sqlError.value = null;
+    sqlResult.value = null;
 
     try {
-        const { data } = await api.post('/chats', {
-            data_source_id: source.value.id,
-            title: chatTitle.value || undefined,
+        const { data } = await api.post(`/data_source/${sourceId}/connection`, {
+            query: sqlQuery.value,
         });
 
-        chatModal?.hide();
-        router.push({ name: 'company.workspace', params: { workspace: data.workspace.id } });
+        sqlResult.value = data;
     } catch (err) {
-        chatError.value = err.response?.data?.message || t('sourcesShow.errors.chat_failed');
+        sqlError.value = err.response?.data?.message || t('sourcesShow.sqlConsole.error_default');
     } finally {
-        creatingChat.value = false;
+        sqlRunning.value = false;
     }
 }
 
@@ -211,41 +185,10 @@ async function submitRefresh() {
     }
 }
 
-async function askDeleteChat(chat) {
-    pendingDelete.value = chat;
-    await nextTick();
-    deleteModal?.show();
-}
-
-async function confirmDeleteChat() {
-    if (!pendingDelete.value || deleting.value) return;
-
-    deleting.value = true;
-
-    try {
-        await api.delete(`/chats/${pendingDelete.value.id}`);
-        deleteModal?.hide();
-        pendingDelete.value = null;
-        await fetchSource();
-    } catch (err) {
-        pageError.value = err.response?.data?.message || t('sourcesShow.errors.delete_chat_failed');
-        deleteModal?.hide();
-    } finally {
-        deleting.value = false;
-    }
-}
-
 onMounted(async () => {
     await fetchSource();
     await nextTick();
 
-    // static/keyboard:false — окно нельзя закрыть кликом по фону или Esc,
-    // пока идёт подготовка вариантов: запрос этим не отменится, а пользователь
-    // решит, что всё пропало, и нажмёт «Создать» второй раз.
-    if (chatModalEl.value) {
-        chatModal = new Modal(chatModalEl.value, { backdrop: 'static', keyboard: false });
-    }
-    if (deleteModalEl.value) deleteModal = new Modal(deleteModalEl.value);
     if (refreshModalEl.value) {
         // Разбор файла идёт синхронно — закрывать окно на полпути нельзя.
         refreshModal = new Modal(refreshModalEl.value, { backdrop: 'static', keyboard: false });
@@ -253,8 +196,6 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
-    chatModal?.dispose();
-    deleteModal?.dispose();
     refreshModal?.dispose();
 });
 </script>
@@ -277,9 +218,6 @@ onBeforeUnmount(() => {
                                 {{ source.format_label }}
                             </span>
                         </h2>
-                        <div class="text-secondary mt-1">
-                            {{ t('sourcesShow.subtitle', { chats: chats.length, dashboards: dashboardsTotal }) }}
-                        </div>
                     </div>
 
                     <div class="col-auto ms-auto d-print-none">
@@ -295,15 +233,6 @@ onBeforeUnmount(() => {
                                 <path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4" />
                             </svg>
                             {{ t('sourcesShow.actions.refresh') }}
-                        </button>
-                        <button v-if="canCreateChats && source" class="btn btn-primary" @click="openChatModal">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-                                 fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                 stroke-linejoin="round" aria-hidden="true" focusable="false" class="icon icon-2">
-                                <path d="M12 5l0 14" />
-                                <path d="M5 12l14 0" />
-                            </svg>
-                            {{ t('sourcesShow.actions.new_chat') }}
                         </button>
                         </div>
                     </div>
@@ -368,7 +297,7 @@ onBeforeUnmount(() => {
                                         </div>
                                     </div>
 
-                                    <template v-if="isRemote">
+                                    <template v-if="isRemoteSource">
                                         <div class="datagrid-item">
                                             <div class="datagrid-title">{{ t('sourcesShow.connection.host') }}</div>
                                             <div class="datagrid-content text-break">
@@ -449,122 +378,84 @@ onBeforeUnmount(() => {
                         </div>
                     </div>
 
-                    <!-- ПРАВАЯ КОЛОНКА: чаты источника -->
+                    <!-- ПРАВАЯ КОЛОНКА: SQL-консоль источника -->
                     <div class="col-lg-8">
                         <div class="card">
                             <div class="card-header">
-                                <h3 class="card-title">{{ t('sourcesShow.chats.title') }}</h3>
+                                <div class="w-100">
+                                    <h3 class="card-title mb-1">{{ t('sourcesShow.sqlConsole.title') }}</h3>
+                                    <div class="text-secondary small">{{ t('sourcesShow.sqlConsole.subtitle') }}</div>
+                                </div>
                             </div>
 
-                            <div v-if="!chats.length" class="card-body">
-                                <div class="empty">
-                                    <p class="empty-title">{{ t('sourcesShow.chats.empty_title') }}</p>
-                                    <p class="empty-subtitle text-secondary">
-                                        {{ t('sourcesShow.chats.empty_subtitle') }}
-                                    </p>
-                                    <div class="empty-action" v-if="canCreateChats">
-                                        <button class="btn btn-primary" @click="openChatModal">
+                            <!-- Запрос идёт напрямую в базу источника через ReadOnlyQueryRunner:
+                                 только SELECT/WITH, один запрос, до 200 строк. Право то же,
+                                 что у обновления данных, — «manage data sources». -->
+                            <div v-if="!canManageSources" class="card-body">
+                                <p class="text-secondary mb-0">{{ t('sourcesShow.sqlConsole.no_permission') }}</p>
+                            </div>
+
+                            <template v-else>
+                                <div class="card-body">
+                                    <textarea
+                                        v-model="sqlQuery"
+                                        class="form-control sql-console-editor"
+                                        spellcheck="false"
+                                        rows="6"
+                                        :placeholder="t('sourcesShow.sqlConsole.placeholder')"
+                                        :aria-label="t('sourcesShow.sqlConsole.aria')"
+                                        @keydown.tab.prevent="onSqlTab"
+                                        @keydown.ctrl.enter.prevent="runSqlConsoleQuery"
+                                        @keydown.meta.enter.prevent="runSqlConsoleQuery"
+                                    ></textarea>
+
+                                    <div class="d-flex align-items-center gap-2 mt-2">
+                                        <button type="button" class="btn btn-primary"
+                                                :class="{ 'btn-loading': sqlRunning }"
+                                                :disabled="sqlRunning || !sqlQuery.trim()"
+                                                @click="runSqlConsoleQuery">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
                                                  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                                                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
                                                  focusable="false" class="icon icon-2">
-                                                <path d="M12 5l0 14" />
-                                                <path d="M5 12l14 0" />
+                                                <path d="M7 4v16l13 -8z" />
                                             </svg>
-                                            {{ t('sourcesShow.actions.new_chat') }}
+                                            {{ t('sourcesShow.sqlConsole.run_button') }}
                                         </button>
+                                        <span class="text-secondary small">{{ t('sourcesShow.sqlConsole.hint') }}</span>
+                                    </div>
+
+                                    <div v-if="sqlError" class="alert alert-danger mt-3 mb-0" role="alert">
+                                        {{ sqlError }}
                                     </div>
                                 </div>
-                            </div>
 
-                            <!--
-                              Таблица, а не список: у каждого чата есть действия и
-                              несколько атрибутов. Тот же card-table + table-vcenter,
-                              что на странице сотрудников, — чтобы списки в приложении
-                              выглядели одинаково. Раньше здесь был list-group-item с
-                              вложенным row и лентой кнопок-дашбордов под ним: строки
-                              получались разной высоты и разъезжались.
-                            -->
-                            <div v-else class="table-responsive">
-                                <table class="table table-vcenter card-table">
-                                    <thead>
-                                    <tr>
-                                        <th>{{ t('sourcesShow.table.chat') }}</th>
-                                        <th>{{ t('sourcesShow.table.dashboards') }}</th>
-                                        <th>{{ t('sourcesShow.table.created') }}</th>
-                                        <th class="w-1"></th>
-                                    </tr>
-                                    </thead>
-                                    <tbody>
-                                    <tr v-for="chat in chats" :key="chat.id">
-                                        <td>
-                                            <div class="d-flex py-1 align-items-center">
-                                                <span class="avatar avatar-sm me-2 bg-primary-lt">
-                                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
-                                                         viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                                         stroke-width="2" stroke-linecap="round"
-                                                         stroke-linejoin="round">
-                                                        <path d="M8 9h8" />
-                                                        <path d="M8 13h6" />
-                                                        <path d="M18 4a3 3 0 0 1 3 3v8a3 3 0 0 1 -3 3h-5l-5 3v-3h-2a3 3 0 0 1 -3 -3v-8a3 3 0 0 1 3 -3z" />
-                                                    </svg>
-                                                </span>
-                                                <div class="flex-fill">
-                                                    <router-link
-                                                        :to="{ name: 'company.workspace.chat', params: { chat: chat.id } }"
-                                                        class="text-reset font-weight-medium"
-                                                    >
-                                                        {{ chat.title || t('sourcesShow.chat_fallback', { id: chat.id }) }}
-                                                    </router-link>
-                                                </div>
-                                            </div>
-                                        </td>
+                                <template v-if="sqlResult">
+                                    <div v-if="!sqlResult.rows.length" class="card-body border-top">
+                                        <p class="text-secondary mb-0">{{ t('sourcesShow.sqlConsole.no_rows') }}</p>
+                                    </div>
 
-                                        <td>
-                                            <!-- Дашборды чата ссылками: с них удобнее
-                                                 начинать, чем с самого чата. -->
-                                            <div v-if="chat.dashboards?.length" class="btn-list">
-                                                <router-link
-                                                    v-for="dashboard in chat.dashboards"
-                                                    :key="dashboard.id"
-                                                    :to="{
-                                                        name: 'company.workspace.dashboard',
-                                                        params: { dashboard: dashboard.id },
-                                                    }"
-                                                    class="badge text-truncate"
-                                                    :class="dashboardStatus(dashboard.status).badge"
-                                                    :title="dashboardStatus(dashboard.status).label"
-                                                    style="max-width: 200px"
-                                                >
-                                                    {{ dashboard.name || t('sourcesShow.dashboard_fallback', { id: dashboard.id }) }}
-                                                </router-link>
-                                            </div>
-                                            <span v-else class="text-secondary">—</span>
-                                        </td>
+                                    <div v-else class="table-responsive sql-console-result border-top">
+                                        <table class="table table-vcenter card-table table-sm">
+                                            <thead>
+                                            <tr>
+                                                <th v-for="col in Object.keys(sqlResult.rows[0])" :key="col">{{ col }}</th>
+                                            </tr>
+                                            </thead>
+                                            <tbody>
+                                            <tr v-for="(row, index) in sqlResult.rows" :key="index">
+                                                <td v-for="(value, key) in row" :key="key">{{ value }}</td>
+                                            </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
 
-                                        <td class="text-secondary">{{ formatDate(chat.created_at) }}</td>
-
-                                        <td>
-                                            <div class="btn-list flex-nowrap justify-content-end">
-                                                <router-link
-                                                    :to="{ name: 'company.workspace.chat', params: { chat: chat.id } }"
-                                                    class="btn btn-sm"
-                                                >
-                                                    {{ t('sourcesShow.actions.open') }}
-                                                </router-link>
-                                                <button
-                                                    v-if="canDeleteChats"
-                                                    class="btn btn-sm btn-ghost-danger"
-                                                    @click="askDeleteChat(chat)"
-                                                >
-                                                    {{ t('sourcesShow.actions.delete') }}
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                    </tbody>
-                                </table>
-                            </div>
+                                    <div class="card-footer text-secondary small">
+                                        {{ t('sourcesShow.sqlConsole.rows_label', { count: sqlResult.row_count }) }}
+                                        <span v-if="sqlResult.truncated"> · {{ t('sourcesShow.sqlConsole.truncated_label') }}</span>
+                                    </div>
+                                </template>
+                            </template>
                         </div>
                     </div>
                 </div>
@@ -670,95 +561,21 @@ onBeforeUnmount(() => {
             </div>
         </div>
         <!-- END MODAL -->
-
-        <!-- BEGIN MODAL: новый чат -->
-        <div ref="chatModalEl" class="modal modal-blur fade" tabindex="-1" role="dialog" aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered" role="document">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title">{{ t('sourcesShow.chat_modal.title') }}</h5>
-                        <button v-if="!creatingChat" type="button" class="btn-close" data-bs-dismiss="modal"
-                                :aria-label="t('sourcesShow.chat_modal.close')"></button>
-                    </div>
-
-                    <!-- Пока готовятся варианты дашбордов, форма заменяется на прогресс:
-                         работа идёт на бэкенде (группировка таблиц + подбор тем) и может
-                         занять до минуты. Закрыть окно в это время нельзя — иначе
-                         пользователь решит, что ничего не происходит, и нажмёт ещё раз. -->
-                    <div v-if="creatingChat" class="modal-body text-center py-4">
-                        <div class="spinner-border text-primary mb-3" role="status"></div>
-                        <h3 class="mb-1">{{ t('sourcesShow.chat_modal.preparing_title') }}</h3>
-                        <div class="text-secondary">
-                            {{ t('sourcesShow.chat_modal.preparing_body', { name: source?.name }) }}
-                        </div>
-                        <div class="progress progress-sm mt-3">
-                            <div class="progress-bar progress-bar-indeterminate"></div>
-                        </div>
-                    </div>
-
-                    <div v-else class="modal-body">
-                        <div class="mb-3">
-                            <label class="form-label">{{ t('sourcesShow.chat_modal.source_label') }}</label>
-                            <input type="text" class="form-control" :value="source?.name" disabled />
-                        </div>
-                        <div class="mb-1">
-                            <label class="form-label">{{ t('sourcesShow.chat_modal.title_label') }}</label>
-                            <input v-model="chatTitle" type="text" class="form-control"
-                                   :placeholder="t('sourcesShow.chat_modal.title_placeholder')"
-                                   @keydown.enter.prevent="createChat" />
-                            <small class="form-hint">
-                                {{ t('sourcesShow.chat_modal.title_hint') }}
-                            </small>
-                        </div>
-                        <div v-if="chatError" class="alert alert-danger mt-3 mb-0" role="alert">{{ chatError }}</div>
-                    </div>
-
-                    <div v-if="!creatingChat" class="modal-footer">
-                        <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">{{ t('sourcesShow.chat_modal.cancel') }}</button>
-                        <button type="button" class="btn btn-primary ms-auto" @click="createChat">
-                            {{ t('sourcesShow.chat_modal.submit') }}
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <!-- END MODAL -->
-
-        <!-- BEGIN MODAL: удаление чата -->
-        <div ref="deleteModalEl" class="modal modal-blur fade" tabindex="-1" role="dialog" aria-hidden="true">
-            <div class="modal-dialog modal-sm modal-dialog-centered" role="document">
-                <div class="modal-content">
-                    <div class="modal-status bg-danger"></div>
-                    <div class="modal-body text-center py-4">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
-                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                             class="icon mb-2 text-danger icon-lg">
-                            <path d="M12 9v4" />
-                            <path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0z" />
-                            <path d="M12 16h.01" />
-                        </svg>
-                        <h3>{{ t('sourcesShow.delete_chat_modal.title') }}</h3>
-                        <div class="text-secondary">
-                            {{ t('sourcesShow.delete_chat_modal.body', { title: pendingDelete?.title }) }}
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <div class="w-100">
-                            <div class="row">
-                                <div class="col">
-                                    <button class="btn w-100" data-bs-dismiss="modal">{{ t('sourcesShow.delete_chat_modal.cancel') }}</button>
-                                </div>
-                                <div class="col">
-                                    <button class="btn btn-danger w-100" :disabled="deleting" @click="confirmDeleteChat">
-                                        {{ deleting ? t('sourcesShow.delete_chat_modal.deleting') : t('sourcesShow.delete_chat_modal.confirm') }}
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <!-- END MODAL -->
     </div>
 </template>
+
+<style scoped>
+.sql-console-editor {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    tab-size: 4;
+    white-space: pre;
+    overflow-x: auto;
+}
+
+.sql-console-result {
+    max-height: 420px;
+    overflow: auto;
+}
+</style>
