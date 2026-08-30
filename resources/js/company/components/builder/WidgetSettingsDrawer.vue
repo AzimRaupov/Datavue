@@ -1,9 +1,12 @@
 <script setup>
 import { ref, computed, watch, onBeforeUnmount, nextTick } from "vue";
+import { useI18n } from "vue-i18n";
 import api from "../../api.js";
 import { queryTemplateFor, COLUMN_HINTS } from "./queryTemplates.js";
 import { CHART_COLORS } from "../widgets/palette.js";
 import { supportsColors } from "../widgets/registry.js";
+
+const { t } = useI18n();
 
 /**
  * Настройка виджета — боковая шторка на четыре раздела.
@@ -37,12 +40,12 @@ const emit = defineEmits(["saved", "closed"]);
 const open = ref(false);
 const tab = ref("data");
 
-const TABS = [
-    { key: "data", title: "Данные", hint: "Таблица и связи" },
-    { key: "look", title: "Виджет", hint: "Заголовок, вид, цвета" },
-    { key: "builder", title: "Конструктор", hint: "Метрики, разбивка, условия" },
-    { key: "sql", title: "SQL", hint: "Запрос руками" },
-];
+const TABS = computed(() => [
+    { key: "data", title: t("widgetSettings.tabs.data.title"), hint: t("widgetSettings.tabs.data.hint") },
+    { key: "look", title: t("widgetSettings.tabs.look.title"), hint: t("widgetSettings.tabs.look.hint") },
+    { key: "builder", title: t("widgetSettings.tabs.builder.title"), hint: t("widgetSettings.tabs.builder.hint") },
+    { key: "sql", title: t("widgetSettings.tabs.sql.title"), hint: t("widgetSettings.tabs.sql.hint") },
+]);
 
 // --- Состояние конструктора -------------------------------------------------
 const table = ref("");
@@ -294,13 +297,13 @@ const blockers = computed(() => {
     if (isLookTab.value) return [];
 
     if (contentMode.value === "sql") {
-        return query.value.trim() === "" ? ["Напишите запрос."] : [];
+        return query.value.trim() === "" ? [t("widgetSettings.blockers.write_query")] : [];
     }
 
     const problems = [];
 
     if (!table.value) {
-        problems.push("Выберите таблицу в разделе «Данные».");
+        problems.push(t("widgetSettings.blockers.select_table"));
 
         return problems;
     }
@@ -309,15 +312,15 @@ const blockers = computed(() => {
     const dimensionsMin = slots.value?.dimensions?.min ?? 0;
 
     if (metrics.value.length < metricsMin) {
-        problems.push(`Нужно метрик: ${metricsMin}, сейчас ${metrics.value.length}.`);
+        problems.push(t("widgetSettings.blockers.metrics_needed", { min: metricsMin, count: metrics.value.length }));
     }
 
     if (metrics.value.some((m) => needsColumn(m.agg) && !m.column)) {
-        problems.push("У метрики не выбрана колонка.");
+        problems.push(t("widgetSettings.blockers.metric_column_missing"));
     }
 
     if (dimensions.value.length < dimensionsMin) {
-        problems.push(`Нужно разбивок: ${dimensionsMin}, сейчас ${dimensions.value.length}.`);
+        problems.push(t("widgetSettings.blockers.dimensions_needed", { min: dimensionsMin, count: dimensions.value.length }));
     }
 
     return problems;
@@ -767,9 +770,9 @@ async function run() {
 
         composedSql.value = body.sql ?? composedSql.value;
         applyRunResult(body);
-        okMessage.value = "Готово — запрос отработал, данные подходят виджету.";
+        okMessage.value = t("widgetSettings.messages.run_success");
     } catch (err) {
-        applyFailure(err, "Не удалось выполнить.");
+        applyFailure(err, t("widgetSettings.messages.run_failed"));
     } finally {
         running.value = false;
     }
@@ -820,11 +823,11 @@ async function save() {
         );
 
         composedSql.value = body.sql ?? composedSql.value;
-        okMessage.value = "Сохранено, виджет работает.";
+        okMessage.value = t("widgetSettings.messages.save_success");
         applySaved(body.widget);
         emit("saved", body.widget);
     } catch (err) {
-        applyFailure(err, "Не удалось сохранить.");
+        applyFailure(err, t("widgetSettings.messages.save_failed"));
     } finally {
         saving.value = false;
     }
@@ -843,7 +846,7 @@ async function saveLook() {
     const trimmed = title.value.trim();
 
     if (!trimmed) {
-        errors.value = ["У виджета должен быть заголовок."];
+        errors.value = [t("widgetSettings.messages.title_required")];
 
         return;
     }
@@ -872,11 +875,11 @@ async function saveLook() {
             body
         );
 
-        okMessage.value = "Оформление сохранено.";
+        okMessage.value = t("widgetSettings.messages.look_saved");
         applySaved(data);
         emit("saved", data);
     } catch (err) {
-        applyFailure(err, "Не удалось сохранить оформление.");
+        applyFailure(err, t("widgetSettings.messages.look_save_failed"));
     } finally {
         savingLook.value = false;
     }
@@ -891,7 +894,7 @@ function editAsSql() {
 
     query.value = composedSql.value;
     tab.value = "sql";
-    okMessage.value = "Запрос перенесён. Дальше правьте его руками — настройки его больше не перезапишут.";
+    okMessage.value = t("widgetSettings.messages.converted_to_sql");
 }
 
 // --- Шторка -----------------------------------------------------------------
@@ -972,7 +975,7 @@ onBeforeUnmount(() => {
             class="widget-drawer"
             :class="{ 'is-open': open }"
             :style="open ? { width: width + 'px' } : {}"
-            aria-label="Настройка виджета"
+            :aria-label="t('widgetSettings.header.title')"
         >
             <div class="widget-drawer-resize" @mousedown="startResize"></div>
 
@@ -988,17 +991,17 @@ onBeforeUnmount(() => {
                 </div>
 
                 <div class="flex-fill overflow-hidden">
-                    <div class="fw-bold text-truncate">Настройка виджета</div>
+                    <div class="fw-bold text-truncate">{{ t('widgetSettings.header.title') }}</div>
                     <div class="text-secondary small text-truncate">
-                        {{ widget?.title || "Без названия" }}
+                        {{ widget?.title || t('widgetSettings.header.subtitle_untitled') }}
                         <span v-if="familyName" class="text-muted">· {{ familyName }}</span>
                     </div>
                 </div>
 
                 <!-- Крестик закрытия — тот же .btn-close, что у offcanvas и модалок
                      Tabler, а не кнопка со своей иконкой. -->
-                <button type="button" class="btn-close flex-shrink-0" title="Закрыть (Esc)"
-                        aria-label="Закрыть" @click="hide"></button>
+                <button type="button" class="btn-close flex-shrink-0" :title="t('widgetSettings.header.close')"
+                        :aria-label="t('widgetSettings.header.close_aria')" @click="hide"></button>
             </div>
 
             <!-- РАЗДЕЛЫ -->
@@ -1016,25 +1019,25 @@ onBeforeUnmount(() => {
                 <!-- ============ 1. ДАННЫЕ: ТАБЛИЦЫ И СВЯЗИ ============ -->
                 <template v-if="tab === 'data'">
                     <div class="mb-3">
-                        <label class="form-label">Таблица</label>
+                        <label class="form-label">{{ t('widgetSettings.data_tab.table_label') }}</label>
                         <select v-model="table" class="form-select" @change="onTableChange">
-                            <option value="" disabled>Выберите таблицу</option>
+                            <option value="" disabled>{{ t('widgetSettings.data_tab.table_placeholder') }}</option>
                             <option v-for="item in tables" :key="item.name" :value="item.name">
                                 {{ item.name }}
                             </option>
                         </select>
                         <div class="form-hint">
-                            С неё начинается запрос. Остальные подключаются связями ниже.
+                            {{ t('widgetSettings.data_tab.table_hint') }}
                         </div>
                     </div>
 
                     <template v-if="table">
                         <div class="mb-3">
                             <div class="d-flex align-items-center mb-1">
-                                <label class="form-label mb-0">Связанные таблицы</label>
+                                <label class="form-label mb-0">{{ t('widgetSettings.data_tab.joins.label') }}</label>
                                 <button type="button" class="btn btn-sm ms-auto"
                                         :disabled="!joinableTables('').length"
-                                        :title="joinableTables('').length ? '' : 'С этой таблицей ничего не связано'"
+                                        :title="joinableTables('').length ? '' : t('widgetSettings.data_tab.joins.add_disabled_title')"
                                         @click="addJoin">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
                                          viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -1042,7 +1045,7 @@ onBeforeUnmount(() => {
                                         <path d="M12 5l0 14" />
                                         <path d="M5 12l14 0" />
                                     </svg>
-                                    Связать
+                                    {{ t('widgetSettings.data_tab.joins.add_button') }}
                                 </button>
                             </div>
 
@@ -1050,9 +1053,9 @@ onBeforeUnmount(() => {
                                  class="row g-1 mb-1 align-items-center">
                                 <div class="col-3">
                                     <select v-model="join.table" class="form-select form-select-sm"
-                                            aria-label="Связанная таблица"
+                                            :aria-label="t('widgetSettings.data_tab.joins.table_aria')"
                                             @change="onJoinTableChange(join)">
-                                        <option value="" disabled>таблица</option>
+                                        <option value="" disabled>{{ t('widgetSettings.data_tab.joins.table_placeholder') }}</option>
                                         <option v-for="item in joinableTables(join.table)"
                                                 :key="item.name" :value="item.name">
                                             {{ item.name }}
@@ -1063,25 +1066,25 @@ onBeforeUnmount(() => {
                                 <div v-if="!join.manual" class="col-5">
                                     <select class="form-select form-select-sm"
                                             :disabled="!join.table"
-                                            aria-label="По каким колонкам связывать"
+                                            :aria-label="t('widgetSettings.data_tab.joins.pair_aria')"
                                             :value="join.left ? `${join.left_table}.${join.left}=${join.right}` : ''"
                                             @change="onPairChange(join, $event.target.value)">
-                                        <option value="" disabled>по каким колонкам</option>
+                                        <option value="" disabled>{{ t('widgetSettings.data_tab.joins.pair_placeholder') }}</option>
                                         <option v-for="pair in pairsFor(join)" :key="pairKey(pair)"
                                                 :value="pairKey(pair)">
                                             {{ pair.left_table }}.{{ pair.left }} = {{ join.table }}.{{ pair.right }}
                                         </option>
-                                        <option value="__manual__">указать другие колонки…</option>
+                                        <option value="__manual__">{{ t('widgetSettings.data_tab.joins.manual_option') }}</option>
                                     </select>
                                 </div>
 
                                 <template v-else>
                                     <div class="col-3">
                                         <select class="form-select form-select-sm"
-                                                aria-label="Колонка из уже выбранных таблиц"
+                                                :aria-label="t('widgetSettings.data_tab.joins.left_column_aria')"
                                                 :value="leftKey(join)"
                                                 @change="onLeftChange(join, $event.target.value)">
-                                            <option value="" disabled>колонка</option>
+                                            <option value="" disabled>{{ t('widgetSettings.common.column_placeholder') }}</option>
                                             <option v-for="column in leftColumns(join)"
                                                     :key="column.key" :value="column.key">
                                                 {{ column.table }}.{{ column.name }}
@@ -1092,8 +1095,8 @@ onBeforeUnmount(() => {
                                     <div class="col-2">
                                         <select v-model="join.right" class="form-select form-select-sm"
                                                 :disabled="!join.table"
-                                                aria-label="Колонка связанной таблицы">
-                                            <option value="" disabled>колонка</option>
+                                                :aria-label="t('widgetSettings.data_tab.joins.right_column_aria')">
+                                            <option value="" disabled>{{ t('widgetSettings.common.column_placeholder') }}</option>
                                             <option v-for="column in columnsOf(join.table)"
                                                     :key="column.name" :value="column.name">
                                                 {{ column.name }}
@@ -1104,7 +1107,7 @@ onBeforeUnmount(() => {
 
                                 <div class="col-2">
                                     <select v-model="join.type" class="form-select form-select-sm"
-                                            aria-label="Тип связи">
+                                            :aria-label="t('widgetSettings.data_tab.joins.type_aria')">
                                         <option v-for="(label, key) in joinTypes" :key="key"
                                                 :value="key" :title="label">
                                             {{ key }}
@@ -1115,7 +1118,7 @@ onBeforeUnmount(() => {
                                 <div class="col-auto">
                                     <div class="btn-list flex-nowrap">
                                         <button type="button" class="btn btn-icon btn-sm"
-                                                :title="join.manual ? 'Выбрать из известных связей' : 'Указать колонки вручную'"
+                                                :title="join.manual ? t('widgetSettings.data_tab.joins.toggle_to_known_title') : t('widgetSettings.data_tab.joins.toggle_to_manual_title')"
                                                 @click="join.manual = !join.manual">
                                             <svg v-if="join.manual" xmlns="http://www.w3.org/2000/svg" width="24"
                                                  height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -1133,7 +1136,7 @@ onBeforeUnmount(() => {
                                             </svg>
                                         </button>
                                         <button type="button" class="btn btn-icon btn-sm"
-                                                aria-label="Убрать связь" title="Убрать связь"
+                                                :aria-label="t('widgetSettings.data_tab.joins.remove_title')" :title="t('widgetSettings.data_tab.joins.remove_title')"
                                                 @click="removeAt(joins, index)">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
                                                  viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -1148,23 +1151,21 @@ onBeforeUnmount(() => {
                             </div>
 
                             <div v-if="!joins.length" class="text-secondary small">
-                                Пока ни одной — виджет считается по одной таблице.
+                                {{ t('widgetSettings.data_tab.joins.empty') }}
                             </div>
 
                             <div v-if="joins.length && !joinableTables('').length" class="form-hint text-warning">
-                                Связанных таблиц не нашлось. Укажите колонки вручную
-                                или выберите тип «cross», если связывать нечем.
+                                {{ t('widgetSettings.data_tab.joins.none_found_warning') }}
                             </div>
 
                             <div v-if="joins.length" class="form-hint">
-                                Показаны таблицы, связанные с уже выбранными, и готовые
-                                условия связи. Дальше колонки берутся из всех этих таблиц.
+                                {{ t('widgetSettings.data_tab.joins.hint') }}
                             </div>
                         </div>
 
                         <!-- Что уже участвует в запросе -->
                         <div class="mb-2">
-                            <div class="text-secondary small mb-1">В запросе участвуют:</div>
+                            <div class="text-secondary small mb-1">{{ t('widgetSettings.data_tab.tables_in_play_label') }}</div>
                             <div class="d-flex flex-wrap gap-1">
                                 <span v-for="name in tablesInPlay" :key="name" class="badge bg-secondary-lt">
                                     {{ name }}
@@ -1174,37 +1175,36 @@ onBeforeUnmount(() => {
                     </template>
 
                     <div v-else class="text-secondary">
-                        Выберите таблицу — дальше конструктор соберёт запрос сам.
+                        {{ t('widgetSettings.data_tab.no_table_hint') }}
                     </div>
                 </template>
 
                 <!-- ============ 2. ВИДЖЕТ: ЗАГОЛОВОК, ВИД, ЦВЕТА ============ -->
                 <template v-else-if="tab === 'look'">
                     <div class="mb-3">
-                        <label class="form-label">Заголовок</label>
+                        <label class="form-label">{{ t('widgetSettings.look_tab.title_label') }}</label>
                         <input v-model="title" type="text" class="form-control" maxlength="255"
-                               placeholder="Например, «Выручка по месяцам»" />
+                               :placeholder="t('widgetSettings.look_tab.title_placeholder')" />
                     </div>
 
                     <div v-if="widgetTypes.length > 1" class="mb-3">
-                        <label class="form-label">Вид отрисовки</label>
+                        <label class="form-label">{{ t('widgetSettings.look_tab.render_type_label') }}</label>
                         <select v-model="typeId" class="form-select">
                             <option v-for="type in widgetTypes" :key="type.id" :value="type.id">
                                 {{ type.title || type.name }}
                             </option>
                         </select>
                         <div class="form-hint">
-                            Меняет только внешний вид. Если новому виду нужны другие
-                            колонки, запрос пересоберётся сам.
+                            {{ t('widgetSettings.look_tab.render_type_hint') }}
                         </div>
                     </div>
 
                     <div v-if="canPickColors" class="mb-3">
                         <div class="d-flex align-items-center mb-1">
-                            <label class="form-label mb-0">Цвета рядов</label>
+                            <label class="form-label mb-0">{{ t('widgetSettings.look_tab.colors_label') }}</label>
                             <button type="button" class="btn btn-sm ms-auto"
                                     :disabled="!colors.some(Boolean)" @click="resetAllColors">
-                                Сбросить
+                                {{ t('widgetSettings.look_tab.reset_all') }}
                             </button>
                         </div>
 
@@ -1215,20 +1215,19 @@ onBeforeUnmount(() => {
                                         type="color"
                                         class="form-control form-control-color"
                                         :value="colorValue(index)"
-                                        :aria-label="`Цвет ряда ${index + 1}`"
-                                        :title="isCustomColor(index) ? `Ряд ${index + 1}` : `Ряд ${index + 1} — стандартный`"
+                                        :aria-label="t('widgetSettings.look_tab.color_aria', { n: index + 1 })"
+                                        :title="isCustomColor(index) ? t('widgetSettings.look_tab.color_title_custom', { n: index + 1 }) : t('widgetSettings.look_tab.color_title_default', { n: index + 1 })"
                                         @input="colors[index] = $event.target.value"
                                     />
                                     <button v-if="isCustomColor(index)" type="button"
-                                            class="widget-color-reset" title="Вернуть стандартный"
+                                            class="widget-color-reset" :title="t('widgetSettings.look_tab.reset_color_title')"
                                             @click="resetColor(index)">×</button>
                                 </div>
                             </div>
                         </div>
 
                         <div class="form-hint">
-                            Порядок — как у рядов на графике: первый цвет достаётся
-                            первому ряду. Нетронутые ячейки следуют теме оформления.
+                            {{ t('widgetSettings.look_tab.colors_hint') }}
                         </div>
                     </div>
                 </template>
@@ -1239,7 +1238,7 @@ onBeforeUnmount(() => {
                         <!-- МЕТРИКИ -->
                         <div class="mb-3">
                             <div class="d-flex align-items-center mb-1">
-                                <label class="form-label mb-0">Метрики</label>
+                                <label class="form-label mb-0">{{ t('widgetSettings.builder_tab.metrics.label') }}</label>
                                 <button type="button" class="btn btn-sm ms-auto" @click="addMetric">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
                                          viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -1247,7 +1246,7 @@ onBeforeUnmount(() => {
                                         <path d="M12 5l0 14" />
                                         <path d="M5 12l14 0" />
                                     </svg>
-                                    Добавить
+                                    {{ t('widgetSettings.common.add') }}
                                 </button>
                             </div>
 
@@ -1255,7 +1254,7 @@ onBeforeUnmount(() => {
                                  class="row g-1 mb-1 align-items-center">
                                 <div v-if="metricsIndependent" class="col-3">
                                     <select v-model="metric.table" class="form-select form-select-sm"
-                                            aria-label="Таблица метрики"
+                                            :aria-label="t('widgetSettings.builder_tab.metrics.table_aria')"
                                             @change="onMetricTableChange(metric)">
                                         <option v-for="item in tables" :key="item.name"
                                                 :value="item.name">
@@ -1265,7 +1264,7 @@ onBeforeUnmount(() => {
                                 </div>
                                 <div :class="metricsIndependent ? 'col-3' : 'col-4'">
                                     <select v-model="metric.agg" class="form-select form-select-sm"
-                                            aria-label="Функция">
+                                            :aria-label="t('widgetSettings.builder_tab.metrics.agg_aria')">
                                         <option v-for="(label, key) in aggregates" :key="key" :value="key">
                                             {{ label }}
                                         </option>
@@ -1273,29 +1272,29 @@ onBeforeUnmount(() => {
                                 </div>
                                 <div :class="metricsIndependent ? 'col-3' : 'col-4'">
                                     <select v-if="needsColumn(metric.agg)" v-model="metric.column"
-                                            class="form-select form-select-sm" aria-label="Колонка">
-                                        <option value="" disabled>колонка</option>
+                                            class="form-select form-select-sm" :aria-label="t('widgetSettings.builder_tab.metrics.column_aria')">
+                                        <option value="" disabled>{{ t('widgetSettings.common.column_placeholder') }}</option>
                                         <option v-for="column in columnsForMetric(metric)"
                                                 :key="column.key" :value="column.key">
                                             {{ column.title }}
                                         </option>
                                     </select>
-                                    <span v-else class="text-secondary small">по всем строкам</span>
+                                    <span v-else class="text-secondary small">{{ t('widgetSettings.builder_tab.metrics.all_rows') }}</span>
                                 </div>
                                 <div :class="(needsTarget || metricsIndependent) ? 'col-2' : 'col-3'">
                                     <input v-model="metric.label" type="text"
                                            class="form-control form-control-sm"
-                                           placeholder="подпись" aria-label="Подпись метрики" />
+                                           :placeholder="t('widgetSettings.builder_tab.metrics.label_placeholder')" :aria-label="t('widgetSettings.builder_tab.metrics.label_aria')" />
                                 </div>
                                 <div v-if="needsTarget" class="col-1">
                                     <input v-model="metric.target" type="number" min="0"
                                            class="form-control form-control-sm"
-                                           placeholder="цель"
-                                           :aria-label="'Цель метрики ' + (metric.label || index + 1)" />
+                                           :placeholder="t('widgetSettings.builder_tab.metrics.target_placeholder')"
+                                           :aria-label="t('widgetSettings.builder_tab.metrics.target_aria', { name: metric.label || index + 1 })" />
                                 </div>
                                 <div class="col-1 text-end">
                                     <button type="button" class="btn btn-icon btn-sm"
-                                            aria-label="Удалить метрику" title="Удалить метрику"
+                                            :aria-label="t('widgetSettings.builder_tab.metrics.remove_title')" :title="t('widgetSettings.builder_tab.metrics.remove_title')"
                                             @click="removeAt(metrics, index)">
                                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
                                              viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -1308,18 +1307,17 @@ onBeforeUnmount(() => {
                             </div>
 
                             <div v-if="!metrics.length" class="text-secondary small">
-                                Пока ни одной — добавьте хотя бы одну.
+                                {{ t('widgetSettings.builder_tab.metrics.empty') }}
                             </div>
                             <div v-else-if="metricsIndependent" class="form-hint">
-                                Каждая метрика считается по своей таблице —
-                                связывать их между собой не нужно.
+                                {{ t('widgetSettings.builder_tab.metrics.independent_hint') }}
                             </div>
                         </div>
 
                         <!-- РАЗБИВКА -->
                         <div class="mb-3">
                             <div class="d-flex align-items-center mb-1">
-                                <label class="form-label mb-0">Разбивка</label>
+                                <label class="form-label mb-0">{{ t('widgetSettings.builder_tab.dimensions.label') }}</label>
                                 <button type="button" class="btn btn-sm ms-auto"
                                         :disabled="dimensions.length >= (slots?.dimensions?.max ?? 2)"
                                         @click="addDimension">
@@ -1329,7 +1327,7 @@ onBeforeUnmount(() => {
                                         <path d="M12 5l0 14" />
                                         <path d="M5 12l14 0" />
                                     </svg>
-                                    Добавить
+                                    {{ t('widgetSettings.common.add') }}
                                 </button>
                             </div>
 
@@ -1337,7 +1335,7 @@ onBeforeUnmount(() => {
                                  class="row g-1 mb-1 align-items-center">
                                 <div class="col-6">
                                     <select v-model="dimension.column" class="form-select form-select-sm"
-                                            aria-label="Колонка разбивки">
+                                            :aria-label="t('widgetSettings.builder_tab.dimensions.column_aria')">
                                         <option v-for="column in columns" :key="column.key"
                                                 :value="column.key">
                                             {{ column.title }}
@@ -1348,8 +1346,8 @@ onBeforeUnmount(() => {
                                     <select v-if="columnKind(dimension.column) === 'date'"
                                             v-model="dimension.grain"
                                             class="form-select form-select-sm"
-                                            aria-label="Округление даты">
-                                        <option value="">без округления</option>
+                                            :aria-label="t('widgetSettings.builder_tab.dimensions.grain_aria')">
+                                        <option value="">{{ t('widgetSettings.builder_tab.dimensions.grain_none') }}</option>
                                         <option v-for="(label, key) in grains" :key="key" :value="key">
                                             {{ label }}
                                         </option>
@@ -1357,7 +1355,7 @@ onBeforeUnmount(() => {
                                 </div>
                                 <div class="col-1 text-end">
                                     <button type="button" class="btn btn-icon btn-sm"
-                                            aria-label="Удалить разбивку" title="Удалить разбивку"
+                                            :aria-label="t('widgetSettings.builder_tab.dimensions.remove_title')" :title="t('widgetSettings.builder_tab.dimensions.remove_title')"
                                             @click="removeAt(dimensions, index)">
                                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
                                              viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -1370,7 +1368,7 @@ onBeforeUnmount(() => {
                             </div>
 
                             <div v-if="!dimensions.length" class="text-secondary small">
-                                Без разбивки — одно число на всю выборку.
+                                {{ t('widgetSettings.builder_tab.dimensions.empty') }}
                             </div>
 
                             <div v-if="slots?.hint" class="text-secondary small mt-1">
@@ -1381,7 +1379,7 @@ onBeforeUnmount(() => {
                         <!-- УСЛОВИЯ -->
                         <div class="mb-3">
                             <div class="d-flex align-items-center mb-1">
-                                <label class="form-label mb-0">Условия</label>
+                                <label class="form-label mb-0">{{ t('widgetSettings.builder_tab.filters.label') }}</label>
                                 <button type="button" class="btn btn-sm ms-auto" @click="addFilter">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
                                          viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -1389,7 +1387,7 @@ onBeforeUnmount(() => {
                                         <path d="M12 5l0 14" />
                                         <path d="M5 12l14 0" />
                                     </svg>
-                                    Добавить
+                                    {{ t('widgetSettings.common.add') }}
                                 </button>
                             </div>
 
@@ -1397,7 +1395,7 @@ onBeforeUnmount(() => {
                                  class="row g-1 mb-1 align-items-center">
                                 <div class="col-4">
                                     <select v-model="filter.column" class="form-select form-select-sm"
-                                            aria-label="Колонка условия">
+                                            :aria-label="t('widgetSettings.builder_tab.filters.column_aria')">
                                         <option v-for="column in columns" :key="column.key"
                                                 :value="column.key">
                                             {{ column.title }}
@@ -1406,7 +1404,7 @@ onBeforeUnmount(() => {
                                 </div>
                                 <div class="col-4">
                                     <select v-model="filter.op" class="form-select form-select-sm"
-                                            aria-label="Условие">
+                                            :aria-label="t('widgetSettings.builder_tab.filters.op_aria')">
                                         <option v-for="(label, key) in operators" :key="key" :value="key">
                                             {{ label }}
                                         </option>
@@ -1415,11 +1413,11 @@ onBeforeUnmount(() => {
                                 <div class="col-3">
                                     <input v-if="operatorNeedsValue(filter.op)" v-model="filter.value"
                                            type="text" class="form-control form-control-sm"
-                                           placeholder="значение" aria-label="Значение условия" />
+                                           :placeholder="t('widgetSettings.builder_tab.filters.value_placeholder')" :aria-label="t('widgetSettings.builder_tab.filters.value_aria')" />
                                 </div>
                                 <div class="col-1 text-end">
                                     <button type="button" class="btn btn-icon btn-sm"
-                                            aria-label="Удалить условие" title="Удалить условие"
+                                            :aria-label="t('widgetSettings.builder_tab.filters.remove_title')" :title="t('widgetSettings.builder_tab.filters.remove_title')"
                                             @click="removeAt(filters, index)">
                                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
                                              viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -1432,30 +1430,30 @@ onBeforeUnmount(() => {
                             </div>
 
                             <div v-if="!filters.length" class="text-secondary small">
-                                Без условий — считается по всем строкам.
+                                {{ t('widgetSettings.builder_tab.filters.empty') }}
                             </div>
                         </div>
 
                         <!-- СОРТИРОВКА И ЛИМИТ -->
                         <div class="row g-2">
                             <div class="col-5">
-                                <label class="form-label">Сортировка</label>
+                                <label class="form-label">{{ t('widgetSettings.builder_tab.sort.label') }}</label>
                                 <select v-model="sort.by" class="form-select form-select-sm">
-                                    <option value="metric">по метрике</option>
-                                    <option value="dimension">по разбивке</option>
-                                    <option value="none">без сортировки</option>
+                                    <option value="metric">{{ t('widgetSettings.builder_tab.sort.by_metric') }}</option>
+                                    <option value="dimension">{{ t('widgetSettings.builder_tab.sort.by_dimension') }}</option>
+                                    <option value="none">{{ t('widgetSettings.builder_tab.sort.none') }}</option>
                                 </select>
                             </div>
                             <div class="col-4">
-                                <label class="form-label">Порядок</label>
+                                <label class="form-label">{{ t('widgetSettings.builder_tab.sort.order_label') }}</label>
                                 <select v-model="sort.dir" class="form-select form-select-sm"
                                         :disabled="sort.by === 'none'">
-                                    <option value="desc">по убыванию</option>
-                                    <option value="asc">по возрастанию</option>
+                                    <option value="desc">{{ t('widgetSettings.builder_tab.sort.desc') }}</option>
+                                    <option value="asc">{{ t('widgetSettings.builder_tab.sort.asc') }}</option>
                                 </select>
                             </div>
                             <div class="col-3">
-                                <label class="form-label">Строк</label>
+                                <label class="form-label">{{ t('widgetSettings.builder_tab.sort.limit_label') }}</label>
                                 <input v-model="limit" type="number" min="1" max="5000"
                                        class="form-control form-control-sm" />
                             </div>
@@ -1463,13 +1461,13 @@ onBeforeUnmount(() => {
                     </template>
 
                     <div v-else class="empty">
-                        <div class="empty-title">Сначала выберите таблицу</div>
+                        <div class="empty-title">{{ t('widgetSettings.builder_tab.empty_state.title') }}</div>
                         <p class="empty-subtitle text-secondary">
-                            Метрики и разбивки берутся из её колонок — до этого выбирать не из чего.
+                            {{ t('widgetSettings.builder_tab.empty_state.subtitle') }}
                         </p>
                         <div class="empty-action">
                             <button class="btn btn-primary" type="button" @click="tab = 'data'">
-                                Перейти к данным
+                                {{ t('widgetSettings.builder_tab.empty_state.button') }}
                             </button>
                         </div>
                     </div>
@@ -1483,21 +1481,20 @@ onBeforeUnmount(() => {
                          вклинивался между запросом и подсказкой, и подсказка
                          читалась как описание результата. -->
                     <div class="mb-3">
-                        <label class="form-label">SQL-запрос</label>
+                        <label class="form-label">{{ t('widgetSettings.sql_tab.label') }}</label>
 
                         <textarea v-model="query" class="form-control builder-sql" spellcheck="false"
-                                  rows="14" aria-label="SQL-запрос виджета"
+                                  rows="14" :aria-label="t('widgetSettings.sql_tab.aria')"
                                   @input="sqlTouched = true"
                                   @keydown.tab.prevent="onTab"></textarea>
 
                         <div v-if="!sqlTouched && composedSql" class="form-hint">
-                            Запрос собран конструктором. Правки здесь останутся —
-                            настройки его больше не перезапишут.
+                            {{ t('widgetSettings.sql_tab.composed_hint') }}
                         </div>
                     </div>
 
                     <div v-if="requiredColumns.length" class="mb-3">
-                        <div class="form-label">Запрос должен вернуть колонки</div>
+                        <div class="form-label">{{ t('widgetSettings.sql_tab.required_columns_label') }}</div>
                         <div class="d-flex flex-wrap gap-2">
                             <span v-for="column in requiredColumns" :key="column"
                                   class="badge bg-secondary-lt" :title="hintFor(column)">
@@ -1516,7 +1513,7 @@ onBeforeUnmount(() => {
                                     <button class="nav-link" type="button"
                                             :class="{ active: resultView === 'rows' }"
                                             @click="resultView = 'rows'">
-                                        Ответ базы
+                                        {{ t('widgetSettings.sql_tab.result.db_response_tab') }}
                                         <span class="badge bg-secondary-lt ms-1">{{ runResult.rows.length }}</span>
                                     </button>
                                 </li>
@@ -1524,7 +1521,7 @@ onBeforeUnmount(() => {
                                     <button class="nav-link" type="button"
                                             :class="{ active: resultView === 'data' }"
                                             @click="resultView = 'data'">
-                                        Данные виджета
+                                        {{ t('widgetSettings.sql_tab.result.widget_data_tab') }}
                                     </button>
                                 </li>
                             </ul>
@@ -1533,7 +1530,7 @@ onBeforeUnmount(() => {
                         <div class="card-body p-2">
                             <template v-if="resultView === 'rows'">
                                 <div v-if="!runResult.rows.length" class="text-secondary small">
-                                    Запрос не вернул ни одной строки.
+                                    {{ t('widgetSettings.sql_tab.result.empty_rows') }}
                                 </div>
 
                                 <div v-else class="table-responsive builder-result">
@@ -1554,7 +1551,7 @@ onBeforeUnmount(() => {
 
                             <template v-else>
                                 <div v-if="!shapedJson" class="text-secondary small">
-                                    Разложить в форму виджета не удалось — смотрите ответ базы и ошибку ниже.
+                                    {{ t('widgetSettings.sql_tab.result.empty_shape') }}
                                 </div>
                                 <pre v-else class="mb-0 builder-result builder-sql">{{ shapedJson }}</pre>
                             </template>
@@ -1564,15 +1561,15 @@ onBeforeUnmount(() => {
                     <div>
                         <button type="button" class="btn btn-sm"
                                 @click="showPresentation = !showPresentation">
-                            {{ showPresentation ? 'Скрыть оформление' : 'Оформление, JSON' }}
+                            {{ showPresentation ? t('widgetSettings.sql_tab.presentation_hide') : t('widgetSettings.sql_tab.presentation_show') }}
                         </button>
 
                         <div v-if="showPresentation" class="mt-2">
                             <textarea v-model="presentation" class="form-control builder-sql" rows="4"
                                       spellcheck="false"
-                                      placeholder='{ "series_kinds": { "Выручка": "column" } }'
-                                      aria-label="Оформление виджета"></textarea>
-                            <div class="form-hint">Сюда попадает то, чего нет в данных.</div>
+                                      :placeholder="t('widgetSettings.sql_tab.presentation_placeholder')"
+                                      :aria-label="t('widgetSettings.sql_tab.presentation_aria')"></textarea>
+                            <div class="form-hint">{{ t('widgetSettings.sql_tab.presentation_hint') }}</div>
                         </div>
                     </div>
                 </template>
@@ -1583,7 +1580,7 @@ onBeforeUnmount(() => {
                 </div>
 
                 <div v-if="errors.length" class="alert alert-danger mt-3 mb-0" role="alert">
-                    <div class="fw-bold mb-1">Не получилось:</div>
+                    <div class="fw-bold mb-1">{{ t('widgetSettings.errors_heading') }}</div>
                     <pre class="mb-0 builder-errors">{{ errors.join("\n") }}</pre>
                 </div>
             </div>
@@ -1595,10 +1592,10 @@ onBeforeUnmount(() => {
                 <div v-if="isLookTab" class="d-flex gap-2 align-items-center">
                     <button type="button" class="btn btn-primary" :class="{ 'btn-loading': savingLook }"
                             :disabled="savingLook || !title.trim()" @click="saveLook">
-                        Сохранить
+                        {{ t('widgetSettings.footer.save') }}
                     </button>
                     <button type="button" class="btn btn-link link-secondary" @click="hide">
-                        Закрыть
+                        {{ t('widgetSettings.footer.close') }}
                     </button>
                 </div>
 
@@ -1607,15 +1604,15 @@ onBeforeUnmount(() => {
                         <button type="button" class="btn"
                                 :class="{ 'btn-loading': running }"
                                 :disabled="running || saving || !canRun" @click="run">
-                            Выполнить
+                            {{ t('widgetSettings.footer.run') }}
                         </button>
                         <button type="button" class="btn btn-primary" :class="{ 'btn-loading': saving }"
                                 :disabled="running || saving || !canRun" @click="save">
-                            Сохранить
+                            {{ t('widgetSettings.footer.save') }}
                         </button>
                         <button v-if="contentMode === 'builder' && composedSql" type="button"
                                 class="btn btn-link link-secondary" @click="editAsSql">
-                            Править запросом
+                            {{ t('widgetSettings.footer.edit_as_sql') }}
                         </button>
                     </div>
 

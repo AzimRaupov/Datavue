@@ -1,7 +1,10 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import api from '../../api.js';
+
+const { t } = useI18n();
 
 /**
  * Заведение и правка сотрудника — отдельной страницей.
@@ -122,7 +125,7 @@ async function load() {
         const found = (data.users ?? []).find((u) => u.id === employeeId.value);
 
         if (!found) {
-            loadError.value = 'Сотрудник не найден.';
+            loadError.value = t('settingsUserForm.errors.employee_not_found');
 
             return;
         }
@@ -143,8 +146,8 @@ async function load() {
     } catch (err) {
         loadError.value =
             err.response?.status === 403
-                ? 'У вас нет прав на управление сотрудниками.'
-                : 'Не удалось загрузить данные сотрудника.';
+                ? t('settingsUserForm.errors.no_permission_manage')
+                : t('settingsUserForm.errors.load_failed');
     } finally {
         loading.value = false;
     }
@@ -183,7 +186,7 @@ async function submit() {
         if (data?.errors) {
             formErrors.value = data.errors;
         } else {
-            formError.value = data?.message || 'Не удалось сохранить сотрудника.';
+            formError.value = data?.message || t('settingsUserForm.errors.save_failed');
         }
     } finally {
         saving.value = false;
@@ -202,22 +205,22 @@ onMounted(load);
                     <div class="col">
                         <div class="page-pretitle">
                             <router-link :to="{ name: 'settings.users' }" class="text-reset">
-                                Сотрудники
+                                {{ t('settingsUserForm.breadcrumb_employees') }}
                             </router-link>
                         </div>
                         <h2 class="page-title">
-                            {{ isCreate ? 'Новый сотрудник' : employee?.name || 'Сотрудник' }}
+                            {{ isCreate ? t('settingsUserForm.title_create') : employee?.name || t('settingsUserForm.title_edit_fallback') }}
                         </h2>
                         <div v-if="!isCreate && employee" class="text-secondary mt-1">
                             {{ employee.email }}
-                            <span v-if="employee.is_owner" class="badge bg-yellow-lt ms-1">владелец</span>
-                            <span v-else-if="employee.is_self" class="badge bg-secondary-lt ms-1">это вы</span>
+                            <span v-if="employee.is_owner" class="badge bg-yellow-lt ms-1">{{ t('settingsUserForm.owner_badge') }}</span>
+                            <span v-else-if="employee.is_self" class="badge bg-secondary-lt ms-1">{{ t('settingsUserForm.self_badge') }}</span>
                         </div>
                     </div>
 
                     <div class="col-auto ms-auto d-print-none">
                         <router-link :to="{ name: 'settings.users' }" class="btn btn-link link-secondary">
-                            К списку
+                            {{ t('settingsUserForm.back_to_list') }}
                         </router-link>
                     </div>
                 </div>
@@ -240,7 +243,7 @@ onMounted(load);
                 </div>
 
                 <div v-else-if="!canManage" class="alert alert-warning" role="alert">
-                    У вас нет прав на управление сотрудниками.
+                    {{ t('settingsUserForm.errors.no_permission_manage') }}
                 </div>
 
                 <form v-else class="card" @submit.prevent="submit">
@@ -248,35 +251,35 @@ onMounted(load);
                         <div class="row">
                             <div class="col-lg-6">
                                 <div class="mb-3">
-                                    <label class="form-label required">Имя</label>
+                                    <label class="form-label required">{{ t('settingsUserForm.fields.name_label') }}</label>
                                     <input v-model="form.name" type="text" class="form-control"
-                                           :class="{ 'is-invalid': formErrors.name }" placeholder="Иван Иванов" />
+                                           :class="{ 'is-invalid': formErrors.name }" :placeholder="t('settingsUserForm.fields.name_placeholder')" />
                                     <div v-if="formErrors.name" class="invalid-feedback">{{ formErrors.name[0] }}</div>
                                 </div>
                             </div>
 
                             <div class="col-lg-6">
                                 <div class="mb-3">
-                                    <label class="form-label required">E-mail</label>
+                                    <label class="form-label required">{{ t('settingsUserForm.fields.email_label') }}</label>
                                     <input v-model="form.email" type="email" class="form-control"
-                                           :class="{ 'is-invalid': formErrors.email }" placeholder="ivan@company.com" />
+                                           :class="{ 'is-invalid': formErrors.email }" :placeholder="t('settingsUserForm.fields.email_placeholder')" />
                                     <div v-if="formErrors.email" class="invalid-feedback">{{ formErrors.email[0] }}</div>
                                 </div>
                             </div>
 
                             <div class="col-lg-6">
                                 <div class="mb-3">
-                                    <label class="form-label" :class="{ required: isCreate }">Пароль</label>
+                                    <label class="form-label" :class="{ required: isCreate }">{{ t('settingsUserForm.fields.password_label') }}</label>
                                     <input v-model="form.password" type="password" class="form-control"
                                            :class="{ 'is-invalid': formErrors.password }"
-                                           :placeholder="isCreate ? 'Минимум 6 символов' : 'Оставьте пустым, чтобы не менять'" />
+                                           :placeholder="isCreate ? t('settingsUserForm.fields.password_placeholder_create') : t('settingsUserForm.fields.password_placeholder_edit')" />
                                     <div v-if="formErrors.password" class="invalid-feedback">{{ formErrors.password[0] }}</div>
                                 </div>
                             </div>
 
                             <div class="col-lg-6">
                                 <div class="mb-3">
-                                    <label class="form-label">Подтверждение пароля</label>
+                                    <label class="form-label">{{ t('settingsUserForm.fields.password_confirm_label') }}</label>
                                     <input v-model="form.password_confirmation" type="password" class="form-control" />
                                 </div>
                             </div>
@@ -286,7 +289,7 @@ onMounted(load);
 
                         <!-- РОЛЬ -->
                         <div class="mb-3">
-                            <label class="form-label required">Роль и доступы</label>
+                            <label class="form-label required">{{ t('settingsUserForm.role.label') }}</label>
                             <div class="row g-2">
                                 <div class="col-md-6 col-lg-3"
                                      v-for="role in assignableRoles"
@@ -327,7 +330,7 @@ onMounted(load);
                                                 <span class="form-check-label">{{ item.label }}</span>
                                                 <span v-if="!canGrant(item.name)"
                                                       class="form-check-description text-secondary">
-                                                    Нет у вас самих — выдать нельзя
+                                                    {{ t('settingsUserForm.permissions.not_grantable') }}
                                                 </span>
                                             </label>
                                         </div>
@@ -336,8 +339,7 @@ onMounted(load);
                             </div>
 
                             <div class="form-hint mt-2">
-                                Выбрано прав: {{ form.permissions.length }}.
-                                Сотрудник получит ровно этот доступ — ни больше, ни меньше.
+                                {{ t('settingsUserForm.permissions.selected_count', { count: form.permissions.length }) }}
                             </div>
 
                             <div v-if="formErrors.permissions" class="invalid-feedback d-block">
@@ -350,10 +352,10 @@ onMounted(load);
                         <div>
                             <label class="form-check form-switch">
                                 <input class="form-check-input" type="checkbox" v-model="form.is_active" />
-                                <span class="form-check-label">Учётная запись активна</span>
+                                <span class="form-check-label">{{ t('settingsUserForm.active.label') }}</span>
                             </label>
                             <small class="form-hint">
-                                Отключённый сотрудник не сможет войти, но его данные и история сохранятся.
+                                {{ t('settingsUserForm.active.hint') }}
                             </small>
                             <div v-if="formErrors.is_active" class="invalid-feedback d-block">
                                 {{ formErrors.is_active[0] }}
@@ -365,10 +367,10 @@ onMounted(load);
 
                     <div class="card-footer d-flex align-items-center">
                         <router-link :to="{ name: 'settings.users' }" class="btn btn-link link-secondary">
-                            Отмена
+                            {{ t('settingsUserForm.cancel') }}
                         </router-link>
                         <button type="submit" class="btn btn-primary ms-auto" :disabled="saving">
-                            {{ saving ? 'Сохранение…' : (isCreate ? 'Добавить сотрудника' : 'Сохранить') }}
+                            {{ saving ? t('settingsUserForm.submit_saving') : (isCreate ? t('settingsUserForm.submit_create') : t('settingsUserForm.submit_edit')) }}
                         </button>
                     </div>
                 </form>

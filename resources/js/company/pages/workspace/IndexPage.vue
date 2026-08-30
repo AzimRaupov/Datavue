@@ -2,6 +2,7 @@
 import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick } from "vue";
 import { Modal } from "bootstrap";
 import { useRouter } from "vue-router";
+import { useI18n } from "vue-i18n";
 import api from "../../api.js";
 
 /**
@@ -13,6 +14,7 @@ import api from "../../api.js";
  */
 
 const router = useRouter();
+const { t } = useI18n();
 
 const workspaces = ref([]);
 const sources = ref([]);
@@ -62,7 +64,7 @@ async function fetchAll() {
         workspaces.value = workspacesResponse.data ?? [];
         sources.value = sourcesResponse?.data ?? [];
     } catch (err) {
-        listError.value = "Не удалось загрузить рабочие пространства.";
+        listError.value = t("workspaceIndex.errors.load_failed");
     } finally {
         loading.value = false;
     }
@@ -107,7 +109,7 @@ async function submitCreate() {
     } catch (err) {
         const body = err.response?.data;
         if (body?.errors) createErrors.value = body.errors;
-        createError.value = body?.message || "Не удалось создать пространство.";
+        createError.value = body?.message || t("workspaceIndex.errors.create_failed");
     } finally {
         creating.value = false;
     }
@@ -137,7 +139,7 @@ async function confirmDelete() {
         deleteModal?.hide();
         pendingDelete.value = null;
     } catch (err) {
-        listError.value = err.response?.data?.message || "Не удалось удалить пространство.";
+        listError.value = err.response?.data?.message || t("workspaceIndex.errors.delete_failed");
     } finally {
         deleting.value = false;
     }
@@ -163,8 +165,8 @@ onBeforeUnmount(() => {
             <div class="container-xl">
                 <div class="row g-2 align-items-center">
                     <div class="col">
-                        <div class="page-pretitle">Работа</div>
-                        <h2 class="page-title">Рабочие пространства</h2>
+                        <div class="page-pretitle">{{ t('workspaceIndex.pretitle') }}</div>
+                        <h2 class="page-title">{{ t('workspaceIndex.title') }}</h2>
                     </div>
                     <div class="col-auto ms-auto">
                         <button v-if="canCreate" class="btn btn-primary" type="button" @click="openCreateModal">
@@ -174,7 +176,7 @@ onBeforeUnmount(() => {
                                 <path d="M12 5l0 14" />
                                 <path d="M5 12l14 0" />
                             </svg>
-                            Создать пространство
+                            {{ t('workspaceIndex.create_button') }}
                         </button>
                     </div>
                 </div>
@@ -196,22 +198,20 @@ onBeforeUnmount(() => {
                 <template v-else>
                     <div v-if="workspaces.length" class="mb-3">
                         <input v-model="search" type="search" class="form-control"
-                               placeholder="Поиск по названию, описанию или источнику"
-                               aria-label="Поиск пространства" />
+                               :placeholder="t('workspaceIndex.search_placeholder')"
+                               :aria-label="t('workspaceIndex.search_aria')" />
                     </div>
 
                     <div v-if="!workspaces.length" class="card">
                         <div class="card-body">
                             <div class="empty">
-                                <p class="empty-title">Пространств пока нет</p>
+                                <p class="empty-title">{{ t('workspaceIndex.empty.title') }}</p>
                                 <p class="empty-subtitle text-secondary">
-                                    Пространство — это задача: источник данных, дашборды по нему
-                                    и разговор с агентом. Заведите первое — и собирайте внутри
-                                    сколько угодно дашбордов.
+                                    {{ t('workspaceIndex.empty.subtitle') }}
                                 </p>
                                 <div v-if="canCreate" class="empty-action">
                                     <button class="btn btn-primary" type="button" @click="openCreateModal">
-                                        Создать пространство
+                                        {{ t('workspaceIndex.create_button') }}
                                     </button>
                                 </div>
                             </div>
@@ -221,8 +221,8 @@ onBeforeUnmount(() => {
                     <div v-else-if="!visible.length" class="card">
                         <div class="card-body">
                             <div class="empty">
-                                <p class="empty-title">Ничего не найдено</p>
-                                <p class="empty-subtitle text-secondary">Попробуйте изменить запрос.</p>
+                                <p class="empty-title">{{ t('workspaceIndex.no_results.title') }}</p>
+                                <p class="empty-subtitle text-secondary">{{ t('workspaceIndex.no_results.subtitle') }}</p>
                             </div>
                         </div>
                     </div>
@@ -234,7 +234,7 @@ onBeforeUnmount(() => {
                                 <div class="card-body pb-2">
                                     <div class="d-flex align-items-center justify-content-between mb-2">
                                         <span class="badge bg-blue-lt">
-                                            {{ workspace.dashboards_count ?? 0 }} дашборд(ов)
+                                            {{ t('workspaceIndex.card.dashboards_count', { count: workspace.dashboards_count ?? 0 }) }}
                                         </span>
                                         <span class="subheader text-muted">
                                             {{ formatDate(workspace.created_at) }}
@@ -255,10 +255,10 @@ onBeforeUnmount(() => {
                                     </div>
 
                                     <div v-if="workspace.data_source" class="text-secondary small">
-                                        Источник: {{ workspace.data_source.name }}
+                                        {{ t('workspaceIndex.card.source_prefix') }} {{ workspace.data_source.name }}
                                     </div>
                                     <div v-else class="text-danger small">
-                                        Источник данных удалён
+                                        {{ t('workspaceIndex.card.source_deleted') }}
                                     </div>
                                 </div>
 
@@ -267,11 +267,11 @@ onBeforeUnmount(() => {
                                         class="btn btn-sm"
                                         :to="{ name: 'company.workspace', params: { workspace: workspace.id } }"
                                     >
-                                        Открыть
+                                        {{ t('workspaceIndex.card.open') }}
                                     </router-link>
                                     <button v-if="canDelete" class="btn btn-sm btn-ghost-danger ms-auto"
                                             type="button" @click="askDelete(workspace)">
-                                        Удалить
+                                        {{ t('workspaceIndex.card.delete') }}
                                     </button>
                                 </div>
                             </div>
@@ -287,34 +287,34 @@ onBeforeUnmount(() => {
                 <div class="modal-content">
                     <form @submit.prevent="submitCreate">
                         <div class="modal-header">
-                            <h5 class="modal-title">Новое рабочее пространство</h5>
+                            <h5 class="modal-title">{{ t('workspaceIndex.create_modal.title') }}</h5>
                             <button type="button" class="btn-close" data-bs-dismiss="modal"
-                                    aria-label="Закрыть"></button>
+                                    :aria-label="t('workspaceIndex.close')"></button>
                         </div>
 
                         <div class="modal-body">
                             <div v-if="createError" class="alert alert-danger" role="alert">{{ createError }}</div>
 
                             <div class="mb-3">
-                                <label class="form-label required">Название</label>
+                                <label class="form-label required">{{ t('workspaceIndex.create_modal.name_label') }}</label>
                                 <input v-model="createForm.name" type="text" class="form-control"
                                        :class="{ 'is-invalid': createErrors.name }"
-                                       placeholder="Продажи" maxlength="255" required />
+                                       :placeholder="t('workspaceIndex.create_modal.name_placeholder')" maxlength="255" required />
                                 <div v-if="createErrors.name" class="invalid-feedback">{{ createErrors.name[0] }}</div>
                             </div>
 
                             <div class="mb-3">
-                                <label class="form-label">Описание</label>
+                                <label class="form-label">{{ t('workspaceIndex.create_modal.description_label') }}</label>
                                 <textarea v-model="createForm.description" class="form-control" rows="2"
-                                          placeholder="Над чем здесь работают"></textarea>
+                                          :placeholder="t('workspaceIndex.create_modal.description_placeholder')"></textarea>
                             </div>
 
                             <div>
-                                <label class="form-label required">Источник данных</label>
+                                <label class="form-label required">{{ t('workspaceIndex.create_modal.source_label') }}</label>
                                 <select v-model="createForm.data_source_id" class="form-select"
                                         :class="{ 'is-invalid': createErrors.data_source_id }"
                                         :disabled="!sources.length" required>
-                                    <option value="" disabled>Выберите источник</option>
+                                    <option value="" disabled>{{ t('workspaceIndex.create_modal.source_placeholder') }}</option>
                                     <option v-for="source in sources" :key="source.id" :value="source.id">
                                         {{ source.name }} — {{ source.format_label }}
                                     </option>
@@ -323,21 +323,21 @@ onBeforeUnmount(() => {
                                     {{ createErrors.data_source_id[0] }}
                                 </div>
                                 <small v-if="sources.length" class="form-hint">
-                                    По нему будут считать все дашборды пространства.
+                                    {{ t('workspaceIndex.create_modal.source_hint') }}
                                 </small>
                                 <small v-else class="form-hint text-danger">
-                                    Источников пока нет — сначала подключите источник данных.
+                                    {{ t('workspaceIndex.create_modal.no_sources_hint') }}
                                 </small>
                             </div>
                         </div>
 
                         <div class="modal-footer">
                             <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">
-                                Отмена
+                                {{ t('workspaceIndex.cancel') }}
                             </button>
                             <button type="submit" class="btn btn-primary" :class="{ 'btn-loading': creating }"
                                     :disabled="creating || !sources.length">
-                                Создать и открыть
+                                {{ t('workspaceIndex.create_modal.submit') }}
                             </button>
                         </div>
                     </form>
@@ -351,22 +351,21 @@ onBeforeUnmount(() => {
                 <div class="modal-content">
                     <div class="modal-status bg-danger"></div>
                     <div class="modal-body text-center py-4">
-                        <h3>Удалить пространство?</h3>
+                        <h3>{{ t('workspaceIndex.delete_modal.title') }}</h3>
                         <div class="text-secondary">
-                            «{{ pendingDelete?.name }}», все его дашборды и переписка с агентом
-                            будут удалены без возможности вернуть. Источник данных останется.
+                            {{ t('workspaceIndex.delete_modal.body', { name: pendingDelete?.name }) }}
                         </div>
                     </div>
                     <div class="modal-footer">
                         <div class="w-100">
                             <div class="row">
                                 <div class="col">
-                                    <button class="btn w-100" data-bs-dismiss="modal">Отмена</button>
+                                    <button class="btn w-100" data-bs-dismiss="modal">{{ t('workspaceIndex.cancel') }}</button>
                                 </div>
                                 <div class="col">
                                     <button class="btn btn-danger w-100" :class="{ 'btn-loading': deleting }"
                                             :disabled="deleting" @click="confirmDelete">
-                                        Удалить
+                                        {{ t('workspaceIndex.card.delete') }}
                                     </button>
                                 </div>
                             </div>

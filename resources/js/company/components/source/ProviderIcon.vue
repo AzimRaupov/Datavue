@@ -1,4 +1,7 @@
 <script setup>
+import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
+
 /**
  * Иконка провайдера источника данных.
  *
@@ -7,9 +10,25 @@
  * Все контуры взяты из набора Tabler Icons и рисуются в его стиле:
  * 24×24, stroke currentColor, без заливки.
  */
-defineProps({
+const props = defineProps({
     name: { type: String, default: 'database' },
     size: { type: [Number, String], default: 24 },
+});
+
+const { t } = useI18n();
+
+// Подпись для нативной всплывающей подсказки при наведении (элемент <title> в SVG).
+const label = computed(() => {
+    switch (props.name) {
+        case 'file-spreadsheet':
+            return t('providerIcon.file_spreadsheet');
+        case 'file-database':
+            return t('providerIcon.file_database');
+        case 'table':
+            return t('providerIcon.table');
+        default:
+            return t('providerIcon.database');
+    }
 });
 </script>
 
@@ -28,6 +47,8 @@ defineProps({
         focusable="false"
         class="icon"
     >
+        <title>{{ label }}</title>
+
         <!-- tabler: file-spreadsheet -->
         <template v-if="name === 'file-spreadsheet'">
             <path d="M14 3v4a1 1 0 0 0 1 1h4" />

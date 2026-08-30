@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from "vue";
 import { Modal } from "bootstrap";
+import { useI18n } from "vue-i18n";
 import api from "../../api.js";
 import { templateFor } from "./codeTemplates.js";
 
@@ -16,6 +17,8 @@ import { templateFor } from "./codeTemplates.js";
  * синтаксиса даст CodeMirror, но он тянет отдельную зависимость: контракт
  * этого компонента от неё не изменится.
  */
+
+const { t } = useI18n();
 
 const props = defineProps({
     dashboardId: { type: [String, Number], required: true },
@@ -91,12 +94,12 @@ async function runDraft() {
         );
 
         preview.value = data.data;
-        okMessage.value = "Код отработал, данные подходят виджету.";
+        okMessage.value = t("widgetCodeModal.success_run");
     } catch (err) {
         const body = err.response?.data;
         errors.value = body?.errors?.length
             ? body.errors
-            : [body?.message || "Не удалось выполнить код."];
+            : [body?.message || t("widgetCodeModal.error_run_default")];
         preview.value = body?.data ?? null;
     } finally {
         running.value = false;
@@ -118,12 +121,12 @@ async function save() {
         preview.value = data.data ?? null;
 
         if (data.ok) {
-            okMessage.value = "Код сохранён, виджет работает.";
+            okMessage.value = t("widgetCodeModal.success_save");
         } else {
             // Сохранили, но виджет сломан: это предупреждение, а не отказ —
             // автору есть куда вернуться, чтобы починить.
             errors.value = data.errors ?? [];
-            okMessage.value = "Код сохранён, но виджет помечен сломанным.";
+            okMessage.value = t("widgetCodeModal.success_save_broken");
         }
 
         emit("saved", data.widget);
@@ -131,7 +134,7 @@ async function save() {
         const body = err.response?.data;
         errors.value = body?.errors?.length
             ? body.errors
-            : [body?.message || "Не удалось сохранить код."];
+            : [body?.message || t("widgetCodeModal.error_save_default")];
     } finally {
         saving.value = false;
     }
@@ -149,13 +152,13 @@ async function restore() {
         );
 
         code.value = data.widget?.code ?? code.value;
-        okMessage.value = "Вернули предыдущую версию.";
+        okMessage.value = t("widgetCodeModal.success_restore");
         emit("saved", data.widget);
     } catch (err) {
         const body = err.response?.data;
         errors.value = body?.errors?.length
             ? body.errors
-            : [body?.message || "Не удалось вернуть предыдущую версию."];
+            : [body?.message || t("widgetCodeModal.error_restore_default")];
     } finally {
         restoring.value = false;
     }
@@ -175,7 +178,7 @@ async function runSql() {
 
         sqlResult.value = data;
     } catch (err) {
-        sqlError.value = err.response?.data?.message || "Запрос не выполнен.";
+        sqlError.value = err.response?.data?.message || t("widgetCodeModal.error_sql_default");
     } finally {
         sqlRunning.value = false;
     }
@@ -209,10 +212,10 @@ onBeforeUnmount(() => {
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">
-                        Код виджета
+                        {{ t('widgetCodeModal.title') }}
                         <span v-if="widget" class="text-secondary">— {{ widget.title }}</span>
                     </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" :aria-label="t('widgetCodeModal.close_aria')"></button>
                 </div>
 
                 <div class="modal-body">
@@ -220,9 +223,9 @@ onBeforeUnmount(() => {
                         <!-- ЛЕВО: сам код -->
                         <div class="col-lg-7">
                             <label class="form-label d-flex align-items-center">
-                                <span>Тело функции <code>main()</code></span>
+                                <span>{{ t('widgetCodeModal.function_body_label') }} <code>main()</code></span>
                                 <span class="ms-auto text-secondary small">
-                                    доступна функция <code>query(sql, params=None)</code>
+                                    {{ t('widgetCodeModal.available_function_label') }} <code>query(sql, params=None)</code>
                                 </span>
                             </label>
 
@@ -231,7 +234,7 @@ onBeforeUnmount(() => {
                                 class="form-control builder-code"
                                 spellcheck="false"
                                 rows="18"
-                                aria-label="Код виджета на Python"
+                                :aria-label="t('widgetCodeModal.code_aria')"
                                 @keydown.tab.prevent="onTab"
                             ></textarea>
 
@@ -239,17 +242,17 @@ onBeforeUnmount(() => {
                                 <button type="button" class="btn"
                                         :class="{ 'btn-loading': running }"
                                         :disabled="running || saving" @click="runDraft">
-                                    Выполнить
+                                    {{ t('widgetCodeModal.run_button') }}
                                 </button>
                                 <button type="button" class="btn btn-primary"
                                         :class="{ 'btn-loading': saving }"
                                         :disabled="running || saving" @click="save">
-                                    Сохранить
+                                    {{ t('widgetCodeModal.save_button') }}
                                 </button>
                                 <button v-if="hasPrevious" type="button" class="btn btn-link link-secondary"
                                         :class="{ 'btn-loading': restoring }"
                                         :disabled="restoring" @click="restore">
-                                    Вернуть предыдущую версию
+                                    {{ t('widgetCodeModal.restore_previous_button') }}
                                 </button>
                             </div>
 
@@ -258,12 +261,12 @@ onBeforeUnmount(() => {
                             </div>
 
                             <div v-if="errors.length" class="alert alert-danger mt-3 mb-0" role="alert">
-                                <div class="fw-bold mb-1">Не получилось:</div>
+                                <div class="fw-bold mb-1">{{ t('widgetCodeModal.errors_heading') }}</div>
                                 <pre class="mb-0 builder-errors">{{ errors.join("\n") }}</pre>
                             </div>
 
                             <div v-if="preview" class="mt-3">
-                                <div class="form-label">Результат</div>
+                                <div class="form-label">{{ t('widgetCodeModal.result_label') }}</div>
                                 <pre class="builder-preview">{{ JSON.stringify(preview, null, 2) }}</pre>
                             </div>
                         </div>
@@ -271,7 +274,7 @@ onBeforeUnmount(() => {
                         <!-- ПРАВО: справка и подбор запроса -->
                         <div class="col-lg-5">
                             <div class="mb-3">
-                                <div class="form-label">Форма данных семейства «{{ familyName }}»</div>
+                                <div class="form-label">{{ t('widgetCodeModal.data_shape_label', { family: familyName }) }}</div>
                                 <pre v-if="scheme" class="builder-scheme">{{ scheme }}</pre>
                                 <div v-if="schemeDescription" class="text-secondary small builder-scheme-text">
                                     {{ schemeDescription }}
@@ -279,15 +282,15 @@ onBeforeUnmount(() => {
                             </div>
 
                             <div class="mb-3">
-                                <div class="form-label">Пробный запрос</div>
+                                <div class="form-label">{{ t('widgetCodeModal.trial_query_label') }}</div>
                                 <textarea v-model="sql" class="form-control builder-code" rows="3"
                                           spellcheck="false"
                                           placeholder="SELECT * FROM orders LIMIT 10"
-                                          aria-label="Пробный SQL-запрос"></textarea>
+                                          :aria-label="t('widgetCodeModal.sql_aria')"></textarea>
                                 <button type="button" class="btn btn-sm mt-2"
                                         :class="{ 'btn-loading': sqlRunning }"
                                         :disabled="sqlRunning" @click="runSql">
-                                    Проверить запрос
+                                    {{ t('widgetCodeModal.check_query_button') }}
                                 </button>
 
                                 <div v-if="sqlError" class="alert alert-danger mt-2 mb-0">{{ sqlError }}</div>
@@ -301,14 +304,14 @@ onBeforeUnmount(() => {
                                         </tbody>
                                     </table>
                                     <div class="text-secondary small">
-                                        Строк: {{ sqlResult.row_count }}
-                                        <span v-if="sqlResult.truncated">(показаны первые)</span>
+                                        {{ t('widgetCodeModal.rows_label', { count: sqlResult.row_count }) }}
+                                        <span v-if="sqlResult.truncated">{{ t('widgetCodeModal.truncated_label') }}</span>
                                     </div>
                                 </div>
                             </div>
 
                             <div>
-                                <div class="form-label">Таблицы источника</div>
+                                <div class="form-label">{{ t('widgetCodeModal.source_tables_label') }}</div>
                                 <div class="builder-schema">
                                     <div v-for="table in schema" :key="table.name" class="mb-2">
                                         <button type="button" class="btn btn-link p-0"
@@ -320,7 +323,7 @@ onBeforeUnmount(() => {
                                         </div>
                                     </div>
                                     <div v-if="!schema.length" class="text-secondary small">
-                                        Схема не загружена.
+                                        {{ t('widgetCodeModal.schema_not_loaded') }}
                                     </div>
                                 </div>
                             </div>

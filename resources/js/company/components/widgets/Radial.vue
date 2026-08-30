@@ -8,8 +8,11 @@
 
 <script setup>
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from "vue"
+import { useI18n } from "vue-i18n"
 import ApexCharts from "apexcharts"
 import { colorsFor } from "./palette.js"
+
+const { t, locale } = useI18n()
 
 /**
  * Семейство "radial": процент достижения цели.
@@ -65,7 +68,7 @@ const renderChart = async () => {
                     total: multiple
                         ? {
                             show: true,
-                            label: "Среднее",
+                            label: t('widgets.radial.average'),
                             formatter: () => {
                                 const sum = series.reduce((acc, value) => acc + value, 0)
                                 return `${Math.round(sum / series.length)}%`
@@ -89,7 +92,7 @@ const renderChart = async () => {
 }
 
 watch(
-    () => [props.series, props.labels, props.options],
+    () => [props.series, props.labels, props.options, locale.value],
     renderChart,
     { deep: true }
 )

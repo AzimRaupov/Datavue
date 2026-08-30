@@ -2,6 +2,7 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from "vue";
 import { Modal, Offcanvas } from "bootstrap";
 import { useRoute, useRouter } from "vue-router";
+import { useI18n } from "vue-i18n";
 import Sortable from "sortablejs";
 
 import api from "../../api.js";
@@ -30,6 +31,7 @@ import AiChatSidebar from "../../components/chat/AiChatSidebar.vue";
 
 const route = useRoute();
 const router = useRouter();
+const { t } = useI18n();
 
 const empty_img = "/static/illustrations/light/chart-circle.png";
 const generate_img = "/static/illustrations/light/boy-and-laptop.png";
@@ -78,27 +80,29 @@ const isGenerating = computed(() =>
 );
 
 const DASHBOARD_STATUS = {
-    empty: { text: "Пустой", cls: "bg-secondary-lt" },
-    generating_scheme: { text: "Генерируется", cls: "bg-azure-lt" },
-    generating_widgets: { text: "Считает виджеты", cls: "bg-azure-lt" },
-    reviewing: { text: "Проверяется", cls: "bg-azure-lt" },
-    completed: { text: "Готов", cls: "bg-green-lt" },
-    failed: { text: "Ошибка", cls: "bg-red-lt" },
+    empty: { key: "workspacePage.dashboard_status.empty", cls: "bg-secondary-lt" },
+    generating_scheme: { key: "workspacePage.dashboard_status.generating_scheme", cls: "bg-azure-lt" },
+    generating_widgets: { key: "workspacePage.dashboard_status.generating_widgets", cls: "bg-azure-lt" },
+    reviewing: { key: "workspacePage.dashboard_status.reviewing", cls: "bg-azure-lt" },
+    completed: { key: "workspacePage.dashboard_status.completed", cls: "bg-green-lt" },
+    failed: { key: "workspacePage.dashboard_status.failed", cls: "bg-red-lt" },
 };
 
 const WIDGET_STATUS = {
-    draft: { text: "Нет данных", cls: "bg-secondary-lt" },
-    active: { text: "Работает", cls: "bg-green-lt" },
-    failed: { text: "Ошибка", cls: "bg-red-lt" },
-    inactive: { text: "Выключен", cls: "bg-secondary-lt" },
+    draft: { key: "workspacePage.widget_status.draft", cls: "bg-secondary-lt" },
+    active: { key: "workspacePage.widget_status.active", cls: "bg-green-lt" },
+    failed: { key: "workspacePage.widget_status.failed", cls: "bg-red-lt" },
+    inactive: { key: "workspacePage.widget_status.inactive", cls: "bg-secondary-lt" },
 };
 
 function statusOf(widget) {
-    return WIDGET_STATUS[widget.status] ?? WIDGET_STATUS.draft;
+    const entry = WIDGET_STATUS[widget.status] ?? WIDGET_STATUS.draft;
+    return { text: t(entry.key), cls: entry.cls };
 }
 
 function dashboardStatus(item) {
-    return DASHBOARD_STATUS[item?.status] ?? { text: item?.status ?? "", cls: "bg-secondary-lt" };
+    const entry = DASHBOARD_STATUS[item?.status];
+    return entry ? { text: t(entry.key), cls: entry.cls } : { text: item?.status ?? "", cls: "bg-secondary-lt" };
 }
 
 function typesOf(widget) {
@@ -182,8 +186,8 @@ async function load() {
     } catch (err) {
         error.value =
             err.response?.status === 403
-                ? "Нет доступа к этому рабочему пространству."
-                : "Не удалось открыть рабочее пространство.";
+                ? t("workspacePage.errors.no_access")
+                : t("workspacePage.errors.load_failed");
     } finally {
         isLoading.value = false;
     }
@@ -362,17 +366,17 @@ async function addWidget({ widget_id, widget_type_id, family }) {
         const { data } = await api.post(`/dashboards/${dashboardId.value}/widgets`, {
             widget_id,
             widget_type_id,
-            title: `Новый виджет — ${family.name}`,
+            title: t("workspacePage.new_widget_title", { name: family.name }),
         });
 
         widgets.value.push(data);
-        notice.value = "Виджет добавлен. Настройте данные, чтобы он посчитался.";
+        notice.value = t("workspacePage.notices.widget_added");
         palette?.hide();
 
         await nextTick();
         setupSortable();
     } catch (err) {
-        notice.value = err.response?.data?.message || "Не удалось добавить виджет.";
+        notice.value = err.response?.data?.message || t("workspacePage.errors.add_widget_failed");
     } finally {
         busy.value = false;
     }
@@ -391,7 +395,7 @@ async function renameWidget(widget, title) {
 
         replaceWidget(data);
     } catch (err) {
-        notice.value = err.response?.data?.message || "Не удалось переименовать виджет.";
+        notice.value = err.response?.data?.message || t("workspacePage.errors.rename_widget_failed");
     }
 }
 
@@ -412,7 +416,7 @@ async function changeType(widget, typeId) {
 
         replaceWidget(data);
     } catch (err) {
-        notice.value = err.response?.data?.message || "Не удалось сменить вид.";
+        notice.value = err.response?.data?.message || t("workspacePage.errors.change_type_failed");
     }
 }
 
@@ -425,7 +429,7 @@ async function removeWidget(widget) {
         await api.delete(`/dashboards/${dashboardId.value}/widgets/${widget.id}`);
         widgets.value = widgets.value.filter((item) => item.id !== widget.id);
     } catch (err) {
-        notice.value = err.response?.data?.message || "Не удалось удалить виджет.";
+        notice.value = err.response?.data?.message || t("workspacePage.errors.remove_widget_failed");
     } finally {
         busy.value = false;
     }
@@ -449,7 +453,7 @@ async function moveWidget(from, to) {
             widgets: widgets.value.map((widget, position) => ({ id: widget.id, position })),
         });
     } catch (err) {
-        notice.value = "Порядок не сохранён — обновите страницу.";
+        notice.value = t("workspacePage.errors.reorder_failed");
     }
 }
 
@@ -547,7 +551,7 @@ async function submitCreate() {
             query: { mode: "edit" },
         });
     } catch (err) {
-        createError.value = err.response?.data?.message || "Не удалось создать дашборд.";
+        createError.value = err.response?.data?.message || t("workspacePage.errors.create_dashboard_failed");
     } finally {
         creating.value = false;
     }
@@ -590,7 +594,7 @@ async function openAssistant() {
         workspace.value = { ...workspace.value, chat: data.chat };
         chatOpen.value = true;
     } catch (err) {
-        notice.value = err.response?.data?.message || "Не удалось открыть чат.";
+        notice.value = err.response?.data?.message || t("workspacePage.errors.open_chat_failed");
     } finally {
         openingChat.value = false;
     }
@@ -723,7 +727,7 @@ onBeforeUnmount(() => {
                             <div class="page-pretitle d-flex align-items-center gap-2 flex-wrap">
                                 <router-link :to="{ name: 'company.workspaces' }"
                                              class="text-reset text-decoration-none">
-                                    Пространства
+                                    {{ t('workspacePage.breadcrumb.workspaces') }}
                                 </router-link>
                                 <span class="text-secondary">/</span>
                                 <span class="fw-bold text-truncate">{{ space?.name }}</span>
@@ -747,12 +751,12 @@ onBeforeUnmount(() => {
                             </div>
 
                             <h2 v-if="dashboard" class="page-title d-flex align-items-center gap-2">
-                                {{ dashboard.name || `Дашборд #${dashboard.id}` }}
+                                {{ dashboard.name || t('workspacePage.dashboard_fallback_name', { id: dashboard.id }) }}
                                 <span class="badge" :class="dashboardStatus(dashboard).cls">
                                     {{ dashboardStatus(dashboard).text }}
                                 </span>
                             </h2>
-                            <h2 v-else class="page-title">{{ space?.name || "Рабочее пространство" }}</h2>
+                            <h2 v-else class="page-title">{{ space?.name || t('workspacePage.title_fallback') }}</h2>
                         </div>
 
                         <div class="col-auto ms-auto d-print-none">
@@ -764,17 +768,17 @@ onBeforeUnmount(() => {
                                     class="form-select"
                                     style="width: 240px; max-width: 100%;"
                                     :value="dashboardId"
-                                    aria-label="Дашборд рабочего пространства"
+                                    :aria-label="t('workspacePage.dashboard_select_aria')"
                                     @change="openDashboard($event.target.value)"
                                 >
                                     <option v-for="item in dashboards" :key="item.id" :value="item.id">
-                                        {{ item.name || `Дашборд #${item.id}` }}
+                                        {{ item.name || t('workspacePage.dashboard_fallback_name', { id: item.id }) }}
                                         ({{ item.widgets_count ?? 0 }})
                                     </option>
                                 </select>
 
                                 <button v-if="canCreate && workspaceId" class="btn" type="button"
-                                        title="Новый дашборд в этом пространстве" @click="openCreateModal">
+                                        :title="t('workspacePage.new_dashboard_title')" @click="openCreateModal">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
                                          viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                                          stroke-linecap="round" stroke-linejoin="round" class="icon">
@@ -786,14 +790,14 @@ onBeforeUnmount(() => {
                                 <!-- Просмотр и сборка — два состояния одной
                                      страницы, а не две страницы. -->
                                 <div v-if="canEdit && dashboard" class="btn-group" role="group"
-                                     aria-label="Режим работы">
+                                     :aria-label="t('workspacePage.mode_group_aria')">
                                     <button type="button" class="btn"
                                             :class="{ active: !isEditing }" @click="setMode('view')">
-                                        Просмотр
+                                        {{ t('workspacePage.mode_view') }}
                                     </button>
                                     <button type="button" class="btn"
                                             :class="{ active: isEditing }" @click="setMode('edit')">
-                                        Конструктор
+                                        {{ t('workspacePage.mode_builder') }}
                                     </button>
                                 </div>
 
@@ -805,10 +809,10 @@ onBeforeUnmount(() => {
                                         <path d="M12 5l0 14" />
                                         <path d="M5 12l14 0" />
                                     </svg>
-                                    Виджет
+                                    {{ t('workspacePage.widget_button') }}
                                 </button>
 
-                                <button v-if="dashboard" class="btn" type="button" title="Обновить дашборд"
+                                <button v-if="dashboard" class="btn" type="button" :title="t('workspacePage.refresh_title')"
                                         :disabled="isRefreshing" @click="onRefreshClick">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
                                          viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -819,7 +823,7 @@ onBeforeUnmount(() => {
                                     </svg>
                                 </button>
 
-                                <button v-if="dashboard && !isEditing" class="btn" type="button" title="Печать"
+                                <button v-if="dashboard && !isEditing" class="btn" type="button" :title="t('workspacePage.print_title')"
                                         @click="printDashboard">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
                                          viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -835,7 +839,7 @@ onBeforeUnmount(() => {
                                     class="btn btn-primary d-inline-flex align-items-center text-nowrap px-3"
                                     :class="{ 'btn-loading': openingChat }"
                                     :disabled="openingChat || (!chat && (!canChat || !workspaceId))"
-                                    title="AI ассистент"
+                                    :title="t('workspacePage.ai_assistant_title')"
                                     @click="openAssistant"
                                 >
                                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
@@ -846,7 +850,7 @@ onBeforeUnmount(() => {
                                         <path d="M12 20a8 8 0 0 1-8-8" />
                                         <circle cx="12" cy="12" r="1" />
                                     </svg>
-                                    AI Ассистент
+                                    {{ t('workspacePage.ai_assistant_button') }}
                                 </button>
                             </div>
                         </div>
@@ -859,7 +863,7 @@ onBeforeUnmount(() => {
 
                 <div v-if="notice" class="alert alert-info alert-dismissible d-print-none" role="status">
                     {{ notice }}
-                    <button type="button" class="btn-close" aria-label="Закрыть" @click="notice = null"></button>
+                    <button type="button" class="btn-close" :aria-label="t('workspacePage.close')" @click="notice = null"></button>
                 </div>
 
                 <div v-if="isLoading" class="card">
@@ -876,13 +880,13 @@ onBeforeUnmount(() => {
                     <div class="empty-img">
                         <img :src="empty_img" alt="" height="192" />
                     </div>
-                    <p class="empty-title">Дашбордов пока нет</p>
+                    <p class="empty-title">{{ t('workspacePage.empty_no_dashboards.title') }}</p>
                     <p class="empty-subtitle text-secondary">
-                        Опишите нужное словами в чате справа — или соберите дашборд сами.
+                        {{ t('workspacePage.empty_no_dashboards.subtitle') }}
                     </p>
                     <div v-if="canCreate && workspaceId" class="empty-action">
                         <button class="btn btn-primary" type="button" @click="openCreateModal">
-                            Создать дашборд
+                            {{ t('workspacePage.create_dashboard_button') }}
                         </button>
                     </div>
                 </div>
@@ -891,8 +895,8 @@ onBeforeUnmount(() => {
                     <div class="empty-img">
                         <img :src="generate_img" alt="" height="192" />
                     </div>
-                    <p class="empty-title">Генерируем дашборд</p>
-                    <p class="empty-subtitle text-secondary">Подбираем виджеты под ваш запрос.</p>
+                    <p class="empty-title">{{ t('workspacePage.generating.title') }}</p>
+                    <p class="empty-subtitle text-secondary">{{ t('workspacePage.generating.subtitle') }}</p>
                     <div class="progress progress-sm w-50">
                         <div class="progress-bar progress-bar-indeterminate"></div>
                     </div>
@@ -901,15 +905,14 @@ onBeforeUnmount(() => {
                 <div v-else-if="!widgets.length" class="card">
                     <div class="card-body">
                         <div class="empty">
-                            <p class="empty-title">Дашборд пока пуст</p>
+                            <p class="empty-title">{{ t('workspacePage.empty_dashboard.title') }}</p>
                             <p class="empty-subtitle text-secondary">
-                                Добавьте виджет и настройте данные — или попросите агента
-                                собрать дашборд за вас.
+                                {{ t('workspacePage.empty_dashboard.subtitle') }}
                             </p>
                             <div v-if="canEdit" class="empty-action">
                                 <button class="btn btn-primary" type="button"
                                         @click="isEditing ? openPalette() : setMode('edit')">
-                                    Добавить виджет
+                                    {{ t('workspacePage.add_widget_button') }}
                                 </button>
                             </div>
                         </div>
@@ -940,7 +943,7 @@ onBeforeUnmount(() => {
                                     <input
                                         class="form-control form-control-flush fw-bold flex-fill builder-title"
                                         :value="widget.title"
-                                        aria-label="Заголовок виджета"
+                                        :aria-label="t('workspacePage.widget_title_aria')"
                                         @change="renameWidget(widget, $event.target.value)"
                                     />
 
@@ -952,7 +955,7 @@ onBeforeUnmount(() => {
                                         v-if="typesOf(widget).length > 1"
                                         class="form-select form-select-sm w-auto flex-shrink-0"
                                         :value="currentTypeId(widget)"
-                                        :aria-label="`Вид виджета «${widget.title}»`"
+                                        :aria-label="t('workspacePage.widget_type_aria', { title: widget.title })"
                                         @change="changeType(widget, $event.target.value)"
                                     >
                                         <option v-for="type in typesOf(widget)" :key="type.id" :value="type.id">
@@ -962,7 +965,7 @@ onBeforeUnmount(() => {
 
                                     <div class="dropdown flex-shrink-0">
                                         <button class="btn btn-sm btn-ghost-secondary px-2" type="button"
-                                                data-bs-toggle="dropdown" aria-label="Действия с виджетом"
+                                                data-bs-toggle="dropdown" :aria-label="t('workspacePage.widget_actions_aria')"
                                                 aria-expanded="false">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"
                                                  viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -977,18 +980,18 @@ onBeforeUnmount(() => {
                                         <div class="dropdown-menu dropdown-menu-end">
                                             <button v-if="canWriteCode" class="dropdown-item" type="button"
                                                     @click="openSettings(widget)">
-                                                Настроить виджет
+                                                {{ t('workspacePage.configure_widget') }}
                                             </button>
 
                                             <button v-if="canWriteCode && hasPythonCode(widget)"
                                                     class="dropdown-item" type="button" @click="openCode(widget)">
-                                                Код на Python
+                                                {{ t('workspacePage.python_code') }}
                                             </button>
 
                                             <div class="dropdown-divider"></div>
                                             <button class="dropdown-item text-danger" type="button"
                                                     :disabled="busy" @click="removeWidget(widget)">
-                                                Удалить виджет
+                                                {{ t('workspacePage.remove_widget') }}
                                             </button>
                                         </div>
                                     </div>
@@ -996,7 +999,7 @@ onBeforeUnmount(() => {
 
                                 <div class="card-body">
                                     <div v-if="widget.last_error" class="alert alert-danger">
-                                        <div class="fw-bold">Виджет не считается</div>
+                                        <div class="fw-bold">{{ t('workspacePage.widget_calc_error') }}</div>
                                         <pre class="mb-0 workspace-widget-error">{{ widget.last_error }}</pre>
                                     </div>
 
@@ -1008,7 +1011,7 @@ onBeforeUnmount(() => {
 
                                     <div v-if="widget.status === 'draft' && canWriteCode" class="mt-2">
                                         <button class="btn btn-sm" type="button" @click="openSettings(widget)">
-                                            Настроить данные
+                                            {{ t('workspacePage.configure_data') }}
                                         </button>
                                     </div>
                                 </div>
@@ -1024,7 +1027,7 @@ onBeforeUnmount(() => {
                                             v-if="canEdit && typesOf(widget).length > 1"
                                             class="form-select form-select-sm w-auto ms-2 d-print-none"
                                             :value="currentTypeId(widget)"
-                                            :aria-label="`Вид виджета «${widget.title}»`"
+                                            :aria-label="t('workspacePage.widget_type_aria', { title: widget.title })"
                                             @change="changeType(widget, $event.target.value)"
                                         >
                                             <option v-for="type in typesOf(widget)" :key="type.id" :value="type.id">
@@ -1050,8 +1053,8 @@ onBeforeUnmount(() => {
         <div v-if="canEdit" ref="paletteEl" class="offcanvas offcanvas-end" tabindex="-1"
              aria-labelledby="workspace-palette-title">
             <div class="offcanvas-header">
-                <h2 class="offcanvas-title" id="workspace-palette-title">Добавить виджет</h2>
-                <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Закрыть"></button>
+                <h2 class="offcanvas-title" id="workspace-palette-title">{{ t('workspacePage.add_widget_button') }}</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="offcanvas" :aria-label="t('workspacePage.close')"></button>
             </div>
             <div class="offcanvas-body">
                 <WidgetPalette embedded @add="addWidget" />
@@ -1065,9 +1068,9 @@ onBeforeUnmount(() => {
                 <div class="modal-content">
                     <form @submit.prevent="submitCreate">
                         <div class="modal-header">
-                            <h5 class="modal-title">Новый дашборд</h5>
+                            <h5 class="modal-title">{{ t('workspacePage.create_dashboard_modal.title') }}</h5>
                             <button type="button" class="btn-close" data-bs-dismiss="modal"
-                                    aria-label="Закрыть"></button>
+                                    :aria-label="t('workspacePage.close')"></button>
                         </div>
 
                         <div class="modal-body">
@@ -1075,22 +1078,21 @@ onBeforeUnmount(() => {
                                 {{ createError }}
                             </div>
 
-                            <label class="form-label required">Название</label>
+                            <label class="form-label required">{{ t('workspacePage.create_dashboard_modal.name_label') }}</label>
                             <input v-model="createName" type="text" class="form-control"
-                                   placeholder="Продажи по регионам" maxlength="255" required />
+                                   :placeholder="t('workspacePage.create_dashboard_modal.name_placeholder')" maxlength="255" required />
                             <small class="form-hint">
-                                Считать будет по источнику «{{ dataSource?.name }}» — тому же,
-                                что и остальные дашборды пространства «{{ space?.name }}».
+                                {{ t('workspacePage.create_dashboard_modal.source_hint', { source: dataSource?.name, workspace: space?.name }) }}
                             </small>
                         </div>
 
                         <div class="modal-footer">
                             <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">
-                                Отмена
+                                {{ t('workspacePage.cancel') }}
                             </button>
                             <button type="submit" class="btn btn-primary" :class="{ 'btn-loading': creating }"
                                     :disabled="creating || !createName.trim()">
-                                Создать и открыть
+                                {{ t('workspacePage.create_dashboard_modal.submit') }}
                             </button>
                         </div>
                     </form>
@@ -1135,7 +1137,7 @@ onBeforeUnmount(() => {
         />
 
         <button v-if="chat && !chatOpen" class="chat-fab d-print-none" @click="chatOpen = true"
-                aria-label="Открыть чат">
+                :aria-label="t('workspacePage.open_chat_aria')">
             <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none"
                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M12 8a4 4 0 0 1 4 4" />

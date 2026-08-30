@@ -1,6 +1,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import api from '../../api.js';
 import { useEcho } from '../../echo.js';
 import ProviderIcon from '../../components/source/ProviderIcon.vue';
@@ -24,6 +25,7 @@ import ProviderIcon from '../../components/source/ProviderIcon.vue';
  */
 
 const router = useRouter();
+const { t } = useI18n();
 
 const logo = '/logos/logo.png';
 
@@ -48,7 +50,7 @@ const tables = ref([]);
 
 // Ход группировки: заполняется событиями из сокета.
 const groupingStatus = ref('pending');
-const groupingLabel = ref('Ставим задачу в очередь');
+const groupingLabel = ref(t('sourcesCreate.grouping.queued_label'));
 const groupingStep = ref(0);
 const groupingMessage = ref(null);
 
@@ -104,18 +106,18 @@ const isFormValid = computed(() => {
 });
 
 const versionPlaceholder = computed(() => ({
-    mysql: 'Например: 8.0',
-    postgres: 'Например: 15',
-    sqlite: 'Например: 3.42',
-}[provider.value?.name] ?? 'Укажите версию'));
+    mysql: t('sourcesCreate.version_placeholder.mysql'),
+    postgres: t('sourcesCreate.version_placeholder.postgres'),
+    sqlite: t('sourcesCreate.version_placeholder.sqlite'),
+}[provider.value?.name] ?? t('sourcesCreate.version_placeholder.default')));
 
 /** Этапы группировки для вертикальных шагов Tabler. */
-const groupingStages = [
-    'Подключаемся к источнику',
-    'Читаем структуру источника',
-    'Анализируем таблицы и связи',
-    'Собираем смысловые группы',
-];
+const groupingStages = computed(() => [
+    t('sourcesCreate.grouping.stages.connect'),
+    t('sourcesCreate.grouping.stages.read_structure'),
+    t('sourcesCreate.grouping.stages.analyze'),
+    t('sourcesCreate.grouping.stages.collect_groups'),
+]);
 
 /**
  * Заполнение полосы прогресса под карточкой — как в шаблоне wizard.html.
@@ -129,7 +131,7 @@ const progress = computed(() => {
     if (groupingStatus.value === 'completed') return 100;
 
     // 70 → 95 по мере прохождения этапов группировки.
-    return 70 + Math.round((groupingStep.value / groupingStages.length) * 25);
+    return 70 + Math.round((groupingStep.value / groupingStages.value.length) * 25);
 });
 
 async function fetchProviders() {
@@ -137,7 +139,7 @@ async function fetchProviders() {
         const { data } = await api.get('/data_source/types');
         providers.value = data ?? [];
     } catch {
-        formError.value = 'Не удалось загрузить список провайдеров.';
+        formError.value = t('sourcesCreate.errors.load_providers');
     }
 }
 
@@ -224,7 +226,7 @@ async function submitConfig() {
 
         formError.value =
             data?.message ||
-            'Не удалось подключиться. Проверьте параметры и попробуйте ещё раз.';
+            t('sourcesCreate.errors.connect_failed');
     } finally {
         isLoading.value = false;
     }
@@ -243,7 +245,7 @@ async function loadTables() {
 async function startGrouping() {
     step.value = STEP_GROUPING;
     groupingStatus.value = 'queued';
-    groupingLabel.value = 'Ставим задачу в очередь';
+    groupingLabel.value = t('sourcesCreate.grouping.queued_label');
     groupingStep.value = 0;
     groupingMessage.value = null;
 
@@ -254,7 +256,7 @@ async function startGrouping() {
     } catch (err) {
         groupingStatus.value = 'failed';
         groupingMessage.value =
-            err.response?.data?.message || 'Не удалось запустить группировку.';
+            err.response?.data?.message || t('sourcesCreate.errors.start_grouping_failed');
     }
 }
 
@@ -360,9 +362,9 @@ onUnmounted(stopListening);
                 <!-- ============ ШАГ 1: ПРОВАЙДЕР ============ -->
                 <template v-if="step === 1">
                     <div class="card-body">
-                        <h2 class="card-title">Откуда берём данные</h2>
+                        <h2 class="card-title">{{ t('sourcesCreate.steps.provider.title') }}</h2>
                         <p class="text-secondary mb-3">
-                            Выберите, что подключаем.
+                            {{ t('sourcesCreate.steps.provider.subtitle') }}
                         </p>
 
                         <!-- Без form-selectgroup-boxes: у него padding 1.25rem на
@@ -410,29 +412,29 @@ onUnmounted(stopListening);
                         <p class="text-secondary mb-3">{{ provider?.description }}</p>
 
                         <div class="mb-3">
-                            <label class="form-label">Название источника</label>
+                            <label class="form-label">{{ t('sourcesCreate.steps.config.name_label') }}</label>
                             <input v-model="form.name" type="text" class="form-control"
                                    :class="{ 'is-invalid': formErrors.name }"
-                                   placeholder="Например: Продажи 2026" :disabled="isLoading" />
+                                   :placeholder="t('sourcesCreate.steps.config.name_placeholder')" :disabled="isLoading" />
                             <div v-if="formErrors.name" class="invalid-feedback">{{ formErrors.name[0] }}</div>
-                            <div class="form-hint">Под этим именем источник увидит вся команда.</div>
+                            <div class="form-hint">{{ t('sourcesCreate.steps.config.name_hint') }}</div>
                         </div>
 
                         <!-- ФАЙЛ -->
                         <template v-if="kind === 'file'">
                             <div class="mb-3">
-                                <label class="form-label required">Файл</label>
+                                <label class="form-label required">{{ t('sourcesCreate.steps.config.file_label') }}</label>
                                 <input ref="fileInputEl" type="file" class="form-control"
                                        :class="{ 'is-invalid': formErrors.data_file }"
                                        :accept="fileAccept" @change="handleDataFile" :disabled="isLoading" />
                                 <div v-if="formErrors.data_file" class="invalid-feedback">
                                     {{ formErrors.data_file[0] }}
                                 </div>
-                                <div class="form-hint">Допустимые форматы: {{ fileAccept }}</div>
+                                <div class="form-hint">{{ t('sourcesCreate.steps.config.file_formats_hint', { formats: fileAccept }) }}</div>
                             </div>
 
                             <div v-if="needsVersion" class="mb-3">
-                                <label class="form-label required">Версия</label>
+                                <label class="form-label required">{{ t('sourcesCreate.steps.config.version_label') }}</label>
                                 <input v-model="form.version" type="text" class="form-control"
                                        :placeholder="versionPlaceholder" :disabled="isLoading" />
                             </div>
@@ -441,7 +443,7 @@ onUnmounted(stopListening);
                         <!-- ВНЕШНИЙ СЕРВИС -->
                         <template v-else-if="kind === 'api'">
                             <div class="mb-3">
-                                <label class="form-label required">Ссылка на таблицу</label>
+                                <label class="form-label required">{{ t('sourcesCreate.steps.config.sheet_url_label') }}</label>
                                 <input v-model="form.sheet_url" type="text" class="form-control"
                                        :class="{ 'is-invalid': formErrors.sheet_url }"
                                        placeholder="https://docs.google.com/spreadsheets/d/…"
@@ -449,16 +451,13 @@ onUnmounted(stopListening);
                                 <div v-if="formErrors.sheet_url" class="invalid-feedback">
                                     {{ formErrors.sheet_url[0] }}
                                 </div>
-                                <div class="form-hint">Скопируйте адрес из строки браузера.</div>
+                                <div class="form-hint">{{ t('sourcesCreate.steps.config.sheet_url_hint') }}</div>
                             </div>
 
                             <div class="alert alert-info mb-0">
-                                <h4 class="alert-heading">Откройте доступ по ссылке</h4>
+                                <h4 class="alert-heading">{{ t('sourcesCreate.steps.config.sheet_access_heading') }}</h4>
                                 <div class="alert-description">
-                                    В таблице нажмите «Настройки доступа» и включите
-                                    «Всем, у кого есть ссылка». Загружается один лист —
-                                    тот, что открыт в ссылке. Это снимок данных на текущий
-                                    момент, а не постоянная синхронизация.
+                                    {{ t('sourcesCreate.steps.config.sheet_access_description') }}
                                 </div>
                             </div>
                         </template>
@@ -468,42 +467,42 @@ onUnmounted(stopListening);
                             <div class="row">
                                 <div class="col-8">
                                     <div class="mb-3">
-                                        <label class="form-label required">Хост</label>
+                                        <label class="form-label required">{{ t('sourcesCreate.steps.config.host_label') }}</label>
                                         <input v-model="form.host" type="text" class="form-control"
                                                placeholder="127.0.0.1" :disabled="isLoading" />
                                     </div>
                                 </div>
                                 <div class="col-4">
                                     <div class="mb-3">
-                                        <label class="form-label required">Порт</label>
+                                        <label class="form-label required">{{ t('sourcesCreate.steps.config.port_label') }}</label>
                                         <input v-model="form.port" type="number" class="form-control"
                                                :disabled="isLoading" />
                                     </div>
                                 </div>
                                 <div class="col-8">
                                     <div class="mb-3">
-                                        <label class="form-label required">База данных</label>
+                                        <label class="form-label required">{{ t('sourcesCreate.steps.config.database_label') }}</label>
                                         <input v-model="form.database" type="text" class="form-control"
                                                :disabled="isLoading" />
                                     </div>
                                 </div>
                                 <div class="col-4">
                                     <div class="mb-3">
-                                        <label class="form-label required">Версия</label>
+                                        <label class="form-label required">{{ t('sourcesCreate.steps.config.version_label') }}</label>
                                         <input v-model="form.version" type="text" class="form-control"
                                                :placeholder="versionPlaceholder" :disabled="isLoading" />
                                     </div>
                                 </div>
                                 <div class="col-6">
                                     <div class="mb-3">
-                                        <label class="form-label required">Пользователь</label>
+                                        <label class="form-label required">{{ t('sourcesCreate.steps.config.username_label') }}</label>
                                         <input v-model="form.username" type="text" class="form-control"
                                                :disabled="isLoading" />
                                     </div>
                                 </div>
                                 <div class="col-6">
                                     <div class="mb-3">
-                                        <label class="form-label">Пароль</label>
+                                        <label class="form-label">{{ t('sourcesCreate.steps.config.password_label') }}</label>
                                         <input v-model="form.password" type="password" class="form-control"
                                                autocomplete="new-password" :disabled="isLoading" />
                                     </div>
@@ -511,8 +510,7 @@ onUnmounted(stopListening);
                             </div>
 
                             <div class="alert alert-info mb-0">
-                                Подключение проверяется сразу — источник сохранится, только
-                                если база действительно отвечает.
+                                {{ t('sourcesCreate.steps.config.db_check_notice') }}
                             </div>
                         </template>
 
@@ -526,12 +524,12 @@ onUnmounted(stopListening);
                 <template v-else>
                     <div class="card-body">
                         <h2 class="card-title">
-                            {{ groupingStatus === 'failed' ? 'Группировка не удалась' : 'Группируем таблицы' }}
+                            {{ groupingStatus === 'failed' ? t('sourcesCreate.grouping.title_failed') : t('sourcesCreate.grouping.title_running') }}
                         </h2>
                         <p class="text-secondary mb-0">
-                            Источник «{{ createdSource?.name }}» подключён.
+                            {{ t('sourcesCreate.grouping.source_connected', { name: createdSource?.name }) }}
                             <template v-if="tables.length">
-                                Найдено таблиц: <strong>{{ tables.length }}</strong>.
+                                {{ t('sourcesCreate.grouping.tables_found', { count: tables.length }) }}
                             </template>
                         </p>
                     </div>
@@ -593,18 +591,18 @@ onUnmounted(stopListening);
 
                     <div class="card-body">
                         <div v-if="groupingStatus === 'failed'" class="alert alert-danger mb-0" role="alert">
-                            <h4 class="alert-heading">Не удалось сгруппировать таблицы</h4>
+                            <h4 class="alert-heading">{{ t('sourcesCreate.grouping.failed_heading') }}</h4>
                             <div class="alert-description">{{ groupingMessage }}</div>
                         </div>
                         <div v-else-if="groupingStatus === 'completed'" class="alert alert-success mb-0"
                              role="alert">
-                            <h4 class="alert-heading">Готово</h4>
+                            <h4 class="alert-heading">{{ t('sourcesCreate.grouping.done_heading') }}</h4>
                             <div class="alert-description">
-                                {{ groupingMessage }} Открываем источник…
+                                {{ groupingMessage }} {{ t('sourcesCreate.grouping.done_opening_source') }}
                             </div>
                         </div>
                         <p v-else class="text-secondary mb-0">
-                            Страницу можно закрыть — работа продолжится в фоне.
+                            {{ t('sourcesCreate.grouping.can_close_page') }}
                         </p>
                     </div>
                 </template>
@@ -626,31 +624,31 @@ onUnmounted(stopListening);
                     <div class="btn-list justify-content-end">
                         <template v-if="step === 1">
                             <router-link :to="{ name: 'company.sources' }" class="btn btn-link link-secondary">
-                                Отмена
+                                {{ t('sourcesCreate.buttons.cancel') }}
                             </router-link>
                             <button class="btn btn-primary" :disabled="!provider" @click="goToConfig">
-                                Далее
+                                {{ t('sourcesCreate.buttons.next') }}
                             </button>
                         </template>
 
                         <template v-else-if="step === 2">
                             <button class="btn btn-link link-secondary" :disabled="isLoading"
                                     @click="backToProvider">
-                                Назад
+                                {{ t('sourcesCreate.buttons.back') }}
                             </button>
                             <button class="btn btn-primary" :class="{ 'btn-loading': isLoading }"
                                     :disabled="isLoading || !isFormValid" @click="submitConfig">
-                                Подключить
+                                {{ t('sourcesCreate.buttons.connect') }}
                             </button>
                         </template>
 
                         <template v-else>
                             <button class="btn btn-link link-secondary" @click="goToSource">
-                                К источнику
+                                {{ t('sourcesCreate.buttons.go_to_source') }}
                             </button>
                             <button v-if="groupingStatus === 'failed'" class="btn btn-primary"
                                     @click="startGrouping">
-                                Повторить
+                                {{ t('sourcesCreate.buttons.retry') }}
                             </button>
                         </template>
                     </div>

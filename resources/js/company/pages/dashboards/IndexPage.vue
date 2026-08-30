@@ -2,6 +2,7 @@
 import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick } from "vue";
 import { Modal } from "bootstrap";
 import { useRouter } from "vue-router";
+import { useI18n } from "vue-i18n";
 import api from "../../api.js";
 
 /**
@@ -14,6 +15,7 @@ import api from "../../api.js";
  */
 
 const router = useRouter();
+const { t } = useI18n();
 
 const dashboards = ref([]);
 const sources = ref([]);
@@ -33,17 +35,22 @@ const canViewSources = computed(() => permissions.value.includes("view data sour
  * Статус дашборда словами. Пока идёт генерация, дашборд открыть можно, но
  * виджеты в нём ещё появляются — об этом лучше сказать заранее.
  */
-const STATUS = {
-    empty: { text: "Пустой", cls: "bg-secondary-lt" },
-    generating_scheme: { text: "Генерируется", cls: "bg-azure-lt" },
-    generating_widgets: { text: "Считает виджеты", cls: "bg-azure-lt" },
-    reviewing: { text: "Проверяется", cls: "bg-azure-lt" },
-    completed: { text: "Готов", cls: "bg-green-lt" },
-    failed: { text: "Ошибка", cls: "bg-red-lt" },
+const STATUS_CLASS = {
+    empty: "bg-secondary-lt",
+    generating_scheme: "bg-azure-lt",
+    generating_widgets: "bg-azure-lt",
+    reviewing: "bg-azure-lt",
+    completed: "bg-green-lt",
+    failed: "bg-red-lt",
 };
 
 function statusOf(dashboard) {
-    return STATUS[dashboard.status] ?? { text: dashboard.status, cls: "bg-secondary-lt" };
+    const cls = STATUS_CLASS[dashboard.status] ?? "bg-secondary-lt";
+    const text = STATUS_CLASS[dashboard.status]
+        ? t(`dashboardsIndex.status.${dashboard.status}`)
+        : dashboard.status;
+
+    return { text, cls };
 }
 
 const visible = computed(() => {
@@ -75,7 +82,7 @@ function formatDate(value) {
 }
 
 function titleOf(dashboard) {
-    return dashboard.name || `Дашборд #${dashboard.id}`;
+    return dashboard.name || t("dashboardsIndex.untitled_dashboard", { id: dashboard.id });
 }
 
 async function fetchAll() {
@@ -91,7 +98,7 @@ async function fetchAll() {
         dashboards.value = dashboardsResponse.data ?? [];
         sources.value = sourcesResponse?.data ?? [];
     } catch (err) {
-        listError.value = "Не удалось загрузить дашборды.";
+        listError.value = t("dashboardsIndex.load_error");
     } finally {
         loading.value = false;
     }
@@ -136,7 +143,7 @@ async function submitCreate() {
     } catch (err) {
         const body = err.response?.data;
         if (body?.errors) createErrors.value = body.errors;
-        createError.value = body?.message || "Не удалось создать дашборд.";
+        createError.value = body?.message || t("dashboardsIndex.create_error");
     } finally {
         creating.value = false;
     }
@@ -166,7 +173,7 @@ async function confirmDelete() {
         deleteModal?.hide();
         pendingDelete.value = null;
     } catch (err) {
-        listError.value = err.response?.data?.message || "Не удалось удалить дашборд.";
+        listError.value = err.response?.data?.message || t("dashboardsIndex.delete_error");
     } finally {
         deleting.value = false;
     }
@@ -192,8 +199,8 @@ onBeforeUnmount(() => {
             <div class="container-xl">
                 <div class="row g-2 align-items-center">
                     <div class="col">
-                        <div class="page-pretitle">Рабочее пространство</div>
-                        <h2 class="page-title">Дашборды</h2>
+                        <div class="page-pretitle">{{ t('dashboardsIndex.workspace') }}</div>
+                        <h2 class="page-title">{{ t('dashboardsIndex.title') }}</h2>
                     </div>
                     <div class="col-auto ms-auto">
                         <div class="btn-list">
@@ -204,7 +211,7 @@ onBeforeUnmount(() => {
                                     <path d="M12 5l0 14" />
                                     <path d="M5 12l14 0" />
                                 </svg>
-                                Создать дашборд
+                                {{ t('dashboardsIndex.create_dashboard') }}
                             </button>
                         </div>
                     </div>
@@ -229,14 +236,14 @@ onBeforeUnmount(() => {
                     <div v-if="dashboards.length" class="row g-2 align-items-center mb-3">
                         <div class="col-12 col-md">
                             <input v-model="search" type="search" class="form-control"
-                                   placeholder="Поиск по названию, описанию или источнику"
-                                   aria-label="Поиск дашборда" />
+                                   :placeholder="t('dashboardsIndex.search_placeholder')"
+                                   :aria-label="t('dashboardsIndex.search_aria_label')" />
                         </div>
                         <div class="col-12 col-md-auto">
-                            <select v-model="originFilter" class="form-select" aria-label="Как создан дашборд">
-                                <option value="all">Все дашборды</option>
-                                <option value="manual">Собранные руками</option>
-                                <option value="ai">Созданные в чате</option>
+                            <select v-model="originFilter" class="form-select" :aria-label="t('dashboardsIndex.origin_filter_aria_label')">
+                                <option value="all">{{ t('dashboardsIndex.origin_all') }}</option>
+                                <option value="manual">{{ t('dashboardsIndex.origin_manual') }}</option>
+                                <option value="ai">{{ t('dashboardsIndex.origin_ai') }}</option>
                             </select>
                         </div>
                     </div>
@@ -244,14 +251,13 @@ onBeforeUnmount(() => {
                     <div v-if="!dashboards.length" class="card">
                         <div class="card-body">
                             <div class="empty">
-                                <p class="empty-title">Дашбордов пока нет</p>
+                                <p class="empty-title">{{ t('dashboardsIndex.empty_title') }}</p>
                                 <p class="empty-subtitle text-secondary">
-                                    Соберите дашборд сами — выберите виджеты и напишите им код —
-                                    или опишите нужное словами в чате на источнике данных.
+                                    {{ t('dashboardsIndex.empty_subtitle') }}
                                 </p>
                                 <div v-if="canCreate" class="empty-action">
                                     <button class="btn btn-primary" type="button" @click="openCreateModal">
-                                        Создать дашборд
+                                        {{ t('dashboardsIndex.create_dashboard') }}
                                     </button>
                                 </div>
                             </div>
@@ -261,9 +267,9 @@ onBeforeUnmount(() => {
                     <div v-else-if="!visible.length" class="card">
                         <div class="card-body">
                             <div class="empty">
-                                <p class="empty-title">Ничего не найдено</p>
+                                <p class="empty-title">{{ t('dashboardsIndex.not_found_title') }}</p>
                                 <p class="empty-subtitle text-secondary">
-                                    Попробуйте изменить запрос или снять фильтр.
+                                    {{ t('dashboardsIndex.not_found_subtitle') }}
                                 </p>
                             </div>
                         </div>
@@ -297,7 +303,7 @@ onBeforeUnmount(() => {
                                     </div>
 
                                     <div class="text-secondary small">
-                                        {{ dashboard.widgets_count ?? 0 }} виджет(ов)
+                                        {{ t('dashboardsIndex.widgets_count', { count: dashboard.widgets_count ?? 0 }) }}
                                         <template v-if="dashboard.data_source">
                                             · {{ dashboard.data_source.name }}
                                         </template>
@@ -310,7 +316,7 @@ onBeforeUnmount(() => {
                                             :to="{ name: 'company.workspace.dashboard', params: { dashboard: dashboard.id } }"
                                             class="text-reset"
                                         >
-                                            Из чата: {{ dashboard.chat?.title || `#${dashboard.chat_id}` }}
+                                            {{ t('dashboardsIndex.from_chat', { title: dashboard.chat?.title || `#${dashboard.chat_id}` }) }}
                                         </router-link>
                                     </div>
                                 </div>
@@ -320,18 +326,18 @@ onBeforeUnmount(() => {
                                         class="btn btn-sm"
                                         :to="{ name: 'company.workspace.dashboard', params: { dashboard: dashboard.id } }"
                                     >
-                                        Открыть
+                                        {{ t('dashboardsIndex.open') }}
                                     </router-link>
                                     <router-link
                                         v-if="canEdit"
                                         class="btn btn-sm"
                                         :to="{ name: 'company.workspace.dashboard', params: { dashboard: dashboard.id }, query: { mode: 'edit' } }"
                                     >
-                                        Редактировать
+                                        {{ t('dashboardsIndex.edit') }}
                                     </router-link>
                                     <button v-if="canDelete" class="btn btn-sm btn-ghost-danger ms-auto"
                                             type="button" @click="askDelete(dashboard)">
-                                        Удалить
+                                        {{ t('dashboardsIndex.delete') }}
                                     </button>
                                 </div>
                             </div>
@@ -347,33 +353,33 @@ onBeforeUnmount(() => {
                 <div class="modal-content">
                     <form @submit.prevent="submitCreate">
                         <div class="modal-header">
-                            <h5 class="modal-title">Новый дашборд</h5>
-                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+                            <h5 class="modal-title">{{ t('dashboardsIndex.new_dashboard') }}</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" :aria-label="t('dashboardsIndex.close')"></button>
                         </div>
 
                         <div class="modal-body">
                             <div v-if="createError" class="alert alert-danger" role="alert">{{ createError }}</div>
 
                             <div class="mb-3">
-                                <label class="form-label required">Название</label>
+                                <label class="form-label required">{{ t('dashboardsIndex.name_label') }}</label>
                                 <input v-model="createForm.name" type="text" class="form-control"
                                        :class="{ 'is-invalid': createErrors.name }"
-                                       placeholder="Продажи по регионам" maxlength="255" required />
+                                       :placeholder="t('dashboardsIndex.name_placeholder')" maxlength="255" required />
                                 <div v-if="createErrors.name" class="invalid-feedback">{{ createErrors.name[0] }}</div>
                             </div>
 
                             <div class="mb-3">
-                                <label class="form-label">Описание</label>
+                                <label class="form-label">{{ t('dashboardsIndex.description_label') }}</label>
                                 <textarea v-model="createForm.description" class="form-control" rows="3"
-                                          placeholder="Зачем этот дашборд и кому он нужен"></textarea>
+                                          :placeholder="t('dashboardsIndex.description_placeholder')"></textarea>
                             </div>
 
                             <div>
-                                <label class="form-label required">Источник данных</label>
+                                <label class="form-label required">{{ t('dashboardsIndex.data_source_label') }}</label>
                                 <select v-model="createForm.data_source_id" class="form-select"
                                         :class="{ 'is-invalid': createErrors.data_source_id }"
                                         :disabled="!sources.length" required>
-                                    <option value="" disabled>Выберите источник</option>
+                                    <option value="" disabled>{{ t('dashboardsIndex.data_source_placeholder') }}</option>
                                     <option v-for="source in sources" :key="source.id" :value="source.id">
                                         {{ source.name }} — {{ source.format_label }}
                                     </option>
@@ -382,21 +388,21 @@ onBeforeUnmount(() => {
                                     {{ createErrors.data_source_id[0] }}
                                 </div>
                                 <small v-if="sources.length" class="form-hint">
-                                    Виджеты будут считать данные по этому источнику.
+                                    {{ t('dashboardsIndex.data_source_hint') }}
                                 </small>
                                 <small v-else class="form-hint text-danger">
-                                    Источников пока нет — сначала подключите источник данных.
+                                    {{ t('dashboardsIndex.no_sources_hint') }}
                                 </small>
                             </div>
                         </div>
 
                         <div class="modal-footer">
                             <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">
-                                Отмена
+                                {{ t('dashboardsIndex.cancel') }}
                             </button>
                             <button type="submit" class="btn btn-primary" :class="{ 'btn-loading': creating }"
                                     :disabled="creating || !sources.length">
-                                Создать и открыть
+                                {{ t('dashboardsIndex.create_and_open') }}
                             </button>
                         </div>
                     </form>
@@ -410,22 +416,21 @@ onBeforeUnmount(() => {
                 <div class="modal-content">
                     <div class="modal-status bg-danger"></div>
                     <div class="modal-body text-center py-4">
-                        <h3>Удалить дашборд?</h3>
+                        <h3>{{ t('dashboardsIndex.delete_confirm_title') }}</h3>
                         <div class="text-secondary">
-                            «{{ pendingDelete ? titleOf(pendingDelete) : "" }}» и все его виджеты
-                            будут удалены без возможности вернуть.
+                            {{ t('dashboardsIndex.delete_confirm_text', { name: pendingDelete ? titleOf(pendingDelete) : "" }) }}
                         </div>
                     </div>
                     <div class="modal-footer">
                         <div class="w-100">
                             <div class="row">
                                 <div class="col">
-                                    <button class="btn w-100" data-bs-dismiss="modal">Отмена</button>
+                                    <button class="btn w-100" data-bs-dismiss="modal">{{ t('dashboardsIndex.cancel') }}</button>
                                 </div>
                                 <div class="col">
                                     <button class="btn btn-danger w-100" :class="{ 'btn-loading': deleting }"
                                             :disabled="deleting" @click="confirmDelete">
-                                        Удалить
+                                        {{ t('dashboardsIndex.delete') }}
                                     </button>
                                 </div>
                             </div>

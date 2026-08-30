@@ -82,7 +82,7 @@ const logout = async () => {
                 data-bs-target="#navbar-menu"
                 aria-controls="navbar-menu"
                 aria-expanded="false"
-                aria-label="Toggle primary navigation"
+                :aria-label="t('header.toggle_nav')"
             >
                 <span class="navbar-toggler-icon"></span>
             </button>
@@ -99,7 +99,7 @@ const logout = async () => {
                 <div class="d-none d-md-flex me-3">
                     <!-- BEGIN THEME TOGGLE -->
                     <div class="nav-item">
-                        <a href="?theme=dark" class="nav-link px-0 hide-theme-dark" title="Enable dark mode" data-bs-toggle="tooltip" data-bs-placement="bottom">
+                        <a href="?theme=dark" class="nav-link px-0 hide-theme-dark" :title="t('header.enable_dark_mode')" data-bs-toggle="tooltip" data-bs-placement="bottom">
                             <!-- Download SVG icon from http://tabler.io/icons/icon/moon -->
                             <svg
                                 xmlns="http://www.w3.org/2000/svg"
@@ -118,7 +118,7 @@ const logout = async () => {
                                 <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454l0 .008" />
                             </svg>
                         </a>
-                        <a href="?theme=light" class="nav-link px-0 hide-theme-light" title="Enable light mode" data-bs-toggle="tooltip" data-bs-placement="bottom">
+                        <a href="?theme=light" class="nav-link px-0 hide-theme-light" :title="t('header.enable_light_mode')" data-bs-toggle="tooltip" data-bs-placement="bottom">
                             <!-- Download SVG icon from http://tabler.io/icons/icon/sun -->
                             <svg
                                 xmlns="http://www.w3.org/2000/svg"
@@ -147,7 +147,7 @@ const logout = async () => {
                             class="nav-link px-0"
                             data-bs-toggle="dropdown"
                             tabindex="-1"
-                            aria-label="Show notifications"
+                            :aria-label="t('header.show_notifications')"
                             data-bs-auto-close="outside"
                             aria-expanded="false"
                         >
@@ -175,7 +175,7 @@ const logout = async () => {
                         <div class="dropdown-menu dropdown-menu-arrow dropdown-menu-end dropdown-menu-card">
                             <div class="card">
                                 <div class="card-header d-flex">
-                                    <h3 class="card-title">Notifications</h3>
+                                    <h3 class="card-title">{{ t('header.notifications') }}</h3>
                                     <div class="btn-close ms-auto" data-bs-dismiss="dropdown"></div>
                                 </div>
                                 <div class="list-group list-group-flush list-group-hoverable">
@@ -183,8 +183,8 @@ const logout = async () => {
                                         <div class="row align-items-center">
                                             <div class="col-auto"><span class="status-dot status-dot-animated bg-red d-block"></span></div>
                                             <div class="col text-truncate">
-                                                <a href="#" class="text-body d-block">Example 1</a>
-                                                <div class="d-block text-secondary text-truncate mt-n1">Change deprecated html tags to text decoration classes (#29604)</div>
+                                                <a href="#" class="text-body d-block">{{ t('header.notification_example_1') }}</a>
+                                                <div class="d-block text-secondary text-truncate mt-n1">{{ t('header.notification_desc_1') }}</div>
                                             </div>
                                             <div class="col-auto">
                                                 <a href="#" class="list-group-item-actions">
@@ -215,8 +215,8 @@ const logout = async () => {
                                         <div class="row align-items-center">
                                             <div class="col-auto"><span class="status-dot d-block"></span></div>
                                             <div class="col text-truncate">
-                                                <a href="#" class="text-body d-block">Example 2</a>
-                                                <div class="d-block text-secondary text-truncate mt-n1">justify-content:between ⇒ justify-content:space-between (#29734)</div>
+                                                <a href="#" class="text-body d-block">{{ t('header.notification_example_2') }}</a>
+                                                <div class="d-block text-secondary text-truncate mt-n1">{{ t('header.notification_desc_2') }}</div>
                                             </div>
                                             <div class="col-auto">
                                                 <a href="#" class="list-group-item-actions show">
@@ -247,8 +247,8 @@ const logout = async () => {
                                         <div class="row align-items-center">
                                             <div class="col-auto"><span class="status-dot d-block"></span></div>
                                             <div class="col text-truncate">
-                                                <a href="#" class="text-body d-block">Example 3</a>
-                                                <div class="d-block text-secondary text-truncate mt-n1">Update change-version.js (#29736)</div>
+                                                <a href="#" class="text-body d-block">{{ t('header.notification_example_3') }}</a>
+                                                <div class="d-block text-secondary text-truncate mt-n1">{{ t('header.notification_desc_3') }}</div>
                                             </div>
                                             <div class="col-auto">
                                                 <a href="#" class="list-group-item-actions">
@@ -279,8 +279,8 @@ const logout = async () => {
                                         <div class="row align-items-center">
                                             <div class="col-auto"><span class="status-dot status-dot-animated bg-green d-block"></span></div>
                                             <div class="col text-truncate">
-                                                <a href="#" class="text-body d-block">Example 4</a>
-                                                <div class="d-block text-secondary text-truncate mt-n1">Regenerate package-lock.json (#29730)</div>
+                                                <a href="#" class="text-body d-block">{{ t('header.notification_example_4') }}</a>
+                                                <div class="d-block text-secondary text-truncate mt-n1">{{ t('header.notification_desc_4') }}</div>
                                             </div>
                                             <div class="col-auto">
                                                 <a href="#" class="list-group-item-actions">
@@ -311,10 +311,10 @@ const logout = async () => {
                                 <div class="card-body">
                                     <div class="row">
                                         <div class="col">
-                                            <a href="#" class="btn btn-2 w-100"> Archive all </a>
+                                            <a href="#" class="btn btn-2 w-100"> {{ t('header.archive_all') }} </a>
                                         </div>
                                         <div class="col">
-                                            <a href="#" class="btn btn-2 w-100"> Mark all as read </a>
+                                            <a href="#" class="btn btn-2 w-100"> {{ t('header.mark_all_read') }} </a>
                                         </div>
                                     </div>
                                 </div>
@@ -332,7 +332,7 @@ const logout = async () => {
                             class="nav-link px-0"
                             data-bs-toggle="dropdown"
                             tabindex="-1"
-                            aria-label="Select language"
+                            :aria-label="t('header.select_language')"
                             aria-expanded="false"
                         >
                             {{ locale === 'ru' ? 'RU' : locale === 'tj' ? 'ТҶ' : 'EN' }}
@@ -359,7 +359,7 @@ const logout = async () => {
                         href="#"
                         class="nav-link d-flex lh-1 p-0 px-2"
                         data-bs-toggle="dropdown"
-                        aria-label="Open user menu"
+                        :aria-label="t('header.open_user_menu')"
                         aria-expanded="false"
                     >
                        <span class="avatar avatar-0">
@@ -397,7 +397,7 @@ const logout = async () => {
                                 <path d="M8 7a4 4 0 1 0 8 0a4 4 0 0 0 -8 0" />
                                 <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
                             </svg>
-                            Profile
+                            {{ t('header.profile') }}
                         </router-link>
                         <a class="dropdown-item" href="#"
                         ><!-- Download SVG icon from http://tabler.io/icons/icon/chart-pie -->
@@ -418,7 +418,7 @@ const logout = async () => {
                                 <path d="M10 3.2a9 9 0 1 0 10.8 10.8a1 1 0 0 0 -1 -1h-6.8a2 2 0 0 1 -2 -2v-7a.9 .9 0 0 0 -1 -.8" />
                                 <path d="M15 3.5a9 9 0 0 1 5.5 5.5h-4.5a1 1 0 0 1 -1 -1v-4.5" />
                             </svg>
-                            Analytics</a
+                            {{ t('header.analytics') }}</a
                         >
                         <div class="dropdown-divider"></div>
                         <router-link
@@ -435,7 +435,7 @@ const logout = async () => {
                                 <path d="M16 3.13a4 4 0 0 1 0 7.75" />
                                 <path d="M21 21v-2a4 4 0 0 0 -3 -3.85" />
                             </svg>
-                            Сотрудники
+                            {{ t('header.employees') }}
                         </router-link>
                         <router-link class="dropdown-item" :to="{ name: 'company.widgets' }">
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
@@ -447,10 +447,10 @@ const logout = async () => {
                                 <path d="M4 14h6v6h-6z" />
                                 <path d="M14 14h6v6h-6z" />
                             </svg>
-                            Все виджеты
+                            {{ t('header.all_widgets') }}
                         </router-link>
-                        <a class="dropdown-item" href="./settings.html">Settings &amp; Privacy</a>
-                        <a class="dropdown-item" href="#">Help</a>
+                        <a class="dropdown-item" href="./settings.html">{{ t('header.settings_privacy') }}</a>
+                        <a class="dropdown-item" href="#">{{ t('header.help') }}</a>
                         <a class="dropdown-item" href="#" @click.prevent="logout">
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
                                  fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
@@ -484,7 +484,7 @@ const logout = async () => {
                                     <path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" />
                                 </svg>
                             </span>
-                            <span class="nav-link-title">Обзор</span>
+                            <span class="nav-link-title">{{ t('header.overview') }}</span>
                         </router-link>
                     </li>
 
@@ -499,7 +499,7 @@ const logout = async () => {
                                     <path d="M9 7v-2a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v2" />
                                 </svg>
                             </span>
-                            <span class="nav-link-title">Пространства</span>
+                            <span class="nav-link-title">{{ t('header.workspaces') }}</span>
                         </router-link>
                     </li>
 
@@ -515,7 +515,7 @@ const logout = async () => {
                                     <path d="M14 4h6v4h-6z" />
                                 </svg>
                             </span>
-                            <span class="nav-link-title">Дашборды</span>
+                            <span class="nav-link-title">{{ t('header.dashboards') }}</span>
                         </router-link>
                     </li>
 
@@ -530,7 +530,7 @@ const logout = async () => {
                                     <path d="M4 12v6a8 3 0 0 0 16 0v-6" />
                                 </svg>
                             </span>
-                            <span class="nav-link-title">Источники данных</span>
+                            <span class="nav-link-title">{{ t('header.data_sources') }}</span>
                         </router-link>
                     </li>
 
@@ -546,7 +546,7 @@ const logout = async () => {
                                     <path d="M14 14h6v6h-6z" />
                                 </svg>
                             </span>
-                            <span class="nav-link-title">Виджеты</span>
+                            <span class="nav-link-title">{{ t('header.widgets') }}</span>
                         </router-link>
                     </li>
 
@@ -562,7 +562,7 @@ const logout = async () => {
                                     <path d="M21 21v-2a4 4 0 0 0 -3 -3.85" />
                                 </svg>
                             </span>
-                            <span class="nav-link-title">Сотрудники</span>
+                            <span class="nav-link-title">{{ t('header.employees') }}</span>
                         </router-link>
                     </li>
                 </ul>

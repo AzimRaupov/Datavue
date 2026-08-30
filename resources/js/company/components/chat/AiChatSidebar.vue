@@ -53,14 +53,18 @@ const MIN_WIDTH = 280;
 const MAX_WIDTH = 640;
 
 const STATUS_MAP = {
-    start:       { label: 'Ожидание',   badge: 'bg-secondary-lt text-secondary' },
-    in_progress: { label: 'В процессе', badge: 'bg-azure-lt text-azure' },
-    completed:   { label: 'Завершено',  badge: 'bg-success-lt text-success' },
-    failed:      { label: 'Ошибка',     badge: 'bg-danger-lt text-danger' },
+    start:       { key: 'waiting',     badge: 'bg-secondary-lt text-secondary' },
+    in_progress: { key: 'in_progress', badge: 'bg-azure-lt text-azure' },
+    completed:   { key: 'completed',   badge: 'bg-success-lt text-success' },
+    failed:      { key: 'failed',      badge: 'bg-danger-lt text-danger' },
 };
 
 function statusInfo(status) {
-    return STATUS_MAP[status] || { label: status || '—', badge: 'bg-secondary-lt text-secondary' };
+    const info = STATUS_MAP[status];
+    if (info) {
+        return { label: t(`aiChat.status.${info.key}`), badge: info.badge };
+    }
+    return { label: status || '—', badge: 'bg-secondary-lt text-secondary' };
 }
 
 function taskName(task) {
@@ -130,7 +134,7 @@ async function fetchMessages() {
         scrollChatToBottom();
     } catch (err) {
         console.error(err);
-        error.value = 'Не удалось загрузить сообщения';
+        error.value = t('aiChat.errors.load_failed');
     }
 }
 
@@ -164,7 +168,7 @@ async function sendMessage() {
         scrollChatToBottom();
     } catch (err) {
         console.error(err);
-        error.value = 'Ошибка при отправке сообщения';
+        error.value = t('aiChat.errors.send_failed');
     } finally {
         loading.value = false;
     }
@@ -264,9 +268,9 @@ onUnmounted(() => {
             <div class="avatar avatar-sm rounded-2 bg-primary text-white d-flex align-items-center justify-content-center flex-shrink-0">
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3l1.34 3.66l3.66 1.34l-3.66 1.34l-1.34 3.66l-1.34 -3.66l-3.66 -1.34l3.66 -1.34z"/><path d="M8 13l.7 1.87l1.87 .7l-1.87 .7l-.7 1.87l-.7 -1.87l-1.87 -.7l1.87 -.7z"/></svg>
             </div>
-            <div class="fw-bold flex-fill overflow-hidden text-truncate">AI Ассистент</div>
+            <div class="fw-bold flex-fill overflow-hidden text-truncate">{{ t('aiChat.header.title') }}</div>
             <div class="d-flex gap-1 ms-auto flex-shrink-0">
-                <button class="btn btn-sm btn-ghost-secondary px-2" title="Закрыть" aria-label="Close chat" @click="closeChat">
+                <button class="btn btn-sm btn-ghost-secondary px-2" :title="t('aiChat.buttons.close')" aria-label="Close chat" @click="closeChat">
                     <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6l-12 12"/><path d="M6 6l12 12"/></svg>
                 </button>
             </div>
@@ -304,7 +308,7 @@ onUnmounted(() => {
                                                 </div>
                                                 <div v-else-if="isFailed(message)" key="failed" class="lh-base text-danger d-flex align-items-center gap-2 py-1">
                                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
-                                                    Не удалось получить ответ
+                                                    {{ t('aiChat.messages.answer_failed') }}
                                                 </div>
                                                 <div v-else key="typing" class="typing-indicator d-flex align-items-center gap-1 py-2">
                                                     <span class="typing-dot"></span>
@@ -360,7 +364,7 @@ onUnmounted(() => {
                     <div class="avatar avatar-lg rounded-3 bg-primary text-white mb-3 d-flex align-items-center justify-content-center">
                         <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8a4 4 0 0 1 4 4"/><path d="M12 4a8 8 0 0 1 8 8"/><path d="M12 20a8 8 0 0 1 -8 -8"/><circle cx="12" cy="12" r="1"/></svg>
                     </div>
-                    <h5 class="fw-bold mb-1">AI Ассистент</h5>
+                    <h5 class="fw-bold mb-1">{{ t('aiChat.header.title') }}</h5>
 
                     <!-- Варианты дашбордов, подобранные по данным этого источника.
                          Раньше здесь стояли три одинаковых для всех подсказки про
@@ -368,8 +372,7 @@ onUnmounted(() => {
                          ничего. Теперь темы приходят с бэкенда. -->
                     <template v-if="props.suggestions.length">
                         <p class="text-secondary small mb-3">
-                            Вот с чего можно начать на этих данных — выберите вариант
-                            или опишите свой запрос словами.
+                            {{ t('aiChat.welcome.suggestions_intro') }}
                         </p>
                         <div class="d-flex flex-column gap-2 w-100">
                             <button
@@ -399,8 +402,7 @@ onUnmounted(() => {
                     </template>
 
                     <p v-else class="text-secondary small mb-0">
-                        Опишите словами, что хотите увидеть на дашборде — например,
-                        «выручка по месяцам и топ-10 клиентов».
+                        {{ t('aiChat.welcome.empty_hint') }}
                     </p>
                 </div>
             </template>
@@ -412,7 +414,7 @@ onUnmounted(() => {
             <textarea
                 class="form-control chat-textarea"
                 id="chatInput"
-                placeholder="Спросите о ваших данных…"
+                :placeholder="t('aiChat.input.placeholder')"
                 rows="1"
                 v-model="chatInput"
                 :disabled="loading"
@@ -420,12 +422,12 @@ onUnmounted(() => {
                 @input="autoResizeTextarea"
                 aria-label="Chat input"
             ></textarea>
-                <button class="btn btn-primary px-3" id="chatSendBtn" type="button" @click="sendMessage" title="Отправить (Enter)" aria-label="Send" :disabled="loading || !chatInput.trim()">
+                <button class="btn btn-primary px-3" id="chatSendBtn" type="button" @click="sendMessage" :title="t('aiChat.buttons.send_title')" aria-label="Send" :disabled="loading || !chatInput.trim()">
                     <span v-if="loading" class="send-spinner" aria-hidden="true"></span>
                     <svg v-else xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14l11 -11"/><path d="M21 3l-6.5 18a.55 .55 0 0 1 -1 0l-3.5 -7l-7 -3.5a.55 .55 0 0 1 0 -1l18 -6.5"/></svg>
                 </button>
             </div>
-            <div class="text-center text-secondary small mt-1">Enter — отправить &nbsp;·&nbsp; Shift+Enter — новая строка</div>
+            <div class="text-center text-secondary small mt-1">{{ t('aiChat.input.hint') }}</div>
         </div>
 
     </aside>

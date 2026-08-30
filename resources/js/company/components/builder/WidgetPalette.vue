@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, onMounted } from "vue";
+import { useI18n } from "vue-i18n";
 import api from "../../api.js";
 
 /**
@@ -9,6 +10,8 @@ import api from "../../api.js";
  * в сидере, оно появилось здесь само. Параметр ai_only не передаём намеренно:
  * человеку доступны и те виджеты, которые пока скрыты от модели.
  */
+
+const { t } = useI18n();
 
 defineProps({
     // Внутри выдвижной панели у каталога уже есть рамка и заголовок —
@@ -54,7 +57,7 @@ onMounted(async () => {
         const { data } = await api.get("/widgets/catalog");
         families.value = data ?? [];
     } catch (err) {
-        error.value = "Не удалось загрузить каталог виджетов.";
+        error.value = t("widgetPalette.error_load_catalog");
     } finally {
         isLoading.value = false;
     }
@@ -64,7 +67,7 @@ onMounted(async () => {
 <template>
     <div :class="embedded ? '' : 'card'">
         <div v-if="!embedded" class="card-header">
-            <h3 class="card-title">Виджеты</h3>
+            <h3 class="card-title">{{ t('widgetPalette.title') }}</h3>
         </div>
 
         <div class="card-body p-2 border-bottom" :class="{ 'px-0': embedded }">
@@ -72,8 +75,8 @@ onMounted(async () => {
                 v-model="search"
                 type="search"
                 class="form-control form-control-sm"
-                placeholder="Поиск по каталогу"
-                aria-label="Поиск виджета"
+                :placeholder="t('widgetPalette.search_placeholder')"
+                :aria-label="t('widgetPalette.search_aria')"
             />
         </div>
 
@@ -106,7 +109,7 @@ onMounted(async () => {
             </button>
 
             <div v-if="!visible.length" class="list-group-item text-secondary">
-                Ничего не найдено.
+                {{ t('widgetPalette.empty_state') }}
             </div>
         </div>
     </div>

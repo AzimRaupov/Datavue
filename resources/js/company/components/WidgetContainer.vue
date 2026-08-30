@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import api from "../api.js";
 
 import { familyOf, propsFor, hasData } from "./widgets/registry.js";
@@ -18,6 +19,8 @@ const props = defineProps({
         default: 0,
     },
 });
+
+const { t } = useI18n();
 
 const widget = computed(() => props.widget);
 
@@ -121,7 +124,7 @@ async function getWidgetContent() {
         loadError.value =
             err.response?.data?.error ||
             err.response?.data?.message ||
-            "Не удалось загрузить данные виджета.";
+            t("widgetContainer.load_error");
 
         console.error("Ошибка загрузки данных виджета:", err);
     } finally {
@@ -172,7 +175,7 @@ onMounted(async () => {
                         <path d="M12 16h.01" />
                     </svg>
                     <div>
-                        <div class="fw-bold">Виджет не посчитался</div>
+                        <div class="fw-bold">{{ t('widgetContainer.compute_failed') }}</div>
                         <div class="text-secondary small widget-error">{{ loadError }}</div>
                     </div>
                 </div>
@@ -286,7 +289,7 @@ onMounted(async () => {
     </div>
 
     <div v-else class="alert alert-warning">
-        <p>Неизвестный тип виджета: {{ familyName }}</p>
+        <p>{{ t('widgetContainer.unknown_widget_type', { type: familyName }) }}</p>
         <pre style="font-size: 0.75rem; color: #666;">{{ JSON.stringify(contentWidget, null, 2) }}</pre>
     </div>
 </template>

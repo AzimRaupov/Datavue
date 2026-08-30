@@ -16,7 +16,7 @@
                         <!-- .text-dark фиксирует чёрный и не переключается
                              вместе с темой — акцент даём весом шрифта. -->
                         <span class="fw-bold">{{ step.fromPrev }}%</span>
-                        <span class="ms-2">от первого этапа: {{ step.fromFirst }}%</span>
+                        <span class="ms-2">{{ t('widgets.funnel.from_first', { percent: step.fromFirst }) }}</span>
                     </span>
                 </div>
             </div>
@@ -26,8 +26,11 @@
 
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from "vue"
+import { useI18n } from "vue-i18n"
 import ApexCharts from "apexcharts"
 import { colorsFor } from "./palette.js"
+
+const { t, locale } = useI18n()
 
 /**
  * Семейство "funnel": последовательные этапы процесса.
@@ -96,7 +99,7 @@ const renderChart = async () => {
                 isFunnel: true,
             },
         },
-        series: [{ name: "Этап", data }],
+        series: [{ name: t('widgets.funnel.stage_series_name'), data }],
         xaxis: { categories },
         dataLabels: {
             enabled: true,
@@ -113,7 +116,7 @@ const renderChart = async () => {
 }
 
 watch(
-    () => [props.series, props.labels, props.options],
+    () => [props.series, props.labels, props.options, locale.value],
     renderChart,
     { deep: true }
 )

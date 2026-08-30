@@ -1,7 +1,10 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { Modal } from 'bootstrap';
+import { useI18n } from 'vue-i18n';
 import api from '../../api.js';
+
+const { t } = useI18n();
 
 /**
  * Список сотрудников компании.
@@ -79,8 +82,8 @@ async function fetchUsers() {
     } catch (err) {
         listError.value =
             err.response?.status === 403
-                ? 'У вас нет прав на просмотр сотрудников.'
-                : 'Не удалось загрузить список сотрудников.';
+                ? t('settingsUsers.errors.no_permission_view')
+                : t('settingsUsers.errors.load_failed');
     } finally {
         loading.value = false;
     }
@@ -104,7 +107,7 @@ async function confirmDelete() {
         await fetchUsers();
     } catch (err) {
         listError.value =
-            err.response?.data?.message || 'Не удалось удалить сотрудника.';
+            err.response?.data?.message || t('settingsUsers.errors.delete_failed');
         deleteModal?.hide();
     } finally {
         deleting.value = false;
@@ -130,10 +133,12 @@ onBeforeUnmount(() => {
             <div class="container-xl">
                 <div class="row g-2 align-items-center">
                     <div class="col">
-                        <div class="page-pretitle">Компания {{ currentUser?.company?.name }}</div>
-                        <h2 class="page-title">Сотрудники</h2>
+                        <div class="page-pretitle">{{ t('settingsUsers.page_pretitle', { name: currentUser?.company?.name }) }}</div>
+                        <h2 class="page-title">{{ t('settingsUsers.page_title') }}</h2>
                         <div class="text-secondary mt-1">
-                            {{ users.length }} {{ users.length === 1 ? 'человек' : 'человек(а)' }} в команде
+                            {{ users.length === 1
+                                ? t('settingsUsers.team_count_one', { count: users.length })
+                                : t('settingsUsers.team_count_other', { count: users.length }) }}
                         </div>
                     </div>
 
@@ -143,8 +148,8 @@ onBeforeUnmount(() => {
                                 v-model="search"
                                 type="search"
                                 class="form-control d-inline-block w-9 me-3"
-                                placeholder="Поиск сотрудника…"
-                                aria-label="Поиск сотрудника"
+                                :placeholder="t('settingsUsers.search_placeholder')"
+                                :aria-label="t('settingsUsers.search_aria_label')"
                             />
                             <router-link v-if="canManage" class="btn btn-primary"
                                          :to="{ name: 'settings.users.create' }">
@@ -154,7 +159,7 @@ onBeforeUnmount(() => {
                                     <path d="M12 5l0 14" />
                                     <path d="M5 12l14 0" />
                                 </svg>
-                                Добавить сотрудника
+                                {{ t('settingsUsers.add_employee') }}
                             </router-link>
                         </div>
                     </div>
@@ -182,12 +187,12 @@ onBeforeUnmount(() => {
                     <div v-else-if="!filteredUsers.length" class="card-body">
                         <div class="empty">
                             <p class="empty-title">
-                                {{ search ? 'Ничего не найдено' : 'Сотрудников пока нет' }}
+                                {{ search ? t('settingsUsers.empty.title_search') : t('settingsUsers.empty.title_none') }}
                             </p>
                             <p class="empty-subtitle text-secondary">
                                 {{ search
-                                    ? 'Попробуйте изменить поисковый запрос.'
-                                    : 'Добавьте сотрудников и выдайте им нужные роли и доступы.' }}
+                                    ? t('settingsUsers.empty.subtitle_search')
+                                    : t('settingsUsers.empty.subtitle_none') }}
                             </p>
                             <div class="empty-action" v-if="canManage && !search">
                                 <router-link class="btn btn-primary" :to="{ name: 'settings.users.create' }">
@@ -197,7 +202,7 @@ onBeforeUnmount(() => {
                                         <path d="M12 5l0 14" />
                                         <path d="M5 12l14 0" />
                                     </svg>
-                                    Добавить сотрудника
+                                    {{ t('settingsUsers.add_employee') }}
                                 </router-link>
                             </div>
                         </div>
@@ -208,9 +213,9 @@ onBeforeUnmount(() => {
                         <table class="table table-vcenter card-table">
                             <thead>
                             <tr>
-                                <th>Сотрудник</th>
-                                <th>Роль</th>
-                                <th>Статус</th>
+                                <th>{{ t('settingsUsers.table.employee') }}</th>
+                                <th>{{ t('settingsUsers.table.role') }}</th>
+                                <th>{{ t('settingsUsers.table.status') }}</th>
                                 <th class="w-1"></th>
                             </tr>
                             </thead>
@@ -222,8 +227,8 @@ onBeforeUnmount(() => {
                                         <div class="flex-fill">
                                             <div class="font-weight-medium">
                                                 {{ user.name }}
-                                                <span v-if="user.is_owner" class="badge bg-yellow-lt ms-1">владелец</span>
-                                                <span v-else-if="user.is_self" class="badge bg-secondary-lt ms-1">это вы</span>
+                                                <span v-if="user.is_owner" class="badge bg-yellow-lt ms-1">{{ t('settingsUsers.owner_badge') }}</span>
+                                                <span v-else-if="user.is_self" class="badge bg-secondary-lt ms-1">{{ t('settingsUsers.self_badge') }}</span>
                                             </div>
                                             <div class="text-secondary">
                                                 <a :href="`mailto:${user.email}`" class="text-reset">{{ user.email }}</a>
@@ -236,26 +241,26 @@ onBeforeUnmount(() => {
                                         {{ roleLabel(user.role) }}
                                     </span>
                                     <div class="text-secondary small mt-1">
-                                        прав: {{ permissionCount(user) }}
+                                        {{ t('settingsUsers.permission_count', { count: permissionCount(user) }) }}
                                     </div>
                                 </td>
                                 <td>
                                     <span v-if="user.is_active" class="badge bg-success me-1"></span>
                                     <span v-else class="badge bg-secondary me-1"></span>
-                                    {{ user.is_active ? 'Активен' : 'Отключён' }}
+                                    {{ user.is_active ? t('settingsUsers.status_active') : t('settingsUsers.status_disabled') }}
                                 </td>
                                 <td>
                                     <div v-if="canManage" class="btn-list flex-nowrap justify-content-end">
                                         <router-link class="btn btn-sm"
                                                      :to="{ name: 'settings.users.edit', params: { id: user.id } }">
-                                            Изменить
+                                            {{ t('settingsUsers.actions.edit') }}
                                         </router-link>
                                         <button
                                             v-if="!user.is_owner && !user.is_self"
                                             class="btn btn-sm btn-ghost-danger"
                                             @click="askDelete(user)"
                                         >
-                                            Удалить
+                                            {{ t('settingsUsers.actions.delete') }}
                                         </button>
                                     </div>
                                 </td>
@@ -281,20 +286,20 @@ onBeforeUnmount(() => {
                             <path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0z" />
                             <path d="M12 16h.01" />
                         </svg>
-                        <h3>Удалить сотрудника?</h3>
+                        <h3>{{ t('settingsUsers.delete_modal.title') }}</h3>
                         <div class="text-secondary">
-                            {{ pendingDelete?.name }} потеряет доступ к системе. Действие необратимо.
+                            {{ t('settingsUsers.delete_modal.body', { name: pendingDelete?.name }) }}
                         </div>
                     </div>
                     <div class="modal-footer">
                         <div class="w-100">
                             <div class="row">
                                 <div class="col">
-                                    <button class="btn w-100" data-bs-dismiss="modal">Отмена</button>
+                                    <button class="btn w-100" data-bs-dismiss="modal">{{ t('settingsUsers.delete_modal.cancel') }}</button>
                                 </div>
                                 <div class="col">
                                     <button class="btn btn-danger w-100" :disabled="deleting" @click="confirmDelete">
-                                        {{ deleting ? 'Удаление…' : 'Удалить' }}
+                                        {{ deleting ? t('settingsUsers.delete_modal.deleting') : t('settingsUsers.delete_modal.confirm') }}
                                     </button>
                                 </div>
                             </div>

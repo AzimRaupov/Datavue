@@ -2,9 +2,11 @@
 import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { Modal } from 'bootstrap';
 import { useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import api from '../../api.js';
 
 const router = useRouter();
+const { t } = useI18n();
 
 const sources = ref([]);
 const loading = ref(false);
@@ -87,7 +89,7 @@ function locationOf(source) {
     if (source.connection_type === 'remote') {
         return `${source.host}:${source.port}/${source.database}`;
     }
-    return 'Файл на сервере';
+    return t('sourcesIndex.location.file_on_server');
 }
 
 async function fetchSources() {
@@ -100,8 +102,8 @@ async function fetchSources() {
     } catch (err) {
         listError.value =
             err.response?.status === 403
-                ? 'У вас нет прав на просмотр источников данных.'
-                : 'Не удалось загрузить источники данных.';
+                ? t('sourcesIndex.errors.no_permission')
+                : t('sourcesIndex.errors.load_failed');
     } finally {
         loading.value = false;
     }
@@ -155,7 +157,7 @@ async function submitEdit() {
     } catch (err) {
         const data = err.response?.data;
         if (data?.errors) formErrors.value = data.errors;
-        formError.value = data?.message || 'Не удалось сохранить источник.';
+        formError.value = data?.message || t('sourcesIndex.errors.save_failed');
     } finally {
         saving.value = false;
     }
@@ -178,7 +180,7 @@ async function confirmDelete() {
         pendingDelete.value = null;
         await fetchSources();
     } catch (err) {
-        listError.value = err.response?.data?.message || 'Не удалось удалить источник.';
+        listError.value = err.response?.data?.message || t('sourcesIndex.errors.delete_failed');
         deleteModal?.hide();
     } finally {
         deleting.value = false;
@@ -208,7 +210,7 @@ async function createChat() {
         chatModal?.hide();
         router.push({ name: 'company.workspace', params: { workspace: data.workspace.id } });
     } catch (err) {
-        chatError.value = err.response?.data?.message || 'Не удалось создать чат.';
+        chatError.value = err.response?.data?.message || t('sourcesIndex.errors.chat_failed');
     } finally {
         creatingChat.value = false;
     }
@@ -240,10 +242,10 @@ onBeforeUnmount(() => {
             <div class="container-xl">
                 <div class="row g-2 align-items-center">
                     <div class="col">
-                        <div class="page-pretitle">Компания {{ currentUser?.company?.name }}</div>
-                        <h2 class="page-title">Источники данных</h2>
+                        <div class="page-pretitle">{{ t('sourcesIndex.header.company_prefix', { name: currentUser?.company?.name }) }}</div>
+                        <h2 class="page-title">{{ t('sourcesIndex.header.title') }}</h2>
                         <div class="text-secondary mt-1">
-                            Подключите базу или файл — и заводите на нём столько чатов, сколько нужно.
+                            {{ t('sourcesIndex.header.subtitle') }}
                         </div>
                     </div>
 
@@ -253,8 +255,8 @@ onBeforeUnmount(() => {
                                 v-model="search"
                                 type="search"
                                 class="form-control d-inline-block w-9 me-3"
-                                placeholder="Поиск источника…"
-                                aria-label="Поиск источника"
+                                :placeholder="t('sourcesIndex.search.placeholder')"
+                                :aria-label="t('sourcesIndex.search.aria_label')"
                             />
                             <router-link v-if="canManage" class="btn btn-primary"
                                          :to="{ name: 'company.source.create' }">
@@ -264,7 +266,7 @@ onBeforeUnmount(() => {
                                     <path d="M12 5l0 14" />
                                     <path d="M5 12l14 0" />
                                 </svg>
-                                Добавить источник
+                                {{ t('sourcesIndex.actions.add') }}
                             </router-link>
                         </div>
                     </div>
@@ -290,12 +292,12 @@ onBeforeUnmount(() => {
                     <div v-else-if="!filteredSources.length" class="card-body">
                         <div class="empty">
                             <p class="empty-title">
-                                {{ search ? 'Ничего не найдено' : 'Источников пока нет' }}
+                                {{ search ? t('sourcesIndex.empty.title_search') : t('sourcesIndex.empty.title_default') }}
                             </p>
                             <p class="empty-subtitle text-secondary">
                                 {{ search
-                                    ? 'Попробуйте изменить поисковый запрос.'
-                                    : 'Подключите первую базу данных или загрузите файл — это первый шаг перед созданием дашбордов.' }}
+                                    ? t('sourcesIndex.empty.subtitle_search')
+                                    : t('sourcesIndex.empty.subtitle_default') }}
                             </p>
                             <div class="empty-action" v-if="canManage && !search">
                                 <router-link class="btn btn-primary" :to="{ name: 'company.source.create' }">
@@ -305,7 +307,7 @@ onBeforeUnmount(() => {
                                         <path d="M12 5l0 14" />
                                         <path d="M5 12l14 0" />
                                     </svg>
-                                    Добавить источник
+                                    {{ t('sourcesIndex.actions.add') }}
                                 </router-link>
                             </div>
                         </div>
@@ -316,10 +318,10 @@ onBeforeUnmount(() => {
                         <table class="table table-vcenter card-table">
                             <thead>
                             <tr>
-                                <th>Источник</th>
-                                <th>Тип</th>
-                                <th>Чаты</th>
-                                <th>Добавлен</th>
+                                <th>{{ t('sourcesIndex.table.name') }}</th>
+                                <th>{{ t('sourcesIndex.table.type') }}</th>
+                                <th>{{ t('sourcesIndex.table.chats') }}</th>
+                                <th>{{ t('sourcesIndex.table.added') }}</th>
                                 <th class="w-1"></th>
                             </tr>
                             </thead>
@@ -376,17 +378,17 @@ onBeforeUnmount(() => {
                                             class="btn btn-sm btn-primary"
                                             @click="openChatModal(source)"
                                         >
-                                            Новый чат
+                                            {{ t('sourcesIndex.actions.new_chat') }}
                                         </button>
                                         <button v-if="canManage" class="btn btn-sm" @click="openEdit(source)">
-                                            Изменить
+                                            {{ t('sourcesIndex.actions.edit') }}
                                         </button>
                                         <button
                                             v-if="canManage"
                                             class="btn btn-sm btn-ghost-danger"
                                             @click="askDelete(source)"
                                         >
-                                            Удалить
+                                            {{ t('sourcesIndex.actions.delete') }}
                                         </button>
                                     </div>
                                 </td>
@@ -404,15 +406,15 @@ onBeforeUnmount(() => {
             <div class="modal-dialog modal-lg modal-dialog-centered" role="document">
                 <div class="modal-content">
                     <div class="modal-header">
-                        <h5 class="modal-title">Изменение источника</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+                        <h5 class="modal-title">{{ t('sourcesIndex.edit_modal.title') }}</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" :aria-label="t('sourcesIndex.actions.close')"></button>
                     </div>
 
                     <div class="modal-body">
                         <div class="row">
                             <div class="col-lg-8">
                                 <div class="mb-3">
-                                    <label class="form-label required">Название</label>
+                                    <label class="form-label required">{{ t('sourcesIndex.form.name') }}</label>
                                     <input v-model="editForm.name" type="text" class="form-control"
                                            :class="{ 'is-invalid': formErrors.name }" />
                                     <div v-if="formErrors.name" class="invalid-feedback">{{ formErrors.name[0] }}</div>
@@ -420,7 +422,7 @@ onBeforeUnmount(() => {
                             </div>
                             <div class="col-lg-4">
                                 <div class="mb-3">
-                                    <label class="form-label">Версия</label>
+                                    <label class="form-label">{{ t('sourcesIndex.form.version') }}</label>
                                     <input v-model="editForm.version" type="text" class="form-control" />
                                 </div>
                             </div>
@@ -428,33 +430,33 @@ onBeforeUnmount(() => {
                             <template v-if="editing?.connection_type === 'remote'">
                                 <div class="col-lg-8">
                                     <div class="mb-3">
-                                        <label class="form-label required">Хост</label>
+                                        <label class="form-label required">{{ t('sourcesIndex.form.host') }}</label>
                                         <input v-model="editForm.host" type="text" class="form-control" />
                                     </div>
                                 </div>
                                 <div class="col-lg-4">
                                     <div class="mb-3">
-                                        <label class="form-label required">Порт</label>
+                                        <label class="form-label required">{{ t('sourcesIndex.form.port') }}</label>
                                         <input v-model="editForm.port" type="number" class="form-control" />
                                     </div>
                                 </div>
                                 <div class="col-12">
                                     <div class="mb-3">
-                                        <label class="form-label required">База данных</label>
+                                        <label class="form-label required">{{ t('sourcesIndex.form.database') }}</label>
                                         <input v-model="editForm.database" type="text" class="form-control" />
                                     </div>
                                 </div>
                                 <div class="col-lg-6">
                                     <div class="mb-3">
-                                        <label class="form-label required">Имя пользователя</label>
+                                        <label class="form-label required">{{ t('sourcesIndex.form.username') }}</label>
                                         <input v-model="editForm.username" type="text" class="form-control" />
                                     </div>
                                 </div>
                                 <div class="col-lg-6">
                                     <div class="mb-3">
-                                        <label class="form-label">Пароль</label>
+                                        <label class="form-label">{{ t('sourcesIndex.form.password') }}</label>
                                         <input v-model="editForm.password" type="password" class="form-control"
-                                               placeholder="Оставьте пустым, чтобы не менять"
+                                               :placeholder="t('sourcesIndex.form.password_placeholder')"
                                                autocomplete="new-password" />
                                     </div>
                                 </div>
@@ -462,8 +464,7 @@ onBeforeUnmount(() => {
 
                             <div v-else class="col-12">
                                 <div class="alert alert-info mb-0">
-                                    Это файловый источник — сам файл заменить нельзя, на нём уже
-                                    построены дашборды. Загрузите новый файл отдельным источником.
+                                    {{ t('sourcesIndex.file_source_notice') }}
                                 </div>
                             </div>
                         </div>
@@ -472,9 +473,9 @@ onBeforeUnmount(() => {
                     </div>
 
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">Отмена</button>
+                        <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">{{ t('sourcesIndex.actions.cancel') }}</button>
                         <button type="button" class="btn btn-primary ms-auto" :disabled="saving" @click="submitEdit">
-                            {{ saving ? 'Сохранение…' : 'Сохранить' }}
+                            {{ saving ? t('sourcesIndex.actions.saving') : t('sourcesIndex.actions.save') }}
                         </button>
                     </div>
                 </div>
@@ -495,25 +496,22 @@ onBeforeUnmount(() => {
                             <path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0z" />
                             <path d="M12 16h.01" />
                         </svg>
-                        <h3>Удалить источник?</h3>
+                        <h3>{{ t('sourcesIndex.delete_modal.title') }}</h3>
                         <div class="text-secondary">
-                            «{{ pendingDelete?.name }}» будет удалён
-                            <template v-if="pendingDelete?.chats_count">
-                                вместе с {{ pendingDelete.chats_count }} чат(ами) и всеми их дашбордами.
-                            </template>
-                            <template v-else>безвозвратно.</template>
-                            Действие необратимо.
+                            {{ pendingDelete?.chats_count
+                                ? t('sourcesIndex.delete_modal.body_with_chats', { name: pendingDelete?.name, count: pendingDelete.chats_count })
+                                : t('sourcesIndex.delete_modal.body_without_chats', { name: pendingDelete?.name }) }}
                         </div>
                     </div>
                     <div class="modal-footer">
                         <div class="w-100">
                             <div class="row">
                                 <div class="col">
-                                    <button class="btn w-100" data-bs-dismiss="modal">Отмена</button>
+                                    <button class="btn w-100" data-bs-dismiss="modal">{{ t('sourcesIndex.actions.cancel') }}</button>
                                 </div>
                                 <div class="col">
                                     <button class="btn btn-danger w-100" :disabled="deleting" @click="confirmDelete">
-                                        {{ deleting ? 'Удаление…' : 'Удалить' }}
+                                        {{ deleting ? t('sourcesIndex.actions.deleting') : t('sourcesIndex.actions.delete') }}
                                     </button>
                                 </div>
                             </div>
@@ -529,20 +527,18 @@ onBeforeUnmount(() => {
             <div class="modal-dialog modal-dialog-centered" role="document">
                 <div class="modal-content">
                     <div class="modal-header">
-                        <h5 class="modal-title">Новый чат</h5>
+                        <h5 class="modal-title">{{ t('sourcesIndex.chat_modal.title') }}</h5>
                         <button v-if="!creatingChat" type="button" class="btn-close" data-bs-dismiss="modal"
-                                aria-label="Закрыть"></button>
+                                :aria-label="t('sourcesIndex.actions.close')"></button>
                     </div>
 
                     <!-- См. ShowPage.vue: пока готовятся варианты дашбордов,
                          форма заменяется прогрессом и окно не закрывается. -->
                     <div v-if="creatingChat" class="modal-body text-center py-4">
                         <div class="spinner-border text-primary mb-3" role="status"></div>
-                        <h3 class="mb-1">Готовим варианты дашбордов</h3>
+                        <h3 class="mb-1">{{ t('sourcesIndex.chat_modal.preparing_title') }}</h3>
                         <div class="text-secondary">
-                            Разбираем структуру источника «{{ chatSource?.name }}» и подбираем,
-                            что на нём стоит построить. Обычно это занимает до минуты —
-                            для следующих чатов на этом источнике будет мгновенно.
+                            {{ t('sourcesIndex.chat_modal.preparing_body', { name: chatSource?.name }) }}
                         </div>
                         <div class="progress progress-sm mt-3">
                             <div class="progress-bar progress-bar-indeterminate"></div>
@@ -551,25 +547,25 @@ onBeforeUnmount(() => {
 
                     <div v-else class="modal-body">
                         <div class="mb-3">
-                            <label class="form-label">Источник данных</label>
+                            <label class="form-label">{{ t('sourcesIndex.chat_modal.source_label') }}</label>
                             <input type="text" class="form-control" :value="chatSource?.name" disabled />
                         </div>
                         <div class="mb-1">
-                            <label class="form-label">Название чата</label>
+                            <label class="form-label">{{ t('sourcesIndex.chat_modal.title_label') }}</label>
                             <input v-model="chatTitle" type="text" class="form-control"
-                                   placeholder="Например: Анализ продаж за квартал"
+                                   :placeholder="t('sourcesIndex.chat_modal.title_placeholder')"
                                    @keydown.enter.prevent="createChat" />
                             <small class="form-hint">
-                                Можно не заполнять — название подставится автоматически.
+                                {{ t('sourcesIndex.chat_modal.title_hint') }}
                             </small>
                         </div>
                         <div v-if="chatError" class="alert alert-danger mt-3 mb-0" role="alert">{{ chatError }}</div>
                     </div>
 
                     <div v-if="!creatingChat" class="modal-footer">
-                        <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">Отмена</button>
+                        <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">{{ t('sourcesIndex.actions.cancel') }}</button>
                         <button type="button" class="btn btn-primary ms-auto" @click="createChat">
-                            Создать и открыть
+                            {{ t('sourcesIndex.chat_modal.submit') }}
                         </button>
                     </div>
                 </div>

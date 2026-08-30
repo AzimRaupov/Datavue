@@ -14,7 +14,7 @@
                             <span
                                 class="avatar avatar-lx cursor-pointer"
                                 :class="copiedIndex === index ? 'bg-success-lt text-success' : ''"
-                                :title="copiedIndex === index ? 'Скопировано' : 'Копировать значение'"
+                                :title="copiedIndex === index ? t('widgets.minicounters.copied') : t('widgets.minicounters.copy_value')"
                                 @click="copyValue(counter, index)"
                             >
                                 <CopyIcon />
@@ -37,7 +37,7 @@
                         <span
                             class="cursor-pointer text-secondary"
                             :class="copiedIndex === index ? 'text-success' : ''"
-                            :title="copiedIndex === index ? 'Скопировано' : 'Копировать значение'"
+                            :title="copiedIndex === index ? t('widgets.minicounters.copied') : t('widgets.minicounters.copy_value')"
                             @click="copyValue(counter, index)"
                         >
                             <CopyIcon />
@@ -69,7 +69,7 @@
                     v-for="(counter, index) in items"
                     :key="index"
                     class="cursor-pointer"
-                    :title="copiedIndex === index ? 'Скопировано' : 'Копировать значение'"
+                    :title="copiedIndex === index ? t('widgets.minicounters.copied') : t('widgets.minicounters.copy_value')"
                     @click="copyValue(counter, index)"
                 >
                     <div class="subheader">{{ counter.name }}</div>
@@ -88,6 +88,9 @@
 
 <script setup>
 import { ref, computed, h } from "vue"
+import { useI18n } from "vue-i18n"
+
+const { t } = useI18n()
 
 const props = defineProps({
     // Прокси-объект с сервера: { counters: [...] }

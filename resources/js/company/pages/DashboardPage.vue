@@ -2,9 +2,11 @@
 import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { Modal } from 'bootstrap';
 import { useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import api from '../api.js';
 
 const router = useRouter();
+const { t } = useI18n();
 
 const sources = ref([]);
 const chats = ref([]);
@@ -86,7 +88,7 @@ async function submitCreate() {
     } catch (err) {
         const body = err.response?.data;
         if (body?.errors) createErrors.value = body.errors;
-        createError.value = body?.message || 'Не удалось создать дашборд.';
+        createError.value = body?.message || t('dashboardPage.modal.create_error_default');
     } finally {
         creating.value = false;
     }
@@ -98,17 +100,17 @@ const recentChats = computed(() => chats.value.slice(0, 6));
 const recentDashboards = computed(() => dashboards.value.slice(0, 8));
 
 /** Статус дашборда словами — см. страницу «Дашборды». */
-const DASHBOARD_STATUS = {
-    empty: { text: 'Пустой', cls: 'bg-secondary-lt' },
-    generating_scheme: { text: 'Генерируется', cls: 'bg-azure-lt' },
-    generating_widgets: { text: 'Считает виджеты', cls: 'bg-azure-lt' },
-    reviewing: { text: 'Проверяется', cls: 'bg-azure-lt' },
-    completed: { text: 'Готов', cls: 'bg-green-lt' },
-    failed: { text: 'Ошибка', cls: 'bg-red-lt' },
-};
+const dashboardStatusMap = computed(() => ({
+    empty: { text: t('dashboardPage.status.empty'), cls: 'bg-secondary-lt' },
+    generating_scheme: { text: t('dashboardPage.status.generating_scheme'), cls: 'bg-azure-lt' },
+    generating_widgets: { text: t('dashboardPage.status.generating_widgets'), cls: 'bg-azure-lt' },
+    reviewing: { text: t('dashboardPage.status.reviewing'), cls: 'bg-azure-lt' },
+    completed: { text: t('dashboardPage.status.completed'), cls: 'bg-green-lt' },
+    failed: { text: t('dashboardPage.status.failed'), cls: 'bg-red-lt' },
+}));
 
 function dashboardStatus(dashboard) {
-    return DASHBOARD_STATUS[dashboard.status] ?? { text: dashboard.status, cls: 'bg-secondary-lt' };
+    return dashboardStatusMap.value[dashboard.status] ?? { text: dashboard.status, cls: 'bg-secondary-lt' };
 }
 
 const typeBadgeClass = (name) =>
@@ -153,7 +155,7 @@ async function fetchAll() {
         dashboards.value = responses[1].data ?? [];
         usage.value = responses[2].data ?? null;
     } catch (err) {
-        listError.value = 'Не удалось загрузить рабочее пространство.';
+        listError.value = t('dashboardPage.errors.load_failed');
     } finally {
         loading.value = false;
     }
@@ -179,12 +181,12 @@ onBeforeUnmount(() => {
                 <div class="row g-2 align-items-center">
                     <div class="col">
                         <div class="page-pretitle">Data to Dashboard</div>
-                        <h2 class="page-title">Обзор рабочего пространства</h2>
+                        <h2 class="page-title">{{ t('dashboardPage.title') }}</h2>
                     </div>
                     <div class="col-auto ms-auto d-print-none">
                         <div class="btn-list">
                             <router-link v-if="canViewSources" class="btn" :to="{ name: 'company.sources' }">
-                                Все источники
+                                {{ t('dashboardPage.all_sources') }}
                             </router-link>
                             <button v-if="canCreateDashboards" class="btn" type="button" @click="openCreateModal">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
@@ -195,7 +197,7 @@ onBeforeUnmount(() => {
                                     <path d="M14 12h6v8h-6z" />
                                     <path d="M14 4h6v4h-6z" />
                                 </svg>
-                                Создать дашборд
+                                {{ t('dashboardPage.create_dashboard') }}
                             </button>
                             <router-link v-if="canManageSources" class="btn btn-primary"
                                          :to="{ name: 'company.source.create' }">
@@ -205,7 +207,7 @@ onBeforeUnmount(() => {
                                     <path d="M12 5l0 14" />
                                     <path d="M5 12l14 0" />
                                 </svg>
-                                Добавить источник
+                                {{ t('dashboardPage.add_source') }}
                             </router-link>
                         </div>
                     </div>
@@ -251,7 +253,7 @@ onBeforeUnmount(() => {
                                         </div>
                                         <div class="col">
                                             <div class="font-weight-medium">{{ sources.length }}</div>
-                                            <div class="text-secondary">Источников данных</div>
+                                            <div class="text-secondary">{{ t('dashboardPage.stats.sources') }}</div>
                                         </div>
                                     </div>
                                 </div>
@@ -276,7 +278,7 @@ onBeforeUnmount(() => {
                                         </div>
                                         <div class="col">
                                             <div class="font-weight-medium">{{ chats.length }}</div>
-                                            <div class="text-secondary">Чатов</div>
+                                            <div class="text-secondary">{{ t('dashboardPage.stats.chats') }}</div>
                                         </div>
                                     </div>
                                 </div>
@@ -299,7 +301,7 @@ onBeforeUnmount(() => {
                                         </div>
                                         <div class="col">
                                             <div class="font-weight-medium">{{ dashboards.length }}</div>
-                                            <div class="text-secondary">Дашбордов</div>
+                                            <div class="text-secondary">{{ t('dashboardPage.stats.dashboards') }}</div>
                                         </div>
                                     </div>
                                 </div>
@@ -313,11 +315,11 @@ onBeforeUnmount(() => {
                             <div class="row align-items-center">
                                 <div class="col">
                                     <div class="font-weight-medium">
-                                        Расход ИИ за месяц: {{ formatTokens(usage.used) }}
+                                        {{ t('dashboardPage.usage.title', { used: formatTokens(usage.used) }) }}
                                         <span v-if="usage.limit" class="text-secondary">
-                                            из {{ formatTokens(usage.limit) }} токенов
+                                            {{ t('dashboardPage.usage.of_limit', { limit: formatTokens(usage.limit) }) }}
                                         </span>
-                                        <span v-else class="text-secondary">токенов</span>
+                                        <span v-else class="text-secondary">{{ t('dashboardPage.usage.tokens') }}</span>
                                     </div>
                                     <div v-if="usage.limit" class="progress progress-sm mt-2">
                                         <div class="progress-bar" :class="usageBarClass"
@@ -328,7 +330,7 @@ onBeforeUnmount(() => {
                                         </div>
                                     </div>
                                     <div v-else class="text-secondary mt-1">
-                                        Лимит не задан — расход не ограничен.
+                                        {{ t('dashboardPage.usage.no_limit') }}
                                     </div>
                                 </div>
                                 <div v-if="usage.limit" class="col-auto">
@@ -339,7 +341,7 @@ onBeforeUnmount(() => {
                             </div>
 
                             <div v-if="usage.reached" class="alert alert-danger mt-3 mb-0" role="alert">
-                                Лимит исчерпан — новые запросы к ИИ отклоняются до начала месяца.
+                                {{ t('dashboardPage.usage.limit_reached') }}
                             </div>
                         </div>
                     </div>
@@ -348,10 +350,9 @@ onBeforeUnmount(() => {
                     <div v-if="canViewSources && !sources.length" class="card mb-4">
                         <div class="card-body">
                             <div class="empty">
-                                <p class="empty-title">Начните с источника данных</p>
+                                <p class="empty-title">{{ t('dashboardPage.empty_sources.title') }}</p>
                                 <p class="empty-subtitle text-secondary">
-                                    Подключите базу данных или загрузите файл. После этого на источнике
-                                    можно будет создать чат и описать словами нужный дашборд.
+                                    {{ t('dashboardPage.empty_sources.subtitle') }}
                                 </p>
                                 <div class="empty-action" v-if="canManageSources">
                                     <router-link class="btn btn-primary" :to="{ name: 'company.source.create' }">
@@ -361,7 +362,7 @@ onBeforeUnmount(() => {
                                             <path d="M12 5l0 14" />
                                             <path d="M5 12l14 0" />
                                         </svg>
-                                        Добавить источник
+                                        {{ t('dashboardPage.add_source') }}
                                     </router-link>
                                 </div>
                             </div>
@@ -372,11 +373,11 @@ onBeforeUnmount(() => {
                     <template v-else-if="canViewSources">
                         <div class="row g-2 align-items-center mb-3">
                             <div class="col">
-                                <h3 class="mb-0">Источники данных</h3>
+                                <h3 class="mb-0">{{ t('dashboardPage.sources.heading') }}</h3>
                             </div>
                             <div class="col-auto">
                                 <router-link :to="{ name: 'company.sources' }" class="text-secondary">
-                                    Смотреть все →
+                                    {{ t('dashboardPage.view_all') }}
                                 </router-link>
                             </div>
                         </div>
@@ -402,7 +403,7 @@ onBeforeUnmount(() => {
                                             </router-link>
                                         </h3>
                                         <div class="text-secondary mt-auto">
-                                            {{ source.chats_count ?? 0 }} чат(ов)
+                                            {{ t('dashboardPage.sources.chats_count', { count: source.chats_count ?? 0 }) }}
                                         </div>
                                     </div>
                                 </div>
@@ -413,16 +414,16 @@ onBeforeUnmount(() => {
                     <!-- ===================== ЧАТЫ ===================== -->
                     <div class="row g-2 align-items-center mb-3">
                         <div class="col">
-                            <h3 class="mb-0">Последние чаты</h3>
+                            <h3 class="mb-0">{{ t('dashboardPage.chats.heading') }}</h3>
                         </div>
                     </div>
 
                     <div v-if="!recentChats.length" class="card">
                         <div class="card-body">
                             <div class="empty">
-                                <p class="empty-title">Чатов пока нет</p>
+                                <p class="empty-title">{{ t('dashboardPage.chats.empty_title') }}</p>
                                 <p class="empty-subtitle text-secondary">
-                                    Откройте источник данных и создайте на нём первый чат.
+                                    {{ t('dashboardPage.chats.empty_subtitle') }}
                                 </p>
                             </div>
                         </div>
@@ -444,7 +445,7 @@ onBeforeUnmount(() => {
                                             :to="{ name: 'company.workspace.chat', params: { chat: chat.id } }"
                                             class="text-reset"
                                         >
-                                            {{ chat.title || `Чат #${chat.id}` }}
+                                            {{ chat.title || t('dashboardPage.chat_fallback_title', { id: chat.id }) }}
                                         </router-link>
                                     </h3>
                                     <div v-if="chat.data_source" class="text-secondary text-truncate">
@@ -465,7 +466,7 @@ onBeforeUnmount(() => {
                                         class="list-group-item list-group-item-action d-flex align-items-center py-2 px-3"
                                     >
                                         <span class="badge bg-primary me-2" style="border-radius: 2.2px;"></span>
-                                        <span class="text-truncate">{{ dashboard.name || `Дашборд #${dashboard.id}` }}</span>
+                                        <span class="text-truncate">{{ dashboard.name || t('dashboardPage.dashboard_fallback_name', { id: dashboard.id }) }}</span>
                                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
                                              viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                                              stroke-linecap="round" stroke-linejoin="round"
@@ -477,7 +478,7 @@ onBeforeUnmount(() => {
 
                                 <div class="card-footer bg-transparent py-2 px-3 border-top">
                                     <small class="text-muted">
-                                        Всего дашбордов: {{ chat.dashboards_count ?? 0 }}
+                                        {{ t('dashboardPage.chats.total_dashboards', { count: chat.dashboards_count ?? 0 }) }}
                                     </small>
                                 </div>
                             </div>
@@ -490,11 +491,11 @@ onBeforeUnmount(() => {
                          дашборд, к которому возвращаются каждый день. -->
                     <div class="row g-2 align-items-center mb-3 mt-4">
                         <div class="col">
-                            <h3 class="mb-0">Последние дашборды</h3>
+                            <h3 class="mb-0">{{ t('dashboardPage.dashboards.heading') }}</h3>
                         </div>
                         <div v-if="dashboards.length" class="col-auto">
                             <router-link :to="{ name: 'company.dashboards' }" class="text-secondary">
-                                Смотреть все →
+                                {{ t('dashboardPage.view_all') }}
                             </router-link>
                         </div>
                     </div>
@@ -502,13 +503,13 @@ onBeforeUnmount(() => {
                     <div v-if="!recentDashboards.length" class="card">
                         <div class="card-body">
                             <div class="empty">
-                                <p class="empty-title">Дашбордов пока нет</p>
+                                <p class="empty-title">{{ t('dashboardPage.dashboards.empty_title') }}</p>
                                 <p class="empty-subtitle text-secondary">
-                                    Соберите дашборд сами или опишите нужное словами в чате.
+                                    {{ t('dashboardPage.dashboards.empty_subtitle') }}
                                 </p>
                                 <div v-if="canCreateDashboards" class="empty-action">
                                     <button class="btn btn-primary" type="button" @click="openCreateModal">
-                                        Создать дашборд
+                                        {{ t('dashboardPage.create_dashboard') }}
                                     </button>
                                 </div>
                             </div>
@@ -534,12 +535,12 @@ onBeforeUnmount(() => {
                                             :to="{ name: 'company.workspace.dashboard', params: { dashboard: dashboard.id } }"
                                             class="text-reset"
                                         >
-                                            {{ dashboard.name || `Дашборд #${dashboard.id}` }}
+                                            {{ dashboard.name || t('dashboardPage.dashboard_fallback_name', { id: dashboard.id }) }}
                                         </router-link>
                                     </h3>
 
                                     <div class="text-secondary mt-auto">
-                                        {{ dashboard.widgets_count ?? 0 }} виджет(ов)
+                                        {{ t('dashboardPage.dashboards.widgets_count', { count: dashboard.widgets_count ?? 0 }) }}
                                         <template v-if="dashboard.data_source">
                                             · {{ dashboard.data_source.name }}
                                         </template>
@@ -558,9 +559,9 @@ onBeforeUnmount(() => {
                 <div class="modal-content">
                     <form @submit.prevent="submitCreate">
                         <div class="modal-header">
-                            <h5 class="modal-title">Новый дашборд</h5>
+                            <h5 class="modal-title">{{ t('dashboardPage.modal.title') }}</h5>
                             <button type="button" class="btn-close" data-bs-dismiss="modal"
-                                    aria-label="Закрыть"></button>
+                                    :aria-label="t('dashboardPage.modal.close')"></button>
                         </div>
 
                         <div class="modal-body">
@@ -569,27 +570,27 @@ onBeforeUnmount(() => {
                             </div>
 
                             <div class="mb-3">
-                                <label class="form-label required">Название</label>
+                                <label class="form-label required">{{ t('dashboardPage.modal.name_label') }}</label>
                                 <input v-model="createForm.name" type="text" class="form-control"
                                        :class="{ 'is-invalid': createErrors.name }"
-                                       placeholder="Продажи по регионам" maxlength="255" required />
+                                       :placeholder="t('dashboardPage.modal.name_placeholder')" maxlength="255" required />
                                 <div v-if="createErrors.name" class="invalid-feedback">
                                     {{ createErrors.name[0] }}
                                 </div>
                             </div>
 
                             <div class="mb-3">
-                                <label class="form-label">Описание</label>
+                                <label class="form-label">{{ t('dashboardPage.modal.description_label') }}</label>
                                 <textarea v-model="createForm.description" class="form-control" rows="3"
-                                          placeholder="Зачем этот дашборд и кому он нужен"></textarea>
+                                          :placeholder="t('dashboardPage.modal.description_placeholder')"></textarea>
                             </div>
 
                             <div>
-                                <label class="form-label required">Источник данных</label>
+                                <label class="form-label required">{{ t('dashboardPage.modal.data_source_label') }}</label>
                                 <select v-model="createForm.data_source_id" class="form-select"
                                         :class="{ 'is-invalid': createErrors.data_source_id }"
                                         :disabled="!sources.length" required>
-                                    <option value="" disabled>Выберите источник</option>
+                                    <option value="" disabled>{{ t('dashboardPage.modal.data_source_placeholder') }}</option>
                                     <option v-for="source in sources" :key="source.id" :value="source.id">
                                         {{ source.name }} — {{ source.format_label }}
                                     </option>
@@ -600,26 +601,26 @@ onBeforeUnmount(() => {
                                 <!-- По источнику виджеты считают данные: без него дашборд
                                      будет пустой рамкой, поэтому поле обязательное. -->
                                 <small v-if="sources.length" class="form-hint">
-                                    Виджеты будут считать данные по этому источнику.
+                                    {{ t('dashboardPage.modal.data_source_hint') }}
                                 </small>
                                 <small v-else class="form-hint text-danger">
-                                    Источников пока нет.
+                                    {{ t('dashboardPage.modal.no_sources_hint') }}
                                     <router-link v-if="canManageSources" :to="{ name: 'company.source.create' }">
-                                        Подключите первый
+                                        {{ t('dashboardPage.modal.connect_first') }}
                                     </router-link>
-                                    <span v-else>Попросите администратора подключить источник.</span>
+                                    <span v-else>{{ t('dashboardPage.modal.ask_admin') }}</span>
                                 </small>
                             </div>
                         </div>
 
                         <div class="modal-footer">
                             <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">
-                                Отмена
+                                {{ t('dashboardPage.modal.cancel') }}
                             </button>
                             <button type="submit" class="btn btn-primary"
                                     :class="{ 'btn-loading': creating }"
                                     :disabled="creating || !sources.length">
-                                Создать и открыть
+                                {{ t('dashboardPage.modal.submit') }}
                             </button>
                         </div>
                     </form>
