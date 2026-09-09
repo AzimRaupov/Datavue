@@ -741,7 +741,7 @@ onBeforeUnmount(() => {
             <div class="page-header d-print-none mb-3 mt-2">
                 <div class="container-xl">
                     <div class="row g-2 align-items-center">
-                        <div class="col">
+                        <div class="col" style="min-width: 0;">
                             <!-- Где мы находимся: пространство, а внутри него —
                                  открытый дашборд. Источник рядом, потому что
                                  по нему считают все дашборды пространства. -->
@@ -778,16 +778,16 @@ onBeforeUnmount(() => {
                                 </template>
                             </div>
 
-                            <h2 v-if="dashboard" class="page-title d-flex align-items-center gap-2">
-                                {{ dashboard.name || t('workspacePage.dashboard_fallback_name', { id: dashboard.id }) }}
-                                <span class="badge" :class="dashboardStatus(dashboard).cls">
+                            <h2 v-if="dashboard" class="page-title d-flex align-items-center flex-wrap gap-2">
+                                <span class="text-break">{{ dashboard.name || t('workspacePage.dashboard_fallback_name', { id: dashboard.id }) }}</span>
+                                <span class="badge flex-shrink-0" :class="dashboardStatus(dashboard).cls">
                                     {{ dashboardStatus(dashboard).text }}
                                 </span>
                             </h2>
-                            <h2 v-else class="page-title">{{ space?.name || t('workspacePage.title_fallback') }}</h2>
+                            <h2 v-else class="page-title text-break">{{ space?.name || t('workspacePage.title_fallback') }}</h2>
                         </div>
 
-                        <div class="col-auto ms-auto d-print-none">
+                        <div class="col-12 col-md-auto ms-md-auto d-print-none">
                             <div class="d-flex align-items-center gap-2 flex-wrap">
                                 <!-- Дашборды пространства. Переключение остаётся
                                      на странице: уходить ради этого некуда. -->

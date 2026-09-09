@@ -44,6 +44,7 @@ html, body, #app {
 
 /* ── Chat sidebar – desktop ── */
 .ai-chat-sidebar {
+    position: relative;
     width: 360px;
     flex-shrink: 0;
     height: 100%;
@@ -199,9 +200,6 @@ html, body, #app {
     .chat-fab { display: flex; }
 }
 
-.ai-chat-sidebar {
-    position: relative;
-}
 .chat-resize-handle {
     position: absolute;
     left: -3px;
