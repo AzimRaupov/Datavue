@@ -141,8 +141,15 @@ const logout = async () => {
                         </a>
                     </div>
                     <!-- END THEME TOGGLE -->
+                </div>
+
+                <!-- Уведомления и язык видны на всех экранах, а не только на
+                     десктопе: на телефоне (webview) до них иначе было бы не
+                     добраться — тема, наоборот, всегда доступна через плавающую
+                     кнопку настроек внизу справа. -->
+                <div class="d-flex me-2">
                     <!-- BEGIN NOTIFICATIONS -->
-                    <div class="nav-item dropdown d-none d-md-flex">
+                    <div class="nav-item dropdown d-flex">
                         <a
                             href="#"
                             class="nav-link px-0"
@@ -327,7 +334,7 @@ const logout = async () => {
                     <!-- BEGIN APPS -->
                     <!-- END APPS -->
                     <!-- BEGIN LANGUAGE SELECTOR -->
-                    <div class="nav-item dropdown d-none d-md-flex">
+                    <div class="nav-item dropdown d-flex">
                         <a
                             href="#"
                             class="nav-link px-0"

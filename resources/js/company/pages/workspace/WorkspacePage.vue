@@ -805,8 +805,51 @@ onBeforeUnmount(() => {
                                     </option>
                                 </select>
 
-                                <button v-if="canCreate && workspaceId" class="btn" type="button"
-                                        :title="t('workspacePage.new_dashboard_title')" @click="openCreateModal">
+                                <!-- Второстепенные действия (новый дашборд, режим,
+                                     обновить, печать) собраны в меню-троеточие —
+                                     на телефоне шапка не помещалась бы в один ряд,
+                                     а быстрее до дашборда/чата так и добираться. -->
+                                <div v-if="dashboard" class="dropdown d-md-none">
+                                    <button class="btn btn-icon" type="button" data-bs-toggle="dropdown"
+                                            :aria-label="t('workspacePage.more_actions_aria')" aria-expanded="false">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"
+                                             viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                             stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M12 6m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
+                                            <path d="M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
+                                            <path d="M12 18m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
+                                        </svg>
+                                    </button>
+                                    <div class="dropdown-menu dropdown-menu-end">
+                                        <button v-if="canCreate && workspaceId" class="dropdown-item" type="button"
+                                                @click="openCreateModal">
+                                            {{ t('workspacePage.new_dashboard_title') }}
+                                        </button>
+                                        <template v-if="canEdit">
+                                            <button class="dropdown-item" type="button"
+                                                    :disabled="!isEditing" @click="setMode('view')">
+                                                {{ t('workspacePage.mode_view') }}
+                                            </button>
+                                            <button class="dropdown-item" type="button"
+                                                    :disabled="isEditing" @click="setMode('edit')">
+                                                {{ t('workspacePage.mode_builder') }}
+                                            </button>
+                                        </template>
+                                        <button class="dropdown-item" type="button"
+                                                :disabled="isRefreshing" @click="onRefreshClick">
+                                            {{ t('workspacePage.refresh_title') }}
+                                        </button>
+                                        <button v-if="!isEditing" class="dropdown-item" type="button"
+                                                @click="printDashboard">
+                                            {{ t('workspacePage.print_title') }}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- Тот же набор — обычными кнопками на планшете и десктопе. -->
+                                <button v-if="canCreate && workspaceId" class="btn d-none d-md-inline-flex" type="button"
+                                        :title="t('workspacePage.new_dashboard_title')"
+                                        :aria-label="t('workspacePage.new_dashboard_title')" @click="openCreateModal">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
                                          viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                                          stroke-linecap="round" stroke-linejoin="round" class="icon">
@@ -817,7 +860,7 @@ onBeforeUnmount(() => {
 
                                 <!-- Просмотр и сборка — два состояния одной
                                      страницы, а не две страницы. -->
-                                <div v-if="canEdit && dashboard" class="btn-group" role="group"
+                                <div v-if="canEdit && dashboard" class="btn-group d-none d-md-flex" role="group"
                                      :aria-label="t('workspacePage.mode_group_aria')">
                                     <button type="button" class="btn"
                                             :class="{ active: !isEditing }" @click="setMode('view')">
@@ -840,7 +883,8 @@ onBeforeUnmount(() => {
                                     {{ t('workspacePage.widget_button') }}
                                 </button>
 
-                                <button v-if="dashboard" class="btn" type="button" :title="t('workspacePage.refresh_title')"
+                                <button v-if="dashboard" class="btn d-none d-md-inline-flex" type="button" :title="t('workspacePage.refresh_title')"
+                                        :aria-label="t('workspacePage.refresh_title')"
                                         :disabled="isRefreshing" @click="onRefreshClick">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
                                          viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -851,8 +895,8 @@ onBeforeUnmount(() => {
                                     </svg>
                                 </button>
 
-                                <button v-if="dashboard && !isEditing" class="btn" type="button" :title="t('workspacePage.print_title')"
-                                        @click="printDashboard">
+                                <button v-if="dashboard && !isEditing" class="btn d-none d-md-inline-flex" type="button" :title="t('workspacePage.print_title')"
+                                        :aria-label="t('workspacePage.print_title')" @click="printDashboard">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
                                          viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                                          stroke-linecap="round" stroke-linejoin="round" class="icon">
@@ -1021,7 +1065,7 @@ onBeforeUnmount(() => {
                         <template v-for="widget in widgets" :key="widget.id">
                             <!-- Режим сборки -->
                             <div v-if="isEditing" class="card mb-3 builder-card">
-                                <div class="card-header builder-drag d-flex align-items-center gap-2">
+                                <div class="card-header builder-drag d-flex flex-wrap align-items-center gap-2">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
                                          viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                                          stroke-linecap="round" stroke-linejoin="round"

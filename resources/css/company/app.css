@@ -24,40 +24,6 @@ html, body, #app {
     display: none !important;
 }
 
- .chat-show-page {
-     overflow: hidden;
- }
-
-
-.chat-show-page .page-wrapper {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-}
-
-.chat-show-page .page-body {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow: hidden;
-    display: flex;
-    margin: 0;
-    padding: 0;
-}
-
-.chat-show-page .page-body > .container-fluid {
-    flex: 1 1 auto;
-    min-height: 0;
-    display: flex;
-    padding-left: 0 !important;
-    padding-right: 0 !important;
-}
-
-.chat-show-page .footer {
-    display: none;
-}
-
 /* ── Wrapper ── */
 .dashboard-wrapper {
     display: flex;
@@ -344,6 +310,15 @@ html, body, #app {
     }
 
     .widget-drawer-resize { display: none; }
+}
+
+/* Каталог виджетов (offcanvas) — у Bootstrap ширина по умолчанию 400px,
+   что шире экрана телефона и обрезается краем viewport. */
+@media (max-width: 991.98px) {
+    .offcanvas-end {
+        width: 100% !important;
+        max-width: 420px;
+    }
 }
 
 

@@ -142,16 +142,18 @@ onBeforeUnmount(() => {
                         </div>
                     </div>
 
-                    <div class="col-auto ms-auto d-print-none">
-                        <div class="d-flex">
-                            <input
-                                v-model="search"
-                                type="search"
-                                class="form-control d-inline-block w-9 me-3"
-                                :placeholder="t('settingsUsers.search_placeholder')"
-                                :aria-label="t('settingsUsers.search_aria_label')"
-                            />
-                            <router-link v-if="canManage" class="btn btn-primary"
+                    <div class="col-12 col-md-auto ms-md-auto d-print-none">
+                        <div class="d-flex flex-wrap gap-2">
+                            <div class="flex-fill" style="min-width: 12rem;">
+                                <input
+                                    v-model="search"
+                                    type="search"
+                                    class="form-control"
+                                    :placeholder="t('settingsUsers.search_placeholder')"
+                                    :aria-label="t('settingsUsers.search_aria_label')"
+                                />
+                            </div>
+                            <router-link v-if="canManage" class="btn btn-primary flex-shrink-0"
                                          :to="{ name: 'settings.users.create' }">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
                                      fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"

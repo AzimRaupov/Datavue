@@ -249,14 +249,14 @@ onBeforeUnmount(() => {
                 <!-- Состав таблиц изменился после обновления: агент работает
                      по старому снимку схемы и новых таблиц не видит. -->
                 <div v-if="groupingStale" class="alert alert-warning" role="alert">
-                    <div class="d-flex align-items-center">
+                    <div class="d-flex flex-column flex-md-row align-items-md-center gap-2">
                         <div class="flex-fill">
                             <h4 class="alert-heading">{{ t('sourcesShow.stale.title') }}</h4>
                             <div class="alert-description">
                                 {{ t('sourcesShow.stale.body') }}
                             </div>
                         </div>
-                        <button v-if="canManageSources" class="btn btn-warning ms-3"
+                        <button v-if="canManageSources" class="btn btn-warning ms-md-3"
                                 :class="{ 'btn-loading': regrouping }"
                                 :disabled="regrouping" @click="regroup">
                             {{ t('sourcesShow.stale.action') }}

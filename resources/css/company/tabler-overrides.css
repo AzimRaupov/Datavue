@@ -76,3 +76,18 @@
         padding-right: 2.5rem;
     }
 }
+
+/*
+ * Выпадающее меню уведомлений теперь доступно и на телефоне (см. Header.vue),
+ * а .dropdown-menu-card у Tabler держит фиксированную ширину ~340px — на
+ * экране 320-360px она вылезала бы за край. Ограничиваем шириной вьюпорта.
+ */
+@media (max-width: 420px) {
+    .navbar .dropdown-menu {
+        max-width: calc(100vw - 1.5rem);
+    }
+
+    .navbar .dropdown-menu-card {
+        width: calc(100vw - 1.5rem);
+    }
+}

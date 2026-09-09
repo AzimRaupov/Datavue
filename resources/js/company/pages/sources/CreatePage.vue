@@ -465,42 +465,42 @@ onUnmounted(stopListening);
                         <!-- ВНЕШНЯЯ БАЗА -->
                         <template v-else>
                             <div class="row">
-                                <div class="col-8">
+                                <div class="col-12 col-md-8">
                                     <div class="mb-3">
                                         <label class="form-label required">{{ t('sourcesCreate.steps.config.host_label') }}</label>
                                         <input v-model="form.host" type="text" class="form-control"
                                                placeholder="127.0.0.1" :disabled="isLoading" />
                                     </div>
                                 </div>
-                                <div class="col-4">
+                                <div class="col-12 col-md-4">
                                     <div class="mb-3">
                                         <label class="form-label required">{{ t('sourcesCreate.steps.config.port_label') }}</label>
                                         <input v-model="form.port" type="number" class="form-control"
                                                :disabled="isLoading" />
                                     </div>
                                 </div>
-                                <div class="col-8">
+                                <div class="col-12 col-md-8">
                                     <div class="mb-3">
                                         <label class="form-label required">{{ t('sourcesCreate.steps.config.database_label') }}</label>
                                         <input v-model="form.database" type="text" class="form-control"
                                                :disabled="isLoading" />
                                     </div>
                                 </div>
-                                <div class="col-4">
+                                <div class="col-12 col-md-4">
                                     <div class="mb-3">
                                         <label class="form-label required">{{ t('sourcesCreate.steps.config.version_label') }}</label>
                                         <input v-model="form.version" type="text" class="form-control"
                                                :placeholder="versionPlaceholder" :disabled="isLoading" />
                                     </div>
                                 </div>
-                                <div class="col-6">
+                                <div class="col-12 col-md-6">
                                     <div class="mb-3">
                                         <label class="form-label required">{{ t('sourcesCreate.steps.config.username_label') }}</label>
                                         <input v-model="form.username" type="text" class="form-control"
                                                :disabled="isLoading" />
                                     </div>
                                 </div>
-                                <div class="col-6">
+                                <div class="col-12 col-md-6">
                                     <div class="mb-3">
                                         <label class="form-label">{{ t('sourcesCreate.steps.config.password_label') }}</label>
                                         <input v-model="form.password" type="password" class="form-control"
