@@ -12,6 +12,7 @@ import WidgetPalette from "../../components/builder/WidgetPalette.vue";
 import WidgetSettingsDrawer from "../../components/builder/WidgetSettingsDrawer.vue";
 import WidgetCodeModal from "../../components/builder/WidgetCodeModal.vue";
 import AiChatSidebar from "../../components/chat/AiChatSidebar.vue";
+import AlertList from "../../components/alerts/AlertList.vue";
 
 /**
  * Рабочее пространство: его дашборды, чат с агентом и конструктор на одной
@@ -46,6 +47,7 @@ const canEdit = computed(() => permissions.value.includes("edit dashboards"));
 const canCreate = computed(() => permissions.value.includes("create dashboards"));
 const canWriteCode = computed(() => permissions.value.includes("write widget code"));
 const canChat = computed(() => permissions.value.includes("create chats"));
+const canManageAlerts = computed(() => permissions.value.includes("manage alerts"));
 
 // --- Состояние пространства -------------------------------------------------
 
@@ -67,6 +69,18 @@ const refreshToken = ref(0);
  */
 const mode = computed(() => (route.query.mode === "edit" && canEdit.value ? "edit" : "view"));
 const isEditing = computed(() => mode.value === "edit");
+
+/**
+ * Вкладка обзора пространства (Дашборды/Чаты/Алерты) — тоже в адресе
+ * (?tab=alerts), тем же приёмом, что и режим сборки: ссылка «открой мне
+ * алерты этого пространства» обязана открывать именно их.
+ */
+const OVERVIEW_TABS = ["dashboards", "chats", "alerts"];
+const overviewTab = computed(() => (OVERVIEW_TABS.includes(route.query.tab) ? route.query.tab : "dashboards"));
+
+function setOverviewTab(tab) {
+    router.replace({ query: { ...route.query, tab } });
+}
 
 const dashboardId = computed(() => dashboard.value?.id ?? null);
 const dashboards = computed(() => workspace.value.dashboards ?? []);
@@ -946,74 +960,131 @@ onBeforeUnmount(() => {
                     </div>
                 </div>
 
-                <!-- ОБЗОР ПРОСТРАНСТВА: голый адрес без дашборда в пути. Чат и
-                     список дашбордов — дашборд открывается явным кликом, а не
-                     молча по последнему. -->
-                <div v-else-if="isWorkspaceLanding && dashboards.length" class="d-print-none">
-                    <div class="row row-cards mb-4">
-                        <div class="col-12">
-                            <div class="card">
-                                <div class="card-body d-flex align-items-center gap-3 flex-wrap">
-                                    <span class="avatar avatar-lg bg-primary-lt">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"
-                                             viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                                             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                            <path d="M12 8a4 4 0 0 1 4 4" />
-                                            <path d="M12 4a8 8 0 0 1 8 8" />
-                                            <path d="M12 20a8 8 0 0 1-8-8" />
-                                            <circle cx="12" cy="12" r="1" />
-                                        </svg>
-                                    </span>
-                                    <div class="flex-fill">
-                                        <h3 class="mb-1">{{ t('workspacePage.overview.chat_title') }}</h3>
-                                        <div class="text-secondary">
-                                            {{ chat ? t('workspacePage.overview.chat_subtitle_existing') : t('workspacePage.overview.chat_subtitle_new') }}
+                <!-- ОБЗОР ПРОСТРАНСТВА: голый адрес без дашборда в пути.
+                     Три вкладки — Дашборды, Чаты, Алерты: пространство это
+                     задача, а не один дашборд, и алерт должен заводиться
+                     здесь же, а не только когда в нём уже что-то построено. -->
+                <div v-else-if="isWorkspaceLanding" class="d-print-none">
+                    <ul class="nav nav-tabs mb-3">
+                        <li class="nav-item">
+                            <a class="nav-link" :class="{ active: overviewTab === 'dashboards' }"
+                               href="#" @click.prevent="setOverviewTab('dashboards')">
+                                {{ t('workspacePage.tabs.dashboards') }}
+                                <span class="badge bg-secondary-lt ms-1">{{ dashboards.length }}</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" :class="{ active: overviewTab === 'chats' }"
+                               href="#" @click.prevent="setOverviewTab('chats')">
+                                {{ t('workspacePage.tabs.chats') }}
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" :class="{ active: overviewTab === 'alerts' }"
+                               href="#" @click.prevent="setOverviewTab('alerts')">
+                                {{ t('workspacePage.tabs.alerts') }}
+                            </a>
+                        </li>
+                    </ul>
+
+                    <!-- Дашборды -->
+                    <div v-show="overviewTab === 'dashboards'">
+                        <div v-if="dashboards.length" class="row row-cards">
+                            <div v-for="item in dashboards" :key="item.id" class="col-sm-6 col-lg-4 col-xxl-3">
+                                <div class="card h-100 d-flex flex-column workspace-overview-card"
+                                     role="button" tabindex="0"
+                                     @click="openDashboard(item.id)"
+                                     @keydown.enter="openDashboard(item.id)">
+                                    <div class="card-body pb-2">
+                                        <span class="badge mb-2" :class="dashboardStatus(item).cls">
+                                            {{ dashboardStatus(item).text }}
+                                        </span>
+                                        <h3 class="card-title mb-1">
+                                            {{ item.name || t('workspacePage.dashboard_fallback_name', { id: item.id }) }}
+                                        </h3>
+                                        <div class="text-secondary small">
+                                            {{ t('workspacePage.overview.widgets_count', { count: item.widgets_count ?? 0 }) }}
                                         </div>
                                     </div>
-                                    <button
-                                        class="btn btn-primary d-inline-flex align-items-center text-nowrap px-3"
-                                        type="button"
-                                        :class="{ 'btn-loading': openingChat }"
-                                        :disabled="openingChat || (!chat && !canChat)"
-                                        @click="openAssistant"
-                                    >
-                                        {{ chat ? t('workspacePage.overview.open_chat') : t('workspacePage.overview.start_chat') }}
-                                    </button>
+                                    <div class="card-footer bg-transparent border-top">
+                                        <button class="btn btn-sm w-100" type="button" @click.stop="openDashboard(item.id)">
+                                            {{ t('workspacePage.overview.open_dashboard') }}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Пространство без дашбордов: так выглядит только что
+                             созданное пространство — дашборд появится, как
+                             только его попросят или соберут руками. -->
+                        <div v-else class="empty workspace-empty">
+                            <div class="empty-img">
+                                <img :src="empty_img" alt="" height="192" />
+                            </div>
+                            <p class="empty-title">{{ t('workspacePage.empty_no_dashboards.title') }}</p>
+                            <p class="empty-subtitle text-secondary">
+                                {{ t('workspacePage.empty_no_dashboards.subtitle') }}
+                            </p>
+                            <div v-if="canCreate && workspaceId" class="empty-action">
+                                <button class="btn btn-primary" type="button" @click="openCreateModal">
+                                    {{ t('workspacePage.create_dashboard_button') }}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Чат пространства: один на всю задачу. -->
+                    <div v-show="overviewTab === 'chats'">
+                        <div class="row row-cards">
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-body d-flex align-items-center gap-3 flex-wrap">
+                                        <span class="avatar avatar-lg bg-primary-lt">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"
+                                                 viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                <path d="M12 8a4 4 0 0 1 4 4" />
+                                                <path d="M12 4a8 8 0 0 1 8 8" />
+                                                <path d="M12 20a8 8 0 0 1-8-8" />
+                                                <circle cx="12" cy="12" r="1" />
+                                            </svg>
+                                        </span>
+                                        <div class="flex-fill">
+                                            <h3 class="mb-1">{{ t('workspacePage.overview.chat_title') }}</h3>
+                                            <div class="text-secondary">
+                                                {{ chat ? t('workspacePage.overview.chat_subtitle_existing') : t('workspacePage.overview.chat_subtitle_new') }}
+                                            </div>
+                                        </div>
+                                        <button
+                                            class="btn btn-primary d-inline-flex align-items-center text-nowrap px-3"
+                                            type="button"
+                                            :class="{ 'btn-loading': openingChat }"
+                                            :disabled="openingChat || (!chat && !canChat)"
+                                            @click="openAssistant"
+                                        >
+                                            {{ chat ? t('workspacePage.overview.open_chat') : t('workspacePage.overview.start_chat') }}
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <h3 class="mb-2">{{ t('workspacePage.overview.dashboards_title') }}</h3>
-                    <div class="row row-cards">
-                        <div v-for="item in dashboards" :key="item.id" class="col-sm-6 col-lg-4 col-xxl-3">
-                            <div class="card h-100 d-flex flex-column workspace-overview-card"
-                                 role="button" tabindex="0"
-                                 @click="openDashboard(item.id)"
-                                 @keydown.enter="openDashboard(item.id)">
-                                <div class="card-body pb-2">
-                                    <span class="badge mb-2" :class="dashboardStatus(item).cls">
-                                        {{ dashboardStatus(item).text }}
-                                    </span>
-                                    <h3 class="card-title mb-1">
-                                        {{ item.name || t('workspacePage.dashboard_fallback_name', { id: item.id }) }}
-                                    </h3>
-                                    <div class="text-secondary small">
-                                        {{ t('workspacePage.overview.widgets_count', { count: item.widgets_count ?? 0 }) }}
-                                    </div>
-                                </div>
-                                <div class="card-footer bg-transparent border-top">
-                                    <button class="btn btn-sm w-100" type="button" @click.stop="openDashboard(item.id)">
-                                        {{ t('workspacePage.overview.open_dashboard') }}
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
+                    <!-- Алерты: заводятся здесь же, независимо от того, есть
+                         ли в пространстве уже хоть один дашборд. -->
+                    <div v-show="overviewTab === 'alerts'">
+                        <AlertList
+                            v-if="workspaceId"
+                            :workspace-id="workspaceId"
+                            :can-manage="canManageAlerts"
+                            :has-data-source="!!dataSource"
+                        />
                     </div>
                 </div>
 
-                <!-- Пространство без дашбордов: так выглядит только что созданный
-                     разговор — дашборд появится, как только его попросят. -->
+                <!-- Вход по конкретному дашборду/чату, который не нашёлся:
+                     ссылка была на несуществующий или удалённый объект. -->
                 <div v-else-if="!dashboard" class="empty workspace-empty">
                     <div class="empty-img">
                         <img :src="empty_img" alt="" height="192" />

@@ -12,6 +12,7 @@ use App\Jobs\DataSourceGroupingJob;
 use App\Http\Requests\DataSource\StoreRequest;
 use App\Models\AiChatMessage;
 use App\Models\AiChatTask;
+use App\Models\Alert;
 use App\Models\DataSource;
 use App\Models\DataSourceGroup;
 use App\Models\DataSourceTable;
@@ -343,6 +344,16 @@ class DataSourceController extends Controller
 
             DataSourceTable::query()->where('data_source_id', $source->id)->delete();
             DataSourceGroup::query()->where('data_source_id', $source->id)->delete();
+
+            // Алерты источника не должны продолжать проверяться на "нет
+            // источника" вплоть до авто-отключения по счётчику ошибок —
+            // источник удалён осознанно, значит и причина известна сразу.
+            Alert::query()
+                ->where('data_source_id', $source->id)
+                ->update([
+                    'is_active' => false,
+                    'disabled_reason' => 'Источник данных удалён.',
+                ]);
 
             // Разобранный файл источника занимает место и после удаления
             // записи уже никому не нужен.

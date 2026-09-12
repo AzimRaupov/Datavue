@@ -40,6 +40,14 @@ class RolePermissionSeeder extends Seeder
         'view data sources',
         'manage data sources',
 
+        // Алерты — проверки по расписанию с письмом на почту.
+        'view alerts',
+        'manage alerts',
+
+        // Написание Python/SQL-условия алерта руками — тот же принцип, что
+        // и у 'write widget code': выполняется на сервере, выдаётся адресно.
+        'write alert code',
+
         // Сотрудники и доступы
         'view users',
         'manage users',
@@ -68,6 +76,9 @@ class RolePermissionSeeder extends Seeder
             'delete chats',
             'view data sources',
             'manage data sources',
+            'view alerts',
+            'manage alerts',
+            'write alert code',
             'view users',
         ],
 
@@ -75,6 +86,7 @@ class RolePermissionSeeder extends Seeder
             'view dashboards',
             'view chats',
             'view data sources',
+            'view alerts',
         ],
     ];
 
@@ -127,6 +139,15 @@ class RolePermissionSeeder extends Seeder
             'items' => [
                 'view data sources' => 'Видеть подключённые источники',
                 'manage data sources' => 'Подключать, обновлять и удалять источники',
+            ],
+        ],
+
+        'alerts' => [
+            'label' => 'Алерты',
+            'items' => [
+                'view alerts' => 'Видеть алерты и их историю проверок',
+                'manage alerts' => 'Создавать, менять и удалять алерты',
+                'write alert code' => 'Писать SQL и Python-условия алертов',
             ],
         ],
 

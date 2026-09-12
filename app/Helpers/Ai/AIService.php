@@ -69,7 +69,9 @@ class AIService
         $parsed = json_decode($clean, true);
 
         return [
-            'total_tokens'=> $decoded['usage']['total_tokens'],
+            // ?? 0 по той же причине, что и в ветке text выше: при ошибке
+            // или обрыве ответа блока usage может не быть вовсе.
+            'total_tokens'=> $decoded['usage']['total_tokens'] ?? 0,
             'content'=> $parsed ?? [],
         ];
 

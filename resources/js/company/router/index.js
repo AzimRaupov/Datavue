@@ -14,6 +14,7 @@ import SourcesIndex from "../pages/sources/IndexPage.vue";
 import SourceShow from "../pages/sources/ShowPage.vue";
 import SourceCreate from "../pages/sources/CreatePage.vue";
 import ChatsIndex from "../pages/chats/IndexPage.vue";
+import AlertForm from "../pages/alerts/AlertForm.vue";
 
 const routes = [
     {
@@ -76,6 +77,20 @@ const routes = [
         path: '/workspace/d/:dashboard(\\d+)',
         name: 'company.workspace.dashboard',
         component: WorkspacePage,
+    },
+    // Алерты пространства — отдельная страница-форма, как и заведение
+    // сотрудника: условие занимает много места и заслуживает своей ссылки.
+    // Объявлены ДО '/workspace/:workspace/:dashboard?', иначе 'alerts'
+    // попал бы в параметр dashboard.
+    {
+        path: '/workspace/:workspace(\\d+)/alerts/new',
+        name: 'company.alert.create',
+        component: AlertForm,
+    },
+    {
+        path: '/workspace/:workspace(\\d+)/alerts/:alert(\\d+)',
+        name: 'company.alert.edit',
+        component: AlertForm,
     },
     {
         path: '/workspace/chat/:chat(\\d+)',

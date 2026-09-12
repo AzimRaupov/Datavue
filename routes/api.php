@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Alert\AlertController;
+use App\Http\Controllers\Alert\AlertRunController;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Chat\ChatController;
 use App\Http\Controllers\Chat\ExportController;
@@ -70,6 +72,32 @@ Route::middleware(['auth:sanctum', 'active'])->prefix('company')->group(function
     // Разговор пространства — заводится по кнопке «AI Ассистент».
     Route::post('workspaces/{workspace}/chat', [WorkspaceController::class, 'attachChat'])
         ->middleware('permission:create chats');
+
+    /*
+    | Алерты: проверки по расписанию с письмом на почту компании. Условие
+    | задаёт человек — метриками, SQL или Python; ИИ в эту ветку не вовлечён.
+    */
+    Route::get('workspaces/{workspace}/alerts', [AlertController::class, 'index'])
+        ->middleware('permission:view alerts');
+    Route::post('workspaces/{workspace}/alerts', [AlertController::class, 'store'])
+        ->middleware('permission:manage alerts');
+    Route::get('workspaces/{workspace}/alerts/schema', [AlertRunController::class, 'schema'])
+        ->middleware('permission:manage alerts');
+    Route::post('workspaces/{workspace}/alerts/preview', [AlertRunController::class, 'preview'])
+        ->middleware('permission:manage alerts');
+
+    Route::get('alerts/{alert}', [AlertController::class, 'show'])
+        ->middleware('permission:view alerts');
+    Route::match(['put', 'patch'], 'alerts/{alert}', [AlertController::class, 'update'])
+        ->middleware('permission:manage alerts');
+    Route::delete('alerts/{alert}', [AlertController::class, 'destroy'])
+        ->middleware('permission:manage alerts');
+    Route::post('alerts/{alert}/toggle', [AlertController::class, 'toggle'])
+        ->middleware('permission:manage alerts');
+    Route::post('alerts/{alert}/run', [AlertRunController::class, 'run'])
+        ->middleware('permission:manage alerts');
+    Route::get('alerts/{alert}/history', [AlertRunController::class, 'history'])
+        ->middleware('permission:view alerts');
 
     Route::get('dashboards', [DashboardController::class, 'index'])->middleware('permission:view dashboards');
     Route::get('dashboards/{dashboard}', [DashboardController::class, 'show'])->middleware('permission:view dashboards');

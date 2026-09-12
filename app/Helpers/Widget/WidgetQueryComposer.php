@@ -207,10 +207,21 @@ class WidgetQueryComposer
                 // формы его отклоняет. Просить это у автора незачем: порядок
                 // метрик уже всё говорит.
                 'presentation' => $this->presentationFor($family, $metrics),
+                // Итоговые подписи колонок — ровно те строки, что реально
+                // стали алиасами в SELECT (alias() их только квотирует).
+                // Нужны там, где на колонку результата надо сослаться по
+                // имени уже ПОСЛЕ сборки, а не гадать его по декларации:
+                // конструктор не спрашивает подпись обязательной, и то, что
+                // окажется в SELECT, — это либо она, либо посчитанный самим
+                // composer'ом дефолт ("Сумма amount" и т.п.).
+                'columns' => [
+                    'dimensions' => array_column($dimensions, 'label'),
+                    'metrics' => array_column($metrics, 'label'),
+                ],
                 'errors' => [],
             ];
         } catch (RuntimeException $e) {
-            return ['ok' => false, 'sql' => null, 'presentation' => [], 'errors' => [$e->getMessage()]];
+            return ['ok' => false, 'sql' => null, 'presentation' => [], 'columns' => ['dimensions' => [], 'metrics' => []], 'errors' => [$e->getMessage()]];
         }
     }
 

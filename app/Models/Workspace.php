@@ -45,6 +45,11 @@ class Workspace extends Model
         return $this->hasMany(AiChat::class);
     }
 
+    public function alerts(): HasMany
+    {
+        return $this->hasMany(Alert::class);
+    }
+
     /**
      * Разговор пространства.
      *
