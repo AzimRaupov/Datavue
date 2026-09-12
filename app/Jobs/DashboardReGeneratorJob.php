@@ -23,14 +23,24 @@ class DashboardReGeneratorJob implements ShouldQueue
     public $timeout = 600;
 
     /**
+     * Последние сообщения чата (message/answer/offer_type/offer_summary), собранные
+     * RouterTask ещё до классификации. Нужны determineChanges(), чтобы разрешить
+     * короткое подтверждение («давай») против предложения, которое агент сделал
+     * предыдущим ходом, — без истории оно долетает до промпта голым текстом,
+     * никак не связанным с планом, который пользователь только что одобрил.
+     */
+    public $history;
+
+    /**
      * Create a new job instance.
      */
-    public function __construct($chatId, $dashboardId, $messageId ,$text)
+    public function __construct($chatId, $dashboardId, $messageId, $text, $history = null)
     {
         $this->chatId = $chatId;
         $this->dashboardId = $dashboardId;
         $this->messageId = $messageId;
         $this->text = $text;
+        $this->history = $history;
     }
 
     /**
@@ -51,7 +61,7 @@ class DashboardReGeneratorJob implements ShouldQueue
         try {
             $d = new DashboardReGenerator($this->dashboardId, $this->chatId, $this->messageId);
 
-            $d->determineChanges($this->text);
+            $d->determineChanges($this->text, $this->history);
 
             // Пустой список операций означает, что модель не поняла запрос.
             // Раньше работа шла дальше: создавался новый дашборд — точная копия

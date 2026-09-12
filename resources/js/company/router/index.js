@@ -3,22 +3,33 @@ import NProgress from 'nprogress';
 import 'nprogress/nprogress.css';
 
 import DashboardPage from '../pages/DashboardPage.vue';
-import ProjectDashboardShow from '../pages/project/dashboard/ShowPage.vue';
-import ChatPage from '../pages/ChatPage.vue';
+import DashboardsIndex from '../pages/dashboards/IndexPage.vue';
+import WorkspacesIndex from '../pages/workspace/IndexPage.vue';
+import WorkspacePage from '../pages/workspace/WorkspacePage.vue';
 import Profile from "../pages/settings/Profile.vue";
 import Users from "../pages/settings/Users.vue";
+import UserForm from "../pages/settings/UserForm.vue";
 import AllWidgets from "../pages/AllWidgets.vue";
 import SourcesIndex from "../pages/sources/IndexPage.vue";
 import SourceShow from "../pages/sources/ShowPage.vue";
 import SourceCreate from "../pages/sources/CreatePage.vue";
+import ChatsIndex from "../pages/chats/IndexPage.vue";
+import AlertForm from "../pages/alerts/AlertForm.vue";
+
 const routes = [
     {
         path: '/',
         name: 'company.dashboard',
         component: DashboardPage,
     },
+    // Все дашборды компании: и собранные руками, и выросшие из разговора.
+    {
+        path: '/dashboards',
+        name: 'company.dashboards',
+        component: DashboardsIndex,
+    },
     // Источники данных — точка входа в работу: сначала подключается источник,
-    // и уже на нём заводятся чаты.
+    // и уже на нём заводятся пространства.
     {
         path: '/sources',
         name: 'company.sources',
@@ -37,32 +48,121 @@ const routes = [
         name: 'company.source.show',
         component: SourceShow,
     },
+
+    // Чаты — отдельная страница: список того, что уже есть, и создание
+    // нового (заводит пространство и сразу готовит варианты дашбордов —
+    // тот же процесс, что раньше жил на странице источников).
     {
-        path: '/chat/:id/:dashboard?',
-        name: 'company.chat',
-        component: ChatPage,
+        path: '/chats',
+        name: 'company.chats',
+        component: ChatsIndex,
+    },
+
+    /*
+    | Рабочие пространства.
+    |
+    | Пространство — задача: свой источник, свои дашборды и один разговор.
+    | Страница у него одна на всё: просмотр, сборка и чат — это состояния
+    | (?mode=edit), а не отдельные экраны.
+    |
+    | Входы по дашборду и по чату объявлены ДО '/:workspace', иначе 'd' и 'chat'
+    | попадут в параметр id. Страница сама заменяет такой адрес каноническим.
+    */
+    {
+        path: '/workspaces',
+        name: 'company.workspaces',
+        component: WorkspacesIndex,
     },
     {
-        path:'/settings/profile',
+        path: '/workspace/d/:dashboard(\\d+)',
+        name: 'company.workspace.dashboard',
+        component: WorkspacePage,
+    },
+    // Алерты пространства — отдельная страница-форма, как и заведение
+    // сотрудника: условие занимает много места и заслуживает своей ссылки.
+    // Объявлены ДО '/workspace/:workspace/:dashboard?', иначе 'alerts'
+    // попал бы в параметр dashboard.
+    {
+        path: '/workspace/:workspace(\\d+)/alerts/new',
+        name: 'company.alert.create',
+        component: AlertForm,
+    },
+    {
+        path: '/workspace/:workspace(\\d+)/alerts/:alert(\\d+)',
+        name: 'company.alert.edit',
+        component: AlertForm,
+    },
+    {
+        path: '/workspace/chat/:chat(\\d+)',
+        name: 'company.workspace.chat',
+        component: WorkspacePage,
+    },
+    {
+        path: '/workspace/:workspace(\\d+)/:dashboard(\\d+)?',
+        name: 'company.workspace',
+        component: WorkspacePage,
+    },
+
+    /*
+    | Прежние адреса. Оставлены редиректами: на них ведут закладки, ссылки
+    | из писем и старые вкладки, и приводить человека на «страница не найдена»
+    | из-за перепланировки интерфейса неправильно.
+    */
+    {
+        path: '/chat/:id(\\d+)/:dashboard(\\d+)?',
+        name: 'company.chat',
+        redirect: (to) => (
+            to.params.dashboard
+                ? { name: 'company.workspace.dashboard', params: { dashboard: to.params.dashboard } }
+                : { name: 'company.workspace.chat', params: { chat: to.params.id } }
+        ),
+    },
+    {
+        path: '/project/dashboard/:dashboard(\\d+)',
+        name: 'project.dashboard.show',
+        redirect: (to) => ({
+            name: 'company.workspace.dashboard',
+            params: { dashboard: to.params.dashboard },
+        }),
+    },
+    {
+        path: '/project/dashboard/:dashboard(\\d+)/edit',
+        name: 'company.dashboard.edit',
+        redirect: (to) => ({
+            name: 'company.workspace.dashboard',
+            params: { dashboard: to.params.dashboard },
+            query: { mode: 'edit' },
+        }),
+    },
+
+    {
+        path: '/settings/profile',
         name: 'settings.profile',
         component: Profile
     },
     {
-        path:'/settings/users',
+        path: '/settings/users',
         name: 'settings.users',
         component: Users
     },
+    // Заведение и правка сотрудника — отдельные адреса, а не окно поверх
+    // списка: у формы доступа полтора десятка переключателей, и на неё
+    // должна работать ссылка и кнопка «назад».
     {
-        path:'/project/dashboard/:dashboard',
-        name: 'project.dashboard.show',
-        component: ProjectDashboardShow
+        path: '/settings/users/new',
+        name: 'settings.users.create',
+        component: UserForm
+    },
+    {
+        path: '/settings/users/:id(\\d+)/edit',
+        name: 'settings.users.edit',
+        component: UserForm
     },
     {
         path: '/widgets',
         name: 'company.widgets',
         component: AllWidgets
     }
-
 ];
 
 const router = createRouter({

@@ -11,6 +11,7 @@ use App\Models\AiChatMessage;
 use App\Models\AiChatTask;
 use App\Models\DashboardSuggestion;
 use App\Models\DataSource;
+use App\Models\Workspace;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -101,11 +102,24 @@ class ChatController extends Controller
             ], 404);
         }
 
+        $title = $request->input('title') ?: 'Новый чат — ' . $dataSource->name;
+
+        // Разговор живёт в рабочем пространстве — там же окажутся и дашборды,
+        // которые из него вырастут. Заводится оно здесь, потому что чат можно
+        // начать и с источника, минуя список пространств.
+        $workspace = Workspace::query()->create([
+            'company_id' => $user->company_id,
+            'created_by' => $user->id,
+            'data_source_id' => $dataSource->id,
+            'name' => $title,
+        ]);
+
         $chat = AiChat::create([
             'user_id'        => $user->id,
             'company_id'     => $user->company_id,
+            'workspace_id'   => $workspace->id,
             'data_source_id' => $dataSource->id,
-            'title'          => $request->input('title') ?: 'Новый чат — ' . $dataSource->name,
+            'title'          => $title,
         ]);
 
         // Варианты дашбордов готовятся ЗДЕСЬ, а не в фоне: фронт держит
@@ -126,6 +140,7 @@ class ChatController extends Controller
             'success' => true,
             'message' => 'Чат создан.',
             'chat' => $chat->load('dataSource:id,name,type_id,origin_format', 'dataSource.type:id,name,label'),
+            'workspace' => ['id' => $workspace->id, 'name' => $workspace->name],
             'suggestions' => $suggestions,
         ], 201);
     }

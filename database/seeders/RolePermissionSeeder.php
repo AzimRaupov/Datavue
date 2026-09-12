@@ -23,6 +23,13 @@ class RolePermissionSeeder extends Seeder
         'edit dashboards',
         'delete dashboards',
 
+        // Написание кода виджета руками.
+        //
+        // Право отдельное, а не производное от 'edit dashboards': собрать
+        // дашборд из виджетов и переставить их может любой аналитик, а вот
+        // код виджета выполняется на сервере — это выдаётся адресно.
+        'write widget code',
+
         // Чаты с AI-агентом
         'view chats',
         'create chats',
@@ -32,6 +39,14 @@ class RolePermissionSeeder extends Seeder
         // Источники данных
         'view data sources',
         'manage data sources',
+
+        // Алерты — проверки по расписанию с письмом на почту.
+        'view alerts',
+        'manage alerts',
+
+        // Написание Python/SQL-условия алерта руками — тот же принцип, что
+        // и у 'write widget code': выполняется на сервере, выдаётся адресно.
+        'write alert code',
 
         // Сотрудники и доступы
         'view users',
@@ -54,12 +69,16 @@ class RolePermissionSeeder extends Seeder
             'create dashboards',
             'edit dashboards',
             'delete dashboards',
+            'write widget code',
             'view chats',
             'create chats',
             'edit chats',
             'delete chats',
             'view data sources',
             'manage data sources',
+            'view alerts',
+            'manage alerts',
+            'write alert code',
             'view users',
         ],
 
@@ -67,6 +86,7 @@ class RolePermissionSeeder extends Seeder
             'view dashboards',
             'view chats',
             'view data sources',
+            'view alerts',
         ],
     ];
 
@@ -75,6 +95,81 @@ class RolePermissionSeeder extends Seeder
      * super_admin сюда намеренно не входит — это платформенная роль.
      */
     public const ASSIGNABLE_ROLES = ['company_admin', 'analyst', 'viewer'];
+
+    /**
+     * Права по разделам — для настройки доступа сотрудника вручную.
+     *
+     * Роли остаются готовыми наборами на три типовых случая, но набор из трёх
+     * вариантов не покрывает всего: «пусть смотрит дашборды, но не видит
+     * подключения к базам» роли не выражают. Отсюда режим особых прав —
+     * администратор собирает доступ по галочкам.
+     *
+     * Почему именно так, а не «свои роли компании»: роли в spatie здесь общие
+     * на всю платформу (config/permission.php: 'teams' => false). Дай мы
+     * администратору править роль «Аналитик» — он менял бы её сразу у всех
+     * компаний сервиса. Права же выдаются пользователю напрямую и живут
+     * только у него.
+     *
+     * @var array<string, array{label: string, items: array<string, string>}>
+     */
+    public const PERMISSION_GROUPS = [
+        'dashboards' => [
+            'label' => 'Дашборды',
+            'items' => [
+                'view dashboards' => 'Смотреть дашборды',
+                'create dashboards' => 'Создавать дашборды',
+                'edit dashboards' => 'Изменять дашборды и собирать виджеты',
+                'delete dashboards' => 'Удалять дашборды',
+                'write widget code' => 'Писать запросы и код виджетов',
+            ],
+        ],
+
+        'chats' => [
+            'label' => 'Работа с агентом',
+            'items' => [
+                'view chats' => 'Читать переписку с агентом',
+                'create chats' => 'Писать агенту и заводить разговоры',
+                'edit chats' => 'Переименовывать разговоры',
+                'delete chats' => 'Удалять разговоры',
+            ],
+        ],
+
+        'data_sources' => [
+            'label' => 'Источники данных',
+            'items' => [
+                'view data sources' => 'Видеть подключённые источники',
+                'manage data sources' => 'Подключать, обновлять и удалять источники',
+            ],
+        ],
+
+        'alerts' => [
+            'label' => 'Алерты',
+            'items' => [
+                'view alerts' => 'Видеть алерты и их историю проверок',
+                'manage alerts' => 'Создавать, менять и удалять алерты',
+                'write alert code' => 'Писать SQL и Python-условия алертов',
+            ],
+        ],
+
+        'company' => [
+            'label' => 'Компания',
+            'items' => [
+                'view users' => 'Видеть список сотрудников',
+                'manage users' => 'Заводить и отключать сотрудников',
+                'manage roles' => 'Настраивать доступ сотрудников',
+                'manage company' => 'Менять настройки компании и лимит ИИ',
+            ],
+        ],
+    ];
+
+    /**
+     * Права, без которых администратор потеряет управление компанией.
+     *
+     * Снять их с самого себя нельзя: иначе один неверный набор галочек
+     * оставляет компанию без единого человека, способного раздать доступ,
+     * и починить это можно только из базы.
+     */
+    public const SELF_LOCKOUT_PERMISSIONS = ['view users', 'manage users', 'manage roles'];
 
     public function run(): void
     {

@@ -376,7 +376,12 @@ TEXT;
                     $this->currentMessage->chat_id,
                     $dashboardId,
                     $this->currentMessage->id,
-                    $this->resultDefine['content']['task_instruction'] ?? $this->currentMessage->message
+                    $this->resultDefine['content']['task_instruction'] ?? $this->currentMessage->message,
+                    // Та же история, что уже читают ChatAgentAi/DefineTaskAi. Без неё
+                    // короткое подтверждение («давай, но не трогай карточки») долетает
+                    // до регенератора голым текстом — предложение, на которое отвечает
+                    // пользователь, никогда не попадает в промпт defineChanges().
+                    $this->messages
                 ));
 
                 return;

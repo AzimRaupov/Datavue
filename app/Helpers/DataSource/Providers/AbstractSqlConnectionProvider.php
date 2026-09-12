@@ -112,6 +112,7 @@ abstract class AbstractSqlConnectionProvider
         $includeCountRows = in_array('count_rows', $options);
         $includeColumns = in_array('columns', $options);
         $includeRelations = isset($options['relations']);
+        $includeSampleValues = in_array('sample_values', $options);
 
         /*
         |--------------------------------------------------------------------------
@@ -135,12 +136,25 @@ abstract class AbstractSqlConnectionProvider
                     continue;
                 }
 
-                $tableColumns[$columnName] = [
-                    'type' => $column['type'] ?? 'unknown',
+                $type = $column['type'] ?? 'unknown';
+                $key = $column['key'] ?? '';
+
+                $columnMeta = [
+                    'type' => $type,
                     'nullable' => $column['nullable'] ?? 'YES',
-                    'key' => $column['key'] ?? '',
+                    'key' => $key,
                     'default' => $column['default'] ?? null,
                 ];
+
+                if ($includeSampleValues && $this->isEnumerableType($type) && !in_array($key, ['PRI', 'UNI'], true)) {
+                    $samples = $this->fetchSampleValues($tableName, $columnName);
+
+                    if ($samples !== null) {
+                        $columnMeta['sample_values'] = $samples;
+                    }
+                }
+
+                $tableColumns[$columnName] = $columnMeta;
             }
 
             $allColumns[$tableName] = $tableColumns;
@@ -334,6 +348,63 @@ abstract class AbstractSqlConnectionProvider
 
         return $schema;
     }
+    /**
+     * Колонка годится для примеров значений: текстовая и не первичный/уникальный ключ
+     * (там лежат идентификаторы, а не категории).
+     */
+    private function isEnumerableType(string $type): bool
+    {
+        $normalized = strtolower(preg_replace('/\(.*\)/', '', $type) ?? $type);
+
+        return in_array($normalized, [
+            'char', 'varchar', 'text', 'tinytext', 'mediumtext', 'longtext', 'string', 'enum', 'bpchar',
+        ], true);
+    }
+
+    /**
+     * Реальные значения колонки — то немногое, что превращает фильтр по значению
+     * из угадывания моделью в точный запрос (см. WidgetSpecAi/WidgetQueryAi).
+     *
+     * Ограничение выборки — сама проверка кардинальности: если различных значений
+     * больше лимита, колонка похожа на свободный текст, а не на категорию, и
+     * показывать модели обрезанный список опаснее, чем не показывать никакого —
+     * она примет неполный список за исчерпывающий.
+     *
+     * @return array<int, string>|null
+     */
+    private function fetchSampleValues(string $tableName, string $columnName, int $limit = 20): ?array
+    {
+        $column = $this->quoteIdentifier($columnName);
+        $table = $this->quoteIdentifier($tableName);
+
+        $query = "SELECT DISTINCT {$column} AS sample_value FROM {$table} WHERE {$column} IS NOT NULL LIMIT ".($limit + 1);
+
+        try {
+            $rows = $this->query($query);
+        } catch (\Throwable $e) {
+            return null;
+        }
+
+        if (count($rows) > $limit) {
+            return null;
+        }
+
+        $values = [];
+
+        foreach ($rows as $row) {
+            $row = (array) $row;
+            $value = $row['sample_value'] ?? null;
+
+            if ($value === null || $value === '') {
+                continue;
+            }
+
+            $values[] = (string) $value;
+        }
+
+        return $values === [] ? null : $values;
+    }
+
     /**
      * Получить количество записей таблицы
      */

@@ -16,7 +16,7 @@
                         <!-- .text-dark фиксирует чёрный и не переключается
                              вместе с темой — акцент даём весом шрифта. -->
                         <span class="fw-bold">{{ step.fromPrev }}%</span>
-                        <span class="ms-2">от первого этапа: {{ step.fromFirst }}%</span>
+                        <span class="ms-2">{{ t('widgets.funnel.from_first', { percent: step.fromFirst }) }}</span>
                     </span>
                 </div>
             </div>
@@ -26,7 +26,11 @@
 
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from "vue"
+import { useI18n } from "vue-i18n"
 import ApexCharts from "apexcharts"
+import { colorsFor } from "./palette.js"
+
+const { t, locale } = useI18n()
 
 /**
  * Семейство "funnel": последовательные этапы процесса.
@@ -95,7 +99,7 @@ const renderChart = async () => {
                 isFunnel: true,
             },
         },
-        series: [{ name: "Этап", data }],
+        series: [{ name: t('widgets.funnel.stage_series_name'), data }],
         xaxis: { categories },
         dataLabels: {
             enabled: true,
@@ -103,16 +107,7 @@ const renderChart = async () => {
                 `${opt.w.globals.labels[opt.dataPointIndex]}: ${value}`,
             dropShadow: { enabled: false },
         },
-        colors: [
-            "var(--chart-color-1)",
-            "var(--chart-color-2)",
-            "var(--chart-color-3)",
-            "var(--chart-color-4)",
-            "var(--chart-color-5)",
-            "var(--chart-color-6)",
-            "var(--chart-color-7)",
-            "var(--chart-color-8)",
-        ],
+        colors: colorsFor(props.options),
         tooltip: { theme: "dark" },
         legend: { show: false },
     })
@@ -121,7 +116,7 @@ const renderChart = async () => {
 }
 
 watch(
-    () => [props.series, props.labels, props.options],
+    () => [props.series, props.labels, props.options, locale.value],
     renderChart,
     { deep: true }
 )

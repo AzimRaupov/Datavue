@@ -25,7 +25,7 @@
 
                     <div class="toast-item__message">{{ item.message }}</div>
 
-                    <button type="button" class="toast-item__close" @click="remove(item.id)" aria-label="Close">
+                    <button type="button" class="toast-item__close" @click="remove(item.id)" :aria-label="t('toast.close')">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M18 6l-12 12" />
                             <path d="M6 6l12 12" />
@@ -39,6 +39,9 @@
 
 <script setup>
 import { reactive } from 'vue';
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
 
 const toasts = reactive([]);
 let idCounter = 0;
@@ -54,7 +57,7 @@ function push(message, type = 'success', duration = 4000) {
 }
 
 function remove(id) {
-    const index = toasts.findIndex((t) => t.id === id);
+    const index = toasts.findIndex((item) => item.id === id);
     if (index !== -1) toasts.splice(index, 1);
 }
 

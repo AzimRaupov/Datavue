@@ -4,7 +4,6 @@ namespace App\Helpers\Dashboard;
 
 use App\Events\DashboardWidgetChanged;
 use App\Helpers\Ai\DashboardAi;
-use App\Helpers\DataSource\CodeTemplater;
 use App\Helpers\DataSource\ConnectionProviderRouter;
 use App\Helpers\DataSource\SchemaOptions;
 use App\Models\AiChat;
@@ -20,6 +19,7 @@ use App\Models\TaskStatus;
 use App\Models\Widget;
 use App\Models\WidgetType;
 use App\Helpers\Widget\WidgetCatalog;
+use App\Helpers\Widget\WidgetSpecGenerator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
@@ -50,8 +50,6 @@ class DashboardReGenerator
     public $dataSource;
     public $dbSchema;
     public $groups;
-
-    public $codeTemplate;
 
     private const OP_UPDATE_STRUCT = 'update_struct';
     private const OP_UPDATE_VIEW   = 'update_view';
@@ -116,13 +114,17 @@ class DashboardReGenerator
         $this->connectionProviderRouter = new ConnectionProviderRouter($this->dataSource->id);
         $this->tables = $this->connectionProviderRouter->showTables();
         $this->dashboardReGeneratorAi = new DashboardAi($this->dataSource);
-        $this->codeTemplate = new CodeTemplater($this->dataSource->id);
         $this->groups = DataSourceGroup::query()->where('data_source_id', $this->dataSource->id)->get();
 
     }
 
 
-    public function determineChanges(string $instruction): void
+    /**
+     * @param \Illuminate\Support\Collection|iterable|null $history Последние сообщения
+     *   чата (message/answer/offer_type/offer_summary), собранные RouterTask ещё до
+     *   классификации, в порядке от новых к старым.
+     */
+    public function determineChanges(string $instruction, $history = null): void
     {
         $task = AiChatTask::query()->create([
             'chat_id' => $this->chat->id,
@@ -162,7 +164,8 @@ class DashboardReGenerator
             'dashboard_widgets' => $widgetsJson,
             'groups' => $groups,
             'widgets' => $widgets,
-            'text' => $instruction
+            'text' => $instruction,
+            'history' => $this->historyJson($history),
         ];
 
         $resultDefine = $this->dashboardReGeneratorAi->defineChanges($data);
@@ -391,9 +394,10 @@ class DashboardReGenerator
                 // менять.
                 'widget_type' => $w->widgetType?->name,
                 'tables' => $w->tables ?? [],
-                'python_code' => ($w->code_path && file_exists($w->code_path))
-                    ? file_get_contents($w->code_path)
-                    : null,
+                // Содержимое переносится в новый дашборд как есть: виджет,
+                // которого правка не касалась, обязан считать по-прежнему.
+                'query_spec' => $w->query_spec,
+                'content_mode' => $w->content_mode,
                 'position' => $w->position,
                 'status' => $w->status ?? 'active',
             ])
@@ -461,6 +465,10 @@ class DashboardReGenerator
                 'chat_id' => $this->chat->id,
                 'name' => $this->dashboard->name,
                 'company_id' => $this->chat->company_id,
+                // Следующая версия остаётся в том же пространстве, что и та,
+                // из которой выросла: это одна и та же работа.
+                'workspace_id' => $this->dashboard->workspace_id ?? $this->chat->workspace_id,
+                'data_source_id' => $this->dashboard->data_source_id,
                 'status' => 'empty'
             ]);
 
@@ -497,85 +505,12 @@ class DashboardReGenerator
         $task->load(['status', 'task']);
 
         event(new \App\Events\MessageTasksChanged($this->message, $task, null));
+
+        // Правка виджета — это новая инструкция, а не патч старого содержимого.
+        // Поэтому спецификация собирается заново тем же путём, что и при первой
+        // генерации: модель отвечает, что считать, платформа собирает запрос.
         foreach ($this->reGenerateWidgets as $dashboard_widget) {
-
-            if (!is_file($dashboard_widget->code_path)) {
-                $dashboard_widget->status = 'failed';
-                $dashboard_widget->save();
-
-                continue;
-            }
-
-            $code = file_get_contents($dashboard_widget->code_path);
-
-            if ($code === false || trim($code) === '') {
-                $dashboard_widget->status = 'failed';
-                $dashboard_widget->save();
-
-                continue;
-            }
-
-            $widget = Widget::query()->find($dashboard_widget->widget_id);
-
-            if (!$widget) {
-                $dashboard_widget->status = 'failed';
-                $dashboard_widget->save();
-
-                continue;
-            }
-
-            $fullCode = $this->codeTemplate->getLibraries() . "\n";
-            $fullCode .= $this->codeTemplate->getQueryTemplate() . "\n";
-            $fullCode .= $code . "\n";
-            $fullCode .= $this->codeTemplate->getFooter();
-            $scheme = $this->connectionProviderRouter->getSchema(
-                $dashboard_widget->tables,
-                SchemaOptions::basic()
-            );
-
-            $schemeStr = json_encode(
-                $scheme,
-                JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT
-            );
-
-            $data = [
-                'scheme' => $schemeStr,
-                'instruction' => $dashboard_widget->instruction,
-                'widget_name' => $widget->name,
-                'code' => $fullCode,
-                'widget_scheme' => $widget->scheme,
-                'widget_scheme_description' => $widget->scheme_description,
-            ];
-
-            $response = $this->dashboardReGeneratorAi->reGenerateWidget($data);
-
-            $codePath = $this->storage
-                . '/dashboard/widgets/'
-                . $dashboard_widget->id
-                . '/generated_script.py';
-
-            $directory = dirname($codePath);
-
-            if (!is_dir($directory)) {
-                mkdir($directory, 0755, true);
-            }
-
-            if (
-                !empty($response['content']['python_code']) &&
-                is_string($response['content']['python_code'])
-            ) {
-                file_put_contents(
-                    $codePath,
-                    $response['content']['python_code']
-                );
-
-                $dashboard_widget->code_path = $codePath;
-                $dashboard_widget->status = 'active';
-            } else {
-                $dashboard_widget->status = 'failed';
-            }
-
-            $dashboard_widget->save();
+            $this->buildWidgetContent($dashboard_widget);
 
             event(new DashboardWidgetChanged($this->newDashboard));
         }
@@ -606,44 +541,111 @@ class DashboardReGenerator
 
         event(new \App\Events\MessageTasksChanged($this->message, $task, null));
 
-        $codeTemplate=$this->codeTemplate->generateFullScript();
         foreach ($this->generateNewWidgets as $dashboard_widget) {
-            if($dashboard_widget->instruction) {
-
-                $scheme = $this->connectionProviderRouter->getSchema(
-                    $dashboard_widget->tables,
-                    SchemaOptions::basic()
-                );
-                $schemeStr = json_encode(
-                    $scheme,
-                    JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT
-                );
-
-                $codePath = $this->storage
-                    . '/dashboard/widgets/'
-                    . $dashboard_widget->id
-                    . '/generated_script.py';
-                $data = [
-                    'scheme' => $schemeStr,
-                    'codeTemplate' => $codeTemplate,
-                    'instruction' => $dashboard_widget->instruction,
-                ];
-                $mainBody = $this->dashboardReGeneratorAi->generateContentWidget($dashboard_widget,$schemeStr,$codeTemplate);
-
-                File::ensureDirectoryExists(dirname($codePath));
-                File::put($codePath, $mainBody);
-                $dashboard_widget->code_path = $codePath;
-                $dashboard_widget->status = 'active';
-                $dashboard_widget->save();
-
+            if ($dashboard_widget->instruction) {
+                $this->buildWidgetContent($dashboard_widget);
             }
-            event(new DashboardWidgetChanged($this->dashboard));
 
+            event(new DashboardWidgetChanged($this->dashboard));
         }
+
         $task->status_id = $this->tasks_statuses["completed"];
         $task->save();
         $task->load('status');
         event(new \App\Events\MessageTasksChanged($this->message, $task));
+    }
+
+    /**
+     * Собирает содержимое виджета — спецификацию запроса.
+     *
+     * Один метод и на новые виджеты, и на переписанные: разницы между ними
+     * нет. Раньше это были две почти одинаковые ветки, каждая со своей
+     * сборкой Python-скрипта и своим набором полей для модели.
+     */
+    private function buildWidgetContent(DashboardWidget $dashboardWidget): void
+    {
+        try {
+            $scheme = $this->connectionProviderRouter->getSchema(
+                $this->tablesFor($dashboardWidget),
+                SchemaOptions::basic()
+            );
+
+            $dashboardWidget->loadMissing('widget.types', 'widgetType');
+
+            $result = (new WidgetSpecGenerator($this->dataSource))
+                ->generate($dashboardWidget, $scheme);
+
+            if (!$result['ok']) {
+                $dashboardWidget->status = 'failed';
+                $dashboardWidget->last_error = $result['error'];
+                $dashboardWidget->save();
+
+                Log::warning('DashboardReGenerator: содержимое виджета не собрано', [
+                    'widget_id' => $dashboardWidget->id,
+                    'error' => $result['error'],
+                ]);
+
+                return;
+            }
+
+            $dashboardWidget->query_spec = $result['spec'];
+            $dashboardWidget->content_mode = $result['mode'];
+            $dashboardWidget->origin = DashboardWidget::ORIGIN_AI;
+            $dashboardWidget->status = 'active';
+            $dashboardWidget->last_error = null;
+            $dashboardWidget->last_run_at = now();
+            $dashboardWidget->save();
+        } catch (Throwable $e) {
+            $dashboardWidget->status = 'failed';
+            $dashboardWidget->last_error = $e->getMessage();
+            $dashboardWidget->save();
+
+            Log::error('DashboardReGenerator: сбой при сборке виджета', [
+                'widget_id' => $dashboardWidget->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Таблицы, по которым собирается содержимое виджета.
+     *
+     * Модель не всегда возвращает список таблиц для виджета. Пустой список
+     * означал бы пустую схему — и тогда выбрать таблицу было бы не из чего:
+     * виджет падал бы не потому, что задача сложная, а потому что мы ничего
+     * о данных не рассказали. Поэтому откатываемся на таблицы выбранных
+     * групп, а в крайнем случае — на весь источник.
+     *
+     * @return array<int, string>
+     */
+    private function tablesFor(DashboardWidget $dashboardWidget): array
+    {
+        $tables = array_values(array_filter((array) ($dashboardWidget->tables ?? [])));
+
+        if ($tables !== []) {
+            return $tables;
+        }
+
+        if (!empty($this->selectedGroupsTables)) {
+            $fromGroups = DataSourceTable::query()
+                ->whereIn('data_source_group_id', $this->selectedGroupsTables)
+                ->pluck('name')
+                ->all();
+
+            if ($fromGroups !== []) {
+                Log::info('DashboardReGenerator: у виджета нет таблиц, берём таблицы групп', [
+                    'widget_id' => $dashboardWidget->id,
+                ]);
+
+                return $fromGroups;
+            }
+        }
+
+        Log::warning('DashboardReGenerator: у виджета нет таблиц, берём весь источник', [
+            'widget_id' => $dashboardWidget->id,
+        ]);
+
+        return $this->tables ?? [];
     }
 
     public function updateWidget(array $operation): ?array
@@ -667,15 +669,20 @@ class DashboardReGenerator
             ? $widgetDashboard->widgetType?->name
             : null;
 
+        // Содержимое переносится только внутри своего семейства. При смене
+        // bar → pie старый запрос возвращает series/category/value, а круговой
+        // нужны label/value: перенести его — значит показать виджет со
+        // сломанной формой до того, как он пересоберётся.
+        $carriedSpec = $newFamily === $currentFamily ? $widgetDashboard->query_spec : null;
+
         return [
             'title' => $operation['title'] ?? $widgetDashboard->title,
             'instruction' => $operation['operation_description'] ?? ($widgetDashboard->instruction ?? ''),
             'widget_name' => $newFamily,
             'widget_type' => $operation['widget_type'] ?? $carriedType,
             'tables' => $operation['tables'] ?? ($widgetDashboard->tables ?? []),
-            'python_code' => ($widgetDashboard->code_path && file_exists($widgetDashboard->code_path))
-                ? file_get_contents($widgetDashboard->code_path)
-                : null,
+            'query_spec' => $carriedSpec,
+            'content_mode' => $carriedSpec ? $widgetDashboard->content_mode : null,
             'position' => $operation['position'] ?? $widgetDashboard->position ?? 0,
             'status' => 'draft',
             // id исходного (старого) dashboard_widget, который редактировался
@@ -703,9 +710,8 @@ class DashboardReGenerator
             'widget_name' => $dashboardWidget->widget?->name,
             'widget_type' => $dashboardWidget->widgetType?->name,
             'tables' => $dashboardWidget->tables ?? [],
-            'python_code' => ($dashboardWidget->code_path && file_exists($dashboardWidget->code_path))
-                ? file_get_contents($dashboardWidget->code_path)
-                : null,
+            'query_spec' => $dashboardWidget->query_spec,
+            'content_mode' => $dashboardWidget->content_mode,
             'position' => $operation['position'] ?? $dashboardWidget->position ?? 0,
             'status' => $dashboardWidget->status ?? 'active',
         ];
@@ -721,6 +727,41 @@ class DashboardReGenerator
     private function widgetCatalogJson(): string
     {
         return (new WidgetCatalog($this->widgets))->compactJson();
+    }
+
+    /**
+     * История переписки для defineChanges() — тем же составом полей, что уже
+     * читают ChatAgentAi/DefineTaskAi (message/answer/offer_type/offer_summary).
+     *
+     * Без неё короткое подтверждение («давай», «давай но не трогай карточки»)
+     * долетает до модели голым текстом текущего сообщения: она видит список
+     * виджетов и «давай», но не видит, ЧТО именно агент предложил ходом раньше,
+     * и честно возвращает пустой operations — план из предыдущего ответа
+     * теряется, даже если сам агент только что подробно его расписал.
+     *
+     * RouterTask отдаёт сообщения от новых к старым — разворачиваем в
+     * хронологический порядок, чтобы модель читала переписку так же, как
+     * читал бы её человек: от первого сообщения к последнему перед текущим.
+     */
+    private function historyJson($history): string
+    {
+        $messages = $history instanceof \Illuminate\Support\Collection
+            ? $history
+            : collect($history ?? []);
+
+        return json_encode(
+            $messages
+                ->reverse()
+                ->values()
+                ->map(fn ($item) => [
+                    'message' => $item->message ?? null,
+                    'answer' => $item->answer ?? null,
+                    'offer_type' => $item->offer_type ?? null,
+                    'offer_summary' => $item->offer_summary ?? null,
+                ])
+                ->toArray(),
+            JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT
+        );
     }
 
     /**
@@ -767,10 +808,6 @@ class DashboardReGenerator
             $item['status'] = 'failed';
         }
 
-        $codePath = null;
-        if (!empty($item['python_code'])) {
-            $codePath = $this->savePythonCode($dashboard->id, $item['python_code']);
-        }
 
         $result = DashboardWidget::query()->create([
             'dashboard_id' => $dashboard->id,
@@ -781,7 +818,12 @@ class DashboardReGenerator
             // Без json_encode: кодированием занимается модель. Ручной вызов
             // здесь давал двойное кодирование, и tables читались строкой.
             'tables' => $item['tables'] ?? [],
-            'code_path' => $codePath,
+            'query_spec' => $item['query_spec'] ?? null,
+            // Режим ставится вместе с содержимым. Виджет, которому его ещё
+            // не собрали, не должен называть себя запросом.
+            'content_mode' => $item['query_spec']
+                ? ($item['content_mode'] ?? DashboardWidget::MODE_SQL)
+                : DashboardWidget::MODE_PYTHON,
             'position' => $item['position'],
             'status' => $item['status'] ?? 'draft',
         ]);
@@ -807,14 +849,6 @@ class DashboardReGenerator
         return $result;
     }
 
-    private function savePythonCode(int $dashboardId, string $code): string
-    {
-        $relativePath = "dashboards/{$dashboardId}/" . Str::uuid() . '.py';
-        Storage::put($relativePath, $code);
-
-        return Storage::path($relativePath);
-    }
-
     public function addWidget(array $operation): ?array
     {
         $widgetName = $operation['widget_name'] ?? null;
@@ -832,7 +866,8 @@ class DashboardReGenerator
             'widget_name' => $widgetName,
             'widget_type' => $operation['widget_type'] ?? null,
             'tables' => $operation['tables'] ?? [],
-            'python_code' => null, // генерация кода временно отключена
+            // Содержимое соберётся отдельным шагом — generatingWidgets().
+            'query_spec' => null,
             'position' => $operation['position'] ?? null,
             'status' => 'draft',
         ];

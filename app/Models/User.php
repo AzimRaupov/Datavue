@@ -49,6 +49,21 @@ class User extends Authenticatable
         return $this->hasRole('company_admin');
     }
 
+    /**
+     * Пригодна ли учётная запись к работе: не отключён ни сам сотрудник,
+     * ни его компания.
+     *
+     * То же самое проверяет middleware EnsureUserIsActive, но подписка на
+     * канал вещания идёт мимо него — через /broadcasting/auth. Без этой
+     * проверки отключённый сотрудник со старым токеном продолжал бы получать
+     * события компании (см. routes/channels.php).
+     */
+    public function isUsable(): bool
+    {
+        return (bool) $this->is_active
+            && ($this->company === null || $this->company->is_active);
+    }
+
     public function isSuperAdmin(): bool
     {
         return $this->hasRole('super_admin');

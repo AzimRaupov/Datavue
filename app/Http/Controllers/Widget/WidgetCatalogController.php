@@ -19,21 +19,31 @@ class WidgetCatalogController extends Controller
      * Каталог одинаков для всех компаний, поэтому фильтровать по company_id
      * здесь нечего — данных клиентов тут нет.
      */
-    public function index()
+    /**
+     * @param \Illuminate\Http\Request $request Параметр ai_only=1 оставляет
+     *        только то, что разрешено предлагать модели. Конструктор запрашивает
+     *        полный каталог: человеку доступно и то, что от ИИ пока скрыто.
+     */
+    public function index(\Illuminate\Http\Request $request)
     {
         $widgets = Widget::query()
             ->with('types')
+            ->when($request->boolean('ai_only'), fn ($query) => $query->where('is_ai_selectable', true))
             ->orderBy('id')
             ->get();
 
         return response()->json(
             $widgets->map(fn (Widget $widget) => [
+                // id нужен конструктору: по нему создаётся dashboard_widgets.
+                'id' => $widget->id,
                 'name' => $widget->name,
                 'description' => $widget->description,
                 'scheme' => $widget->scheme,
                 'scheme_description' => $widget->scheme_description,
                 'is_ai_selectable' => $widget->is_ai_selectable,
                 'types' => $widget->types->map(fn (WidgetType $type) => [
+                    'id' => $type->id,
+                    'widget_id' => $type->widget_id,
                     'name' => $type->name,
                     'title' => $type->title,
                     'description' => $type->description,

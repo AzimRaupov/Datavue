@@ -6,11 +6,13 @@ use App\Helpers\Ai\AiUsage;
 use App\Helpers\DataSource\ConnectionProviderRouter;
 use App\Helpers\DataSource\DataSourceCreator;
 use App\Helpers\DataSource\DataSourceRefresher;
+use App\Helpers\DataSource\SourceSchema;
 use App\Http\Controllers\Controller;
 use App\Jobs\DataSourceGroupingJob;
 use App\Http\Requests\DataSource\StoreRequest;
 use App\Models\AiChatMessage;
 use App\Models\AiChatTask;
+use App\Models\Alert;
 use App\Models\DataSource;
 use App\Models\DataSourceGroup;
 use App\Models\DataSourceTable;
@@ -46,14 +48,11 @@ class DataSourceController extends Controller
     {
         $source = $this->findForCompany($request, $id);
 
+        // Чаты теперь заводятся в рабочем пространстве (см. WorkspaceController),
+        // источник ими больше не грузим — только его собственные атрибуты.
         $source->load([
             'type:id,name,label',
             'creator:id,name',
-            // Чаты источника с их дашбордами — на странице источника это
-            // основной список: «на этой базе уже спрашивали вот что».
-            'chats' => fn ($query) => $query->latest('id')->with([
-                'dashboards' => fn ($q) => $q->select('id', 'name', 'chat_id', 'status')->latest('id'),
-            ]),
         ]);
 
         // Разобранная схема: сколько смысловых групп и таблиц нашлось.
@@ -240,6 +239,11 @@ class DataSourceController extends Controller
             ], 422);
         }
 
+        // Схема источника закэширована для конструктора виджетов. После
+        // перезалива состав таблиц и колонок мог измениться, и без сброса
+        // конструктор ещё несколько минут предлагал бы то, чего уже нет.
+        SourceSchema::forget($source->id);
+
         return response()->json([
             'success' => true,
             'message' => $result['message'],
@@ -307,6 +311,9 @@ class DataSourceController extends Controller
 
         $source->fill($data)->save();
 
+        // Могли поменяться база или хост — читать схему нужно заново.
+        SourceSchema::forget($source->id);
+
         return response()->json([
             'success' => true,
             'data_source' => $source->fresh()->load('type:id,name,label'),
@@ -337,6 +344,16 @@ class DataSourceController extends Controller
 
             DataSourceTable::query()->where('data_source_id', $source->id)->delete();
             DataSourceGroup::query()->where('data_source_id', $source->id)->delete();
+
+            // Алерты источника не должны продолжать проверяться на "нет
+            // источника" вплоть до авто-отключения по счётчику ошибок —
+            // источник удалён осознанно, значит и причина известна сразу.
+            Alert::query()
+                ->where('data_source_id', $source->id)
+                ->update([
+                    'is_active' => false,
+                    'disabled_reason' => 'Источник данных удалён.',
+                ]);
 
             // Разобранный файл источника занимает место и после удаления
             // записи уже никому не нужен.

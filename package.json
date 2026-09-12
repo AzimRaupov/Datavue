@@ -7,6 +7,11 @@
         "dev": "vite"
     },
     "devDependencies": {
+        "@capacitor/android": "^8.5.1",
+        "@capacitor/app": "^8.1.1",
+        "@capacitor/browser": "^8.0.4",
+        "@capacitor/cli": "^8.5.1",
+        "@capacitor/core": "^8.5.1",
         "@laravel/echo-vue": "^2.3.7",
         "@tailwindcss/vite": "^4.0.0",
         "@vitejs/plugin-vue": "^6.0.7",
@@ -23,6 +28,7 @@
         "axios": "^1.18.1",
         "html2pdf.js": "^0.14.0",
         "nprogress": "^0.2.0",
+        "sortablejs": "^1.15.7",
         "vue": "^3.5.39",
         "vue-i18n": "^11.4.6",
         "vue-router": "^4.6.4"

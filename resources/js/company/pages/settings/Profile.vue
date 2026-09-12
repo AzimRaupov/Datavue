@@ -1,6 +1,9 @@
 <script setup>
 import { ref, reactive, computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import api from '../../api.js';
+
+const { t } = useI18n();
 
 /**
  * Собственный профиль: имя, e-mail, пароль и название компании.
@@ -91,7 +94,7 @@ async function submit(payload, { saving, errors, message, onSuccess }) {
         user.value = data.user;
         localStorage.setItem('user', JSON.stringify(data.user));
 
-        message.value = 'Сохранено.';
+        message.value = t('settingsProfile.saved');
         onSuccess?.();
     } catch (err) {
         const data = err.response?.data;
@@ -99,7 +102,7 @@ async function submit(payload, { saving, errors, message, onSuccess }) {
         if (data?.errors) {
             errors.value = data.errors;
         } else {
-            errors.value = { _: [data?.message || 'Не удалось сохранить.'] };
+            errors.value = { _: [data?.message || t('settingsProfile.save_error_generic')] };
         }
     } finally {
         saving.value = false;
@@ -121,7 +124,7 @@ const savePassword = () => submit(
             passwordForm.current_password = '';
             passwordForm.password = '';
             passwordForm.password_confirmation = '';
-            passwordMessage.value = 'Пароль изменён. Остальные сеансы завершены.';
+            passwordMessage.value = t('settingsProfile.password.changed');
         },
     }
 );
@@ -142,8 +145,8 @@ const firstError = (errors, field) => errors.value?.[field]?.[0] ?? null;
             <div class="container-xl">
                 <div class="row g-2 align-items-center">
                     <div class="col">
-                        <div class="page-pretitle">Компания {{ user?.company?.name }}</div>
-                        <h2 class="page-title">Мой профиль</h2>
+                        <div class="page-pretitle">{{ t('settingsProfile.page_pretitle', { name: user?.company?.name }) }}</div>
+                        <h2 class="page-title">{{ t('settingsProfile.page_title') }}</h2>
                     </div>
                 </div>
             </div>
@@ -168,7 +171,7 @@ const firstError = (errors, field) => errors.value?.[field]?.[0] ?? null;
                                         {{ role }}
                                     </span>
                                     <span v-if="user?.is_company_owner" class="badge bg-yellow-lt">
-                                        владелец
+                                        {{ t('settingsProfile.owner_badge') }}
                                     </span>
                                 </div>
                             </div>
@@ -180,11 +183,11 @@ const firstError = (errors, field) => errors.value?.[field]?.[0] ?? null;
                         <!-- Личные данные -->
                         <div class="card mb-3">
                             <div class="card-header">
-                                <h3 class="card-title">Личные данные</h3>
+                                <h3 class="card-title">{{ t('settingsProfile.personal.title') }}</h3>
                             </div>
                             <div class="card-body">
                                 <div class="mb-3">
-                                    <label class="form-label required">Имя</label>
+                                    <label class="form-label required">{{ t('settingsProfile.personal.name_label') }}</label>
                                     <input v-model="profile.name" type="text" class="form-control"
                                            :class="{ 'is-invalid': firstError(profileErrors, 'name') }"
                                            :disabled="savingProfile" />
@@ -194,7 +197,7 @@ const firstError = (errors, field) => errors.value?.[field]?.[0] ?? null;
                                 </div>
 
                                 <div class="mb-0">
-                                    <label class="form-label required">E-mail</label>
+                                    <label class="form-label required">{{ t('settingsProfile.personal.email_label') }}</label>
                                     <input v-model="profile.email" type="email" class="form-control"
                                            :class="{ 'is-invalid': firstError(profileErrors, 'email') }"
                                            :disabled="savingProfile" />
@@ -202,7 +205,7 @@ const firstError = (errors, field) => errors.value?.[field]?.[0] ?? null;
                                         {{ firstError(profileErrors, 'email') }}
                                     </div>
                                     <small class="form-hint">
-                                        По этому адресу вы входите в систему.
+                                        {{ t('settingsProfile.personal.email_hint') }}
                                     </small>
                                 </div>
 
@@ -217,7 +220,7 @@ const firstError = (errors, field) => errors.value?.[field]?.[0] ?? null;
                             <div class="card-footer text-end">
                                 <button class="btn btn-primary" :class="{ 'btn-loading': savingProfile }"
                                         :disabled="savingProfile || !profileChanged" @click="saveProfile">
-                                    Сохранить
+                                    {{ t('settingsProfile.save') }}
                                 </button>
                             </div>
                         </div>
@@ -225,11 +228,11 @@ const firstError = (errors, field) => errors.value?.[field]?.[0] ?? null;
                         <!-- Пароль -->
                         <div class="card mb-3">
                             <div class="card-header">
-                                <h3 class="card-title">Пароль</h3>
+                                <h3 class="card-title">{{ t('settingsProfile.password.title') }}</h3>
                             </div>
                             <div class="card-body">
                                 <div class="mb-3">
-                                    <label class="form-label required">Текущий пароль</label>
+                                    <label class="form-label required">{{ t('settingsProfile.password.current_label') }}</label>
                                     <input v-model="passwordForm.current_password" type="password"
                                            class="form-control" autocomplete="current-password"
                                            :class="{ 'is-invalid': firstError(passwordErrors, 'current_password') }"
@@ -243,7 +246,7 @@ const firstError = (errors, field) => errors.value?.[field]?.[0] ?? null;
                                 <div class="row">
                                     <div class="col-md-6">
                                         <div class="mb-3">
-                                            <label class="form-label required">Новый пароль</label>
+                                            <label class="form-label required">{{ t('settingsProfile.password.new_label') }}</label>
                                             <input v-model="passwordForm.password" type="password"
                                                    class="form-control" autocomplete="new-password"
                                                    :class="{ 'is-invalid': firstError(passwordErrors, 'password') }"
@@ -252,12 +255,12 @@ const firstError = (errors, field) => errors.value?.[field]?.[0] ?? null;
                                                  class="invalid-feedback">
                                                 {{ firstError(passwordErrors, 'password') }}
                                             </div>
-                                            <small class="form-hint">Минимум 6 символов.</small>
+                                            <small class="form-hint">{{ t('settingsProfile.password.new_hint') }}</small>
                                         </div>
                                     </div>
                                     <div class="col-md-6">
                                         <div class="mb-0">
-                                            <label class="form-label required">Повторите пароль</label>
+                                            <label class="form-label required">{{ t('settingsProfile.password.confirm_label') }}</label>
                                             <input v-model="passwordForm.password_confirmation" type="password"
                                                    class="form-control" autocomplete="new-password"
                                                    :disabled="savingPassword" />
@@ -276,7 +279,7 @@ const firstError = (errors, field) => errors.value?.[field]?.[0] ?? null;
                             <div class="card-footer text-end">
                                 <button class="btn btn-primary" :class="{ 'btn-loading': savingPassword }"
                                         :disabled="savingPassword || !passwordFilled" @click="savePassword">
-                                    Изменить пароль
+                                    {{ t('settingsProfile.password.save') }}
                                 </button>
                             </div>
                         </div>
@@ -284,18 +287,18 @@ const firstError = (errors, field) => errors.value?.[field]?.[0] ?? null;
                         <!-- Компания: только для тех, кто ей управляет -->
                         <div v-if="canManageCompany" class="card">
                             <div class="card-header">
-                                <h3 class="card-title">Компания</h3>
+                                <h3 class="card-title">{{ t('settingsProfile.company.title') }}</h3>
                             </div>
                             <div class="card-body">
                                 <div class="mb-0">
-                                    <label class="form-label required">Название</label>
+                                    <label class="form-label required">{{ t('settingsProfile.company.name_label') }}</label>
                                     <input v-model="company.name" type="text" class="form-control"
                                            :class="{ 'is-invalid': firstError(companyErrors, 'company_name') }"
                                            :disabled="savingCompany" />
                                     <div v-if="firstError(companyErrors, 'company_name')" class="invalid-feedback">
                                         {{ firstError(companyErrors, 'company_name') }}
                                     </div>
-                                    <small class="form-hint">Видно всем сотрудникам компании.</small>
+                                    <small class="form-hint">{{ t('settingsProfile.company.name_hint') }}</small>
                                 </div>
 
                                 <div v-if="firstError(companyErrors, '_')" class="alert alert-danger mt-3 mb-0"
@@ -309,7 +312,7 @@ const firstError = (errors, field) => errors.value?.[field]?.[0] ?? null;
                             <div class="card-footer text-end">
                                 <button class="btn btn-primary" :class="{ 'btn-loading': savingCompany }"
                                         :disabled="savingCompany || !companyChanged" @click="saveCompany">
-                                    Сохранить
+                                    {{ t('settingsProfile.save') }}
                                 </button>
                             </div>
                         </div>

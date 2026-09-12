@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import api from "../api.js";
 
 import { familyOf, propsFor, hasData } from "./widgets/registry.js";
@@ -19,10 +20,13 @@ const props = defineProps({
     },
 });
 
+const { t } = useI18n();
+
 const widget = computed(() => props.widget);
 
 const contentWidget = ref(null);
 const isLoading = ref(false);
+const loadError = ref(null);
 
 /**
  * Семейство виджета определяет, ЧЕМ рисовать, а тип — КАК.
@@ -44,11 +48,17 @@ const family = computed(() => familyOf(familyName.value));
 const typeOptions = computed(() => {
     const chosen = widget.value?.widget_type;
 
-    if (chosen?.options) return chosen.options;
+    const base = chosen?.options
+        ?? (widget.value?.widget?.types ?? []).find(t => t.is_default)?.options
+        ?? {};
 
-    const fallback = (widget.value?.widget?.types ?? []).find(t => t.is_default);
+    // Своя палитра виджета живёт в оформлении, а не в типе отрисовки: тип
+    // общий на все виджеты семейства, а цвета выбираются штучно. Подмешиваем
+    // её здесь, чтобы компоненты семейств получали цвета там же, где и
+    // остальные параметры отрисовки, — см. widgets/palette.js.
+    const colors = widget.value?.presentation?.colors;
 
-    return fallback?.options ?? {};
+    return Array.isArray(colors) && colors.length ? { ...base, colors } : base;
 });
 
 const isReady = computed(() =>
@@ -75,11 +85,23 @@ async function getWidgetContent() {
     try {
         isLoading.value = true;
         contentWidget.value = null;
+        loadError.value = null;
 
         const response = await api.post(
             "/get-widget-content/" + widget.value.id,
             { chat_id: props.chatId }
         );
+
+        // Два формата ответа — по числу способов посчитать виджет.
+        //
+        // SQL-виджет отдаёт готовую структуру полем data: раскладку по форме
+        // сделал сервер. Python-виджет печатает JSON в stdout, поэтому его
+        // содержимое приходит строкой в output и разбирается здесь.
+        if (response.data.data && typeof response.data.data === "object") {
+            contentWidget.value = response.data.data;
+
+            return;
+        }
 
         const raw = response.data.output;
 
@@ -96,6 +118,14 @@ async function getWidgetContent() {
             : null;
 
     } catch (err) {
+        // Раньше ошибка уходила только в консоль, и виджет молча оставался
+        // заглушкой — понять, что он сломан, было нельзя. Теперь причина
+        // видна на месте: запрос сообщает, какой колонки не хватает.
+        loadError.value =
+            err.response?.data?.error ||
+            err.response?.data?.message ||
+            t("widgetContainer.load_error");
+
         console.error("Ошибка загрузки данных виджета:", err);
     } finally {
         isLoading.value = false;
@@ -132,6 +162,25 @@ onMounted(async () => {
             :is="family.component"
             v-bind="widgetProps"
         />
+
+        <!-- Виджет не посчитался: показываем причину, а не пустое место -->
+        <div v-else-if="loadError" class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-start gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+                         fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                         stroke-linejoin="round" class="text-danger flex-shrink-0 mt-1" aria-hidden="true">
+                        <path d="M12 9v4" />
+                        <path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0z" />
+                        <path d="M12 16h.01" />
+                    </svg>
+                    <div>
+                        <div class="fw-bold">{{ t('widgetContainer.compute_failed') }}</div>
+                        <div class="text-secondary small widget-error">{{ loadError }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <!-- Плейсхолдеры на время генерации: форма подсказывает, что появится -->
         <template v-else>
@@ -240,7 +289,7 @@ onMounted(async () => {
     </div>
 
     <div v-else class="alert alert-warning">
-        <p>Неизвестный тип виджета: {{ familyName }}</p>
+        <p>{{ t('widgetContainer.unknown_widget_type', { type: familyName }) }}</p>
         <pre style="font-size: 0.75rem; color: #666;">{{ JSON.stringify(contentWidget, null, 2) }}</pre>
     </div>
 </template>
@@ -265,6 +314,12 @@ onMounted(async () => {
     inset: 0;
     width: 100%;
     height: 100%;
+}
+
+/* Ошибка базы бывает длинной — переносим, а не растягиваем карточку. */
+.widget-error {
+    white-space: pre-wrap;
+    word-break: break-word;
 }
 
 .placeholder-line polyline {

@@ -34,7 +34,60 @@
  * занимала пол-экрана.
  */
 .empty-img img {
-    height: 8rem;
+    height: 12rem;
     width: auto;
     max-width: 100%;
+}
+
+/*
+ * Ширина рабочего пространства.
+ *
+ * Tabler упирает .container и .container-xl в 1320px. Для текста это разумно,
+ * но здесь на странице стоят дашборды: на мониторе 1920px виджеты жались в
+ * центральную колонку, а треть экрана оставалась пустой — при том, что графику
+ * и таблице место нужно как раз в ширину.
+ *
+ * Поэтому контейнеры растягиваются во всю ширину окна, но не вплотную к краю:
+ * боковые отступы растут вместе с экраном, иначе содержимое липнет к рамке и
+ * читать его неудобно. Правило действует и на шапку — навигация идёт по той же
+ * сетке, что и контент, и разъехаться с ним не должна.
+ *
+ * Исключены узкие контейнеры (.container-tight у мастера подключения
+ * источника): там форма в одну колонку, и растягивать её незачем. Без :not()
+ * это правило перебивало бы их max-width — оно объявлено позже.
+ */
+.container:not(.container-tight):not(.container-narrow),
+.container-xl:not(.container-tight):not(.container-narrow) {
+    max-width: 100%;
+}
+
+@media (min-width: 768px) {
+    .container:not(.container-tight):not(.container-narrow),
+    .container-xl:not(.container-tight):not(.container-narrow) {
+        padding-left: 1.5rem;
+        padding-right: 1.5rem;
+    }
+}
+
+@media (min-width: 1400px) {
+    .container:not(.container-tight):not(.container-narrow),
+    .container-xl:not(.container-tight):not(.container-narrow) {
+        padding-left: 2.5rem;
+        padding-right: 2.5rem;
+    }
+}
+
+/*
+ * Выпадающее меню уведомлений теперь доступно и на телефоне (см. Header.vue),
+ * а .dropdown-menu-card у Tabler держит фиксированную ширину ~340px — на
+ * экране 320-360px она вылезала бы за край. Ограничиваем шириной вьюпорта.
+ */
+@media (max-width: 420px) {
+    .navbar .dropdown-menu {
+        max-width: calc(100vw - 1.5rem);
+    }
+
+    .navbar .dropdown-menu-card {
+        width: calc(100vw - 1.5rem);
+    }
 }
