@@ -61,6 +61,12 @@
                     </table>
                 @endif
 
+                @if($check->csv_path)
+                    <p style="color:#8a94a6;font-size:13px;margin:0 0 12px;">
+                        Полный результат проверки ({{ $check->csv_row_count }} стр.) — во вложении CSV.
+                    </p>
+                @endif
+
                 <a href="{{ $workspaceUrl }}" style="display:inline-block;padding:10px 18px;background:#206bc4;color:#ffffff;text-decoration:none;border-radius:6px;">Открыть в рабочем пространстве</a>
             </td>
         </tr>

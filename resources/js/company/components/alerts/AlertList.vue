@@ -342,6 +342,11 @@ defineExpose({ load });
                         <div v-else-if="item.notify_error" class="small text-warning mt-1">
                             {{ t("alerts.history.notify_failed") }}: {{ item.notify_error }}
                         </div>
+                        <div v-if="item.csv_url" class="mt-1">
+                            <a :href="item.csv_url" class="small" target="_blank" rel="noopener">
+                                {{ t("alerts.history.download_csv", { count: item.csv_row_count ?? 0 }) }}
+                            </a>
+                        </div>
                     </div>
                 </div>
             </div>

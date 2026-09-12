@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Str;
 
 /**
  * Одна строка — одна проверка алерта. Пишется всегда, включая ошибку:
@@ -27,6 +28,9 @@ class AlertCheckerHistory extends Model
         'notified_at',
         'recipients',
         'notify_error',
+        'csv_path',
+        'csv_token',
+        'csv_row_count',
     ];
 
     protected $casts = [
@@ -38,7 +42,14 @@ class AlertCheckerHistory extends Model
         'payload' => 'array',
         'recipients' => 'array',
         'notified' => 'boolean',
+        'csv_row_count' => 'integer',
     ];
+
+    /** Путь на диске наружу не отдаётся — только по нему знают, что скачивать. */
+    protected $hidden = ['csv_path'];
+
+    /** Готовая ссылка — фронту незачем знать токен и собирать её самому. */
+    protected $appends = ['csv_url'];
 
     public const STATUS_OK = 'ok';
     public const STATUS_TRIGGERED = 'triggered';
@@ -50,5 +61,19 @@ class AlertCheckerHistory extends Model
     public function alert(): BelongsTo
     {
         return $this->belongsTo(Alert::class);
+    }
+
+    public static function newCsvToken(): string
+    {
+        return Str::random(48);
+    }
+
+    /**
+     * Публичная ссылка на CSV этой проверки — как у выгрузок чата: без
+     * файла (csv_path пуст, например у проверки с ошибкой) ссылки нет.
+     */
+    public function getCsvUrlAttribute(): ?string
+    {
+        return $this->csv_token ? route('alert-history.csv', ['token' => $this->csv_token]) : null;
     }
 }

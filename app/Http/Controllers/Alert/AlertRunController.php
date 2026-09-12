@@ -179,6 +179,8 @@ class AlertRunController extends Controller
             'error' => $check->error,
             'rows' => $check->payload,
             'duration_ms' => $check->duration_ms,
+            'csv_url' => $check->csv_url,
+            'csv_row_count' => $check->csv_row_count,
         ]);
     }
 

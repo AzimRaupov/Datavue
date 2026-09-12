@@ -137,6 +137,17 @@ class AlertNotifier
             ];
         }
 
+        // CSV этой же проверки — файлом в письмо, а не только ссылкой:
+        // получатель мог просить именно файл, а не поход по адресу. У ошибки
+        // проверки файла не бывает (запрос до данных не добрался) — тогда
+        // csv_path пуст, и письмо уходит без вложения.
+        if ($check->csv_path && is_file($check->csv_path)) {
+            $mailable->attach($check->csv_path, [
+                'as' => 'alert-'.$alert->id.'-'.$check->id.'.csv',
+                'mime' => 'text/csv',
+            ]);
+        }
+
         try {
             Mail::to($recipients)->send($mailable);
 

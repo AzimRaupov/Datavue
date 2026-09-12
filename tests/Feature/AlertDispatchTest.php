@@ -247,3 +247,78 @@ it('"Проверить сейчас" пишет в историю как manual
     // только last_checked_at.
     expect($alert->fresh()->last_checked_at)->not->toBeNull();
 });
+
+it('сохраняет CSV каждой проверки, даже когда условие не сработало', function () {
+    [$company, $user, $workspace] = makeDispatchFixture();
+    $alert = makeDispatchAlert($company, $user, $workspace, [
+        // "Норма", не срабатывание, — CSV должен появиться и здесь.
+        'query' => 'SELECT 1 AS id WHERE 1 = 0',
+    ]);
+
+    Artisan::call('alerts:dispatch');
+
+    $check = AlertCheckerHistory::query()->where('alert_id', $alert->id)->sole();
+
+    expect($check->status)->toBe(AlertCheckerHistory::STATUS_OK)
+        ->and($check->csv_url)->not->toBeNull()
+        ->and($check->csv_row_count)->toBe(0);
+});
+
+it('прикладывает CSV к письму о срабатывании и отдаёт его по ссылке из истории', function () {
+    [$company, $user, $workspace] = makeDispatchFixture();
+    $alert = makeDispatchAlert($company, $user, $workspace, [
+        'query' => "SELECT 'a' AS label, 1 AS value UNION ALL SELECT 'b', 2",
+    ]);
+
+    Artisan::call('alerts:dispatch');
+
+    $check = AlertCheckerHistory::query()->where('alert_id', $alert->id)->sole();
+
+    expect($check->csv_row_count)->toBe(2)
+        ->and($check->csv_url)->toContain('/alert-history/')
+        ->and($check->csv_url)->toContain('/csv');
+
+    Mail::assertSent(AlertTriggeredMail::class, function ($mail) use ($check) {
+        return count($mail->attachments) === 1
+            && $mail->attachments[0]['file'] === $check->csv_path
+            && $mail->attachments[0]['options']['mime'] === 'text/csv';
+    });
+
+    $path = parse_url($check->csv_url, PHP_URL_PATH);
+    $response = $this->get($path);
+
+    $response->assertOk();
+    $response->assertHeader('content-type', 'text/csv; charset=utf-8');
+
+    // Содержимое проверяем прямо на диске: BinaryFileResponse стримит файл,
+    // а не кладёт его в тело ответа, которое можно перечитать в тесте.
+    $content = file_get_contents($check->csv_path);
+    expect($content)->toContain('label')->toContain('value')->toContain('a')->toContain('b');
+});
+
+it('не создаёт CSV для проверки, закончившейся ошибкой', function () {
+    [$company, $user, $workspace] = makeDispatchFixture();
+    $alert = makeDispatchAlert($company, $user, $workspace, [
+        'query' => 'SELECT совсем не sql (',
+    ]);
+
+    Artisan::call('alerts:dispatch');
+
+    $check = AlertCheckerHistory::query()->where('alert_id', $alert->id)->sole();
+
+    expect($check->status)->toBe(AlertCheckerHistory::STATUS_ERROR)
+        ->and($check->csv_url)->toBeNull();
+});
+
+it('сохраняет CSV и для ручной проверки, хотя писем не шлёт', function () {
+    [$company, $user, $workspace] = makeDispatchFixture();
+    $alert = makeDispatchAlert($company, $user, $workspace);
+
+    $response = $this->actingAs($user)
+        ->postJson("/api/company/alerts/{$alert->id}/run")
+        ->assertOk()
+        ->json();
+
+    expect($response['csv_url'])->not->toBeNull();
+    Mail::assertNothingSent();
+});

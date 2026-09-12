@@ -12,6 +12,7 @@ use App\Models\DataSource;
 use App\Models\Workspace;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 
@@ -105,6 +106,15 @@ class WorkspaceController extends Controller
                 AiChatTask::query()->where('chat_id', $chat->id)->delete();
                 AiChatMessage::query()->where('chat_id', $chat->id)->delete();
                 $chat->delete();
+            }
+
+            // Строки алертов и их истории удалятся каскадом на уровне БД
+            // (alerts.workspace_id / alert_checker_histories.alert_id
+            // ON DELETE CASCADE) — а вот CSV-файлы на диске сами не пропадут.
+            foreach ($workspace->alerts as $alert) {
+                File::deleteDirectory(
+                    storage_path('app/company/'.$alert->company_id.'/alerts/'.$alert->id)
+                );
             }
 
             $workspace->delete();

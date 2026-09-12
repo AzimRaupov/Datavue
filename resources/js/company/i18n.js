@@ -660,6 +660,7 @@ const messages = {
                 value: 'Значение',
                 notified: 'Письмо отправлено: {emails}',
                 notify_failed: 'Письмо не отправлено',
+                download_csv: 'Скачать CSV ({count} стр.)',
                 status: {
                     ok: 'Норма',
                     triggered: 'Сработал',
@@ -1760,6 +1761,7 @@ const messages = {
                 value: 'Value',
                 notified: 'Email sent to: {emails}',
                 notify_failed: 'Email not sent',
+                download_csv: 'Download CSV ({count} rows)',
                 status: {
                     ok: 'OK',
                     triggered: 'Triggered',
@@ -2860,6 +2862,7 @@ const messages = {
                 value: 'Қимат',
                 notified: 'Мактуб фиристода шуд: {emails}',
                 notify_failed: 'Мактуб фиристода нашуд',
+                download_csv: 'Боргирии CSV ({count} сатр)',
                 status: {
                     ok: 'Норма',
                     triggered: 'Иҷро шуд',

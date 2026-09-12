@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Models\Workspace;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use Illuminate\Validation\Rule;
 use RuntimeException;
 use Throwable;
@@ -117,6 +118,15 @@ class AlertController extends Controller
     public function destroy(Request $request, $id)
     {
         $alert = $this->find($request, $id);
+
+        // История удаляется каскадом на уровне БД (alert_checker_histories.
+        // alert_id ON DELETE CASCADE), а вот CSV на диске сам не пропадёт —
+        // весь каталог проверок этого алерта убирается одним махом, а не
+        // построчно по каждой записи истории.
+        File::deleteDirectory(
+            storage_path('app/company/'.$alert->company_id.'/alerts/'.$alert->id)
+        );
+
         $alert->delete();
 
         return response()->json(['message' => 'Алерт удалён.']);
