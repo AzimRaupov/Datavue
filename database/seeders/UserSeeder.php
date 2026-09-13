@@ -16,7 +16,7 @@ class UserSeeder extends Seeder
     public function run(): void
     {
         $company = Company::query()->updateOrCreate(
-            ['name' => 'Start Coding'],
+            ['name' => 'Datavue'],
             [
                 'is_active' => true,
             ]
@@ -25,7 +25,7 @@ class UserSeeder extends Seeder
         $user = User::query()->updateOrCreate(
             ['email' => 'zmraupov@gmail.com'],
             [
-                'name' => 'Start Coding',
+                'name' => 'Datavue',
                 'password' => Hash::make('zmraupov@gmail.com'),
                 'company_id' => $company->id,
             ]

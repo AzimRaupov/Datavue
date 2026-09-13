@@ -145,6 +145,12 @@ Route::get('/exports/{token}', [\App\Http\Controllers\Chat\ExportController::cla
     ->name('chat-exports.download')
     ->where('token', '[A-Za-z0-9]+');
 
+// Скачивание CSV одной проверки алерта — та же публичная ссылка-токен,
+// потому что письмо со ссылкой уходит не только тем, у кого есть сессия.
+Route::get('/alert-history/{token}/csv', [\App\Http\Controllers\Alert\AlertHistoryExportController::class, 'download'])
+    ->name('alert-history.csv')
+    ->where('token', '[A-Za-z0-9]+');
+
 Route::view('/admin', 'admin');
 Route::view('/admin/{any}', 'admin')->where('any', '.*');
 

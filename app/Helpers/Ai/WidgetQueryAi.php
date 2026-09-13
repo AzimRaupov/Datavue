@@ -2,12 +2,9 @@
 
 namespace App\Helpers\Ai;
 
-use App\Helpers\Ai\Providers\DuckDbProviderAi;
-use App\Helpers\Ai\Providers\MysqlProviderAi;
-use App\Helpers\Ai\Providers\PostgresProviderAi;
-use App\Helpers\Ai\Providers\SqliteProviderAi;
+use App\Helpers\Ai\Providers\ProviderAiFactory;
+use App\Helpers\Ai\Providers\SqlProviderAi;
 use App\Helpers\Widget\WidgetShapeMapper;
-use RuntimeException;
 
 /**
  * Просит у модели SQL-спецификацию виджета вместо Python-программы.
@@ -24,21 +21,14 @@ use RuntimeException;
  */
 class WidgetQueryAi
 {
-    private object $providerAi;
+    private SqlProviderAi $providerAi;
 
     public function __construct($dataSource)
     {
-        $type = $dataSource->type->name ?? null;
-
-        $this->providerAi = match ($type) {
-            'duckdb' => new DuckDbProviderAi(),
-            'mysql' => new MysqlProviderAi(),
-            'postgres' => new PostgresProviderAi(),
-            'sqlite' => new SqliteProviderAi(),
-            default => throw new RuntimeException(
-                "WidgetQueryAi: нет генератора запросов для источника типа '{$type}'"
-            ),
-        };
+        // Через фабрику, а не своим match'ем: копия списка типов здесь уже
+        // однажды разошлась с фабрикой, и новый тип источника пришлось бы
+        // не забыть дописать в двух местах.
+        $this->providerAi = ProviderAiFactory::for($dataSource);
     }
 
     /**
@@ -122,6 +112,12 @@ TEXT;
    Если задачу проще решить двумя простыми запросами, чем одним сложным —
    пиши два. Это не ошибка, а предпочтительный вариант.
 6. Ответ — только JSON, без markdown и без пояснений вне JSON.
+7. Если в WHERE/HAVING нужно сравнить колонку с конкретным текстовым значением
+   (статус, категория, стадия и т.п.) — бери его СЛОВО В СЛОВО из поля
+   "sample_values" этой колонки в схеме. Нет у колонки такого поля или среди
+   значений нет нужного — не пиши условие с придуманным значением (оно не
+   совпадёт ни с одной строкой, и результат окажется пустым); вместо этого
+   верни колонку как есть (GROUP BY/SELECT) без фильтра по значению.
 TEXT;
     }
 

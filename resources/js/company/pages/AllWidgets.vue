@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onMounted, computed } from "vue";
+import { useI18n } from "vue-i18n";
 import api from "../api.js";
 import { familyOf, propsFor } from "../components/widgets/registry.js";
 
@@ -12,6 +13,8 @@ import { familyOf, propsFor } from "../components/widgets/registry.js";
  *
  * Данные — вымышленные, но по форме те же, что генерирует python-скрипт виджета.
  */
+const { t } = useI18n();
+
 const families = ref([]);
 const isLoading = ref(true);
 const error = ref("");
@@ -180,7 +183,7 @@ async function load() {
         families.value = data;
     } catch (err) {
         console.error(err);
-        error.value = "Не удалось загрузить каталог виджетов";
+        error.value = t("allWidgets.load_error");
     } finally {
         isLoading.value = false;
     }
@@ -194,20 +197,19 @@ onMounted(load);
         <div class="container-xl">
             <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
                 <div>
-                    <h2 class="page-title mb-1">Все виджеты</h2>
+                    <h2 class="page-title mb-1">{{ t('allWidgets.title') }}</h2>
                     <div class="text-secondary">
-                        Каталог платформы на вымышленных данных: {{ totals.families }} семейств,
-                        {{ totals.types }} вариантов отрисовки
+                        {{ t('allWidgets.subtitle', { families: totals.families, types: totals.types }) }}
                     </div>
                 </div>
 
                 <label class="form-check form-switch m-0">
                     <input v-model="showAiOnly" class="form-check-input" type="checkbox">
-                    <span class="form-check-label">Только доступные ИИ</span>
+                    <span class="form-check-label">{{ t('allWidgets.ai_only') }}</span>
                 </label>
             </div>
 
-            <div v-if="isLoading" class="text-secondary py-5 text-center">Загрузка каталога…</div>
+            <div v-if="isLoading" class="text-secondary py-5 text-center">{{ t('allWidgets.loading') }}</div>
             <div v-else-if="error" class="alert alert-danger">{{ error }}</div>
 
             <div v-else>
@@ -215,19 +217,19 @@ onMounted(load);
                     <div class="border-bottom pb-2 mb-3">
                         <div class="d-flex align-items-center gap-2 flex-wrap">
                             <h3 class="m-0">{{ family.name }}</h3>
-                            <span class="badge bg-blue-lt">{{ family.types.length }} тип(ов)</span>
+                            <span class="badge bg-blue-lt">{{ t('allWidgets.types_count', { count: family.types.length }) }}</span>
                             <span v-if="!family.is_ai_selectable" class="badge bg-yellow-lt">
-                                не предлагается ИИ
+                                {{ t('allWidgets.not_offered_to_ai') }}
                             </span>
                             <span v-if="!isRenderable(family.name)" class="badge bg-red-lt">
-                                нет компонента на фронте
+                                {{ t('allWidgets.no_frontend_component') }}
                             </span>
                         </div>
                         <div class="text-secondary small mt-1">{{ family.description }}</div>
                     </div>
 
                     <div v-if="!isRenderable(family.name)" class="alert alert-warning">
-                        Семейство есть в каталоге, но фронт его не рисует — превью недоступно.
+                        {{ t('allWidgets.family_not_renderable') }}
                     </div>
 
                     <div v-else class="row g-4">
@@ -239,9 +241,9 @@ onMounted(load);
                             <div class="d-flex align-items-baseline gap-2 mb-2">
                                 <strong>{{ type.title || type.name }}</strong>
                                 <code class="small">{{ type.name }}</code>
-                                <span v-if="type.is_default" class="badge bg-green-lt">по умолчанию</span>
-                                <span v-if="type.scheme" class="badge bg-purple-lt">своя форма данных</span>
-                                <span v-if="!type.is_ai_selectable" class="badge bg-yellow-lt">скрыт от ИИ</span>
+                                <span v-if="type.is_default" class="badge bg-green-lt">{{ t('allWidgets.default_badge') }}</span>
+                                <span v-if="type.scheme" class="badge bg-purple-lt">{{ t('allWidgets.custom_data_shape') }}</span>
+                                <span v-if="!type.is_ai_selectable" class="badge bg-yellow-lt">{{ t('allWidgets.hidden_from_ai') }}</span>
                             </div>
 
                             <div class="text-secondary small mb-2">{{ type.description }}</div>
@@ -255,7 +257,7 @@ onMounted(load);
                 </div>
 
                 <div v-if="!visibleFamilies.length" class="text-secondary py-5 text-center">
-                    Каталог пуст — запустите сидеры виджетов.
+                    {{ t('allWidgets.catalog_empty') }}
                 </div>
             </div>
         </div>

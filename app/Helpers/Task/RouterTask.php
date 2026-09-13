@@ -318,6 +318,11 @@ TEXT;
      * состояния системы, а не свойство фразы, поэтому решает его код, а не
      * модель: так из обучения убран признак, которого во входе всё равно нет.
      *
+     * «Есть дашборд» значит «есть дашборд с виджетами». Пустой дашборд (только
+     * что создан вручную кнопкой «Новый дашборд», ещё ни разу не собирался) —
+     * менять в нём нечего, поэтому для намерения это то же самое, что дашборда
+     * нет вовсе.
+     *
      * task_instruction — исходное сообщение пользователя. Исключение — согласие
      * на предложенное: см. instructionFor().
      *
@@ -337,7 +342,7 @@ TEXT;
         }
 
         if ($label === IntentClassifier::DASHBOARD) {
-            $hasDashboard = $this->dashboardId !== null || $this->context->dashboard !== null;
+            $hasDashboard = $this->context->hasDashboardWithWidgets();
 
             return [
                 'task_name' => $hasDashboard ? 're_generate_dashboard' : 'generate_dashboard',
@@ -365,10 +370,20 @@ TEXT;
         $dashboardId = $this->dashboardId ?? $this->context->dashboard?->id;
 
         if ($task === 're_generate_dashboard') {
-            if (!$dashboardId) {
-                // Регенерировать нечего — значит на самом деле нужен новый дашборд.
-                Log::warning('RouterTask: re_generate_dashboard without dashboard, falling back to generate', [
+            // Дашборд из контекста соответствует именно $dashboardId (конструктор
+            // передал один и тот же id в ChatContext), поэтому dashboardWidgets
+            // здесь про тот же дашборд, который собирались регенерировать.
+            $targetHasWidgets = $dashboardId
+                && $this->context->dashboard?->id === $dashboardId
+                && $this->context->dashboardWidgets->isNotEmpty();
+
+            if (!$dashboardId || !$targetHasWidgets) {
+                // Регенерировать нечего — дашборда нет или он пуст (только что
+                // создан вручную, без единого виджета). Значит на самом деле
+                // нужен новый дашборд, а не правка несуществующих виджетов.
+                Log::warning('RouterTask: re_generate_dashboard without existing widgets, falling back to generate', [
                     'message_id' => $this->currentMessage->id,
+                    'dashboard_id' => $dashboardId,
                 ]);
                 $task = 'generate_dashboard';
             } else {
@@ -376,7 +391,12 @@ TEXT;
                     $this->currentMessage->chat_id,
                     $dashboardId,
                     $this->currentMessage->id,
-                    $this->resultDefine['content']['task_instruction'] ?? $this->currentMessage->message
+                    $this->resultDefine['content']['task_instruction'] ?? $this->currentMessage->message,
+                    // Та же история, что уже читают ChatAgentAi/DefineTaskAi. Без неё
+                    // короткое подтверждение («давай, но не трогай карточки») долетает
+                    // до регенератора голым текстом — предложение, на которое отвечает
+                    // пользователь, никогда не попадает в промпт defineChanges().
+                    $this->messages
                 ));
 
                 return;
@@ -415,11 +435,22 @@ TEXT;
                 $this->chat->save();
             }
 
+            // Если пользователь уже стоит на пустом дашборде (создал его вручную
+            // кнопкой «Новый дашборд» и тут же попросил агента собрать аналитику),
+            // генератор заполняет ЭТОТ дашборд, а не заводит рядом ещё один пустой
+            // сиротский дашборд. Условие 'generate_dashboard' сюда попадает только
+            // когда у целевого дашборда нет виджетов (см. taskFromLabel/фолбэк выше),
+            // так что переиспользовать его безопасно.
+            $reuseDashboardId = ($dashboardId && $this->context->dashboard?->id === $dashboardId)
+                ? $dashboardId
+                : null;
+
             dispatch(new DashboardGeneratorJob(
                 $this->currentMessage->id,
                 $this->chat->id,
                 $this->userId,
-                $this->dataSource->id
+                $this->dataSource->id,
+                $reuseDashboardId
             ));
 
             return;

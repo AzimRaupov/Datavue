@@ -2,10 +2,14 @@
 
 namespace App\Http\Controllers\Dashboard;
 
+use App\Helpers\Widget\ManualWidgetAuthor;
 use App\Http\Controllers\Controller;
+use App\Models\AiChat;
 use App\Models\Dashboard;
 use App\Models\DashboardWidget;
+use App\Models\DataSource;
 use App\Models\WidgetType;
+use App\Models\Workspace;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -13,12 +17,27 @@ use Illuminate\Validation\ValidationException;
 
 class DashboardController extends Controller
 {
+    /**
+     * Список дашбордов компании.
+     *
+     * Отдаёт то, из чего собирается карточка в списке: сколько в дашборде
+     * виджетов, по какому источнику он считает и из какого чата вырос.
+     * Раньше приходило только имя со статусом, и список нельзя было
+     * показать иначе как строчкой текста.
+     */
     public function index(Request $request)
     {
         $dashboards = Dashboard::query()
             ->where('company_id', $request->user()->company_id)
+            ->withCount('widgets')
+            ->with([
+                'dataSource:id,name',
+                'chat:id,title',
+            ])
             ->latest('id')
             ->get();
+
+        $this->fillSourcesFromChats($dashboards);
 
         return response()->json($dashboards);
     }
@@ -40,6 +59,10 @@ class DashboardController extends Controller
                         'title',
                         'position',
                         'status',
+                        // Нужен ради оформления: из него берутся цвета виджета
+                        // (см. DashboardWidget::presentation()). Наружу сама
+                        // спецификация не уходит — она в $hidden.
+                        'query_spec',
                         // updated_at обязателен: по нему фронт понимает, какие
                         // виджеты реально изменились. Без него WidgetContainer
                         // сравнивал undefined с undefined, granular-обновление
@@ -75,20 +98,46 @@ class DashboardController extends Controller
         $data = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
+            // Дашборд заводится В рабочем пространстве: источник и разговор
+            // он берёт оттуда.
+            'workspace_id' => [
+                'required_without_all:chat_id,data_source_id',
+                'nullable',
+                Rule::exists('workspaces', 'id')->where('company_id', $user->company_id),
+            ],
             'chat_id' => [
                 'nullable',
                 // Чат обязан принадлежать той же компании — иначе можно было бы
                 // привязать дашборд к чужому чату.
                 Rule::exists('ai_chats', 'id')->where('company_id', $user->company_id),
             ],
+            // Источник обязателен, когда дашборд собирают руками вне
+            // пространства: виджетам иначе не по чему считать.
+            'data_source_id' => [
+                'required_without_all:chat_id,workspace_id',
+                'nullable',
+                Rule::exists('data_sources', 'id')->where('company_id', $user->company_id),
+            ],
         ]);
+
+        $workspace = !empty($data['workspace_id'])
+            ? Workspace::query()->ofCompany($user->company_id)->find($data['workspace_id'])
+            : null;
 
         $dashboard = Dashboard::query()->create([
             'company_id' => $user->company_id,
+            'workspace_id' => $workspace?->id,
+            'created_by' => $user->id,
             'chat_id' => $data['chat_id'] ?? null,
+            // Источник наследуется от пространства: разные источники у соседних
+            // дашбордов означали бы, что это разные задачи.
+            'data_source_id' => $data['data_source_id'] ?? $workspace?->data_source_id,
             'name' => $data['name'],
             'description' => $data['description'] ?? null,
             'status' => 'empty',
+            // Через этот метод дашборд заводит человек: пайплайн ИИ создаёт
+            // свои дашборды напрямую в DashboardGenerator.
+            'origin' => Dashboard::ORIGIN_MANUAL,
         ]);
 
         return response()->json($dashboard, 201);
@@ -119,7 +168,7 @@ class DashboardController extends Controller
      * Сохранение пакетное: пользователь перебирает варианты на нескольких
      * виджетах сразу и жмёт «Сохранить» один раз.
      */
-    public function updateWidgets(Request $request, $id)
+    public function updateWidgets(Request $request, $id, ManualWidgetAuthor $author)
     {
         $dashboard = $this->findForCompany($request, $id);
 
@@ -132,6 +181,7 @@ class DashboardController extends Controller
         // Виджеты берём разом и только этого дашборда: чужой id в списке
         // не должен привести к правке чужого виджета.
         $widgets = DashboardWidget::query()
+            ->with(['widget.types', 'widgetType'])
             ->where('dashboard_id', $dashboard->id)
             ->whereIn('id', collect($data['widgets'])->pluck('id'))
             ->get()
@@ -143,8 +193,9 @@ class DashboardController extends Controller
             ->keyBy('id');
 
         $updated = 0;
+        $changed = [];
 
-        DB::transaction(function () use ($data, $widgets, $types, &$updated) {
+        DB::transaction(function () use ($data, $widgets, $types, &$updated, &$changed) {
             foreach ($data['widgets'] as $row) {
                 $widget = $widgets->get($row['id']);
                 $type = $types->get($row['widget_type_id']);
@@ -162,11 +213,23 @@ class DashboardController extends Controller
 
                 if ($widget->widget_type_id !== $type->id) {
                     $widget->widget_type_id = $type->id;
+                    $widget->setRelation('widgetType', $type);
                     $widget->save();
                     $updated++;
+                    $changed[] = $widget;
                 }
             }
         });
+
+        // Виджету из конструктора вместе с типом меняется и запрос: счётчику
+        // с полосой выполнения нужен процент, пузырьковой — размер точки.
+        // Смена типа отсюда и со страницы сборки обязана делать одно и то же,
+        // иначе с одной из них виджет оставался бы с неполным набором колонок
+        // и молча рисовал нули.
+        //
+        // Пересборка идёт после транзакции: она ходит в базу клиента,
+        // и держать ради этого открытой транзакцию нашей базы незачем.
+        $this->rebuildBuilderWidgets($dashboard, $changed, $author);
 
         return response()->json([
             'success' => true,
@@ -177,14 +240,87 @@ class DashboardController extends Controller
         ]);
     }
 
-    public function destroy(Request $request, $id)
+    public function destroy(Request $request, $id, ManualWidgetAuthor $author)
     {
         $dashboard = $this->findForCompany($request, $id);
+
+        // Файлы со скриптами удаляются вместе со строками: раньше они
+        // оставались в storage навсегда, хотя ссылаться на них было уже некому.
+        foreach ($dashboard->widgets()->get() as $widget) {
+            $widget->setRelation('dashboard', $dashboard);
+            $author->deleteFiles($widget);
+        }
 
         $dashboard->widgets()->delete();
         $dashboard->delete();
 
         return response()->json(['message' => 'Дашборд удалён.']);
+    }
+
+    /**
+     * Пересобирает запросы виджетов, собранных конструктором.
+     *
+     * @param array<int, DashboardWidget> $widgets
+     */
+    private function rebuildBuilderWidgets(Dashboard $dashboard, array $widgets, ManualWidgetAuthor $author): void
+    {
+        if ($widgets === []) {
+            return;
+        }
+
+        $dataSource = $dashboard->resolveDataSource();
+
+        if (!$dataSource || $dataSource->company_id !== $dashboard->company_id) {
+            return;
+        }
+
+        foreach ($widgets as $widget) {
+            $author->rebuildForType($widget, $dataSource);
+        }
+    }
+
+    /**
+     * Подставляет источник дашбордам, у которых он лежит на чате.
+     *
+     * Для списка разница между «источник на дашборде» и «источник на чате»
+     * значения не имеет — показать нужно одно и то же название. Делается это
+     * двумя запросами на весь список, а не обращением к базе на каждую строку.
+     */
+    private function fillSourcesFromChats($dashboards): void
+    {
+        $chatIds = $dashboards
+            ->whereNull('data_source_id')
+            ->pluck('chat_id')
+            ->filter()
+            ->unique();
+
+        if ($chatIds->isEmpty()) {
+            return;
+        }
+
+        // chat_id => data_source_id
+        $sourceIdByChat = AiChat::query()
+            ->whereIn('id', $chatIds)
+            ->pluck('data_source_id', 'id');
+
+        // Только id и name: в список не должны попадать хост, база и логин
+        // подключения — это детали, которые видно в разделе источников.
+        $sources = DataSource::query()
+            ->whereIn('id', $sourceIdByChat->filter()->unique()->values())
+            ->get(['id', 'name'])
+            ->keyBy('id');
+
+        foreach ($dashboards as $dashboard) {
+            if ($dashboard->data_source_id || !$dashboard->chat_id) {
+                continue;
+            }
+
+            $source = $sources->get($sourceIdByChat->get($dashboard->chat_id));
+
+            if ($source) {
+                $dashboard->setRelation('dataSource', $source);
+            }
+        }
     }
 
     private function findForCompany(Request $request, $id): Dashboard

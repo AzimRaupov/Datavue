@@ -17,6 +17,7 @@ class AiChat extends Model
     protected $fillable = [
         'user_id',
         'company_id',
+        'workspace_id',
         'data_source_id',
         'title',
         'status',
@@ -42,6 +43,14 @@ class AiChat extends Model
     public function dataSource(): BelongsTo
     {
         return $this->belongsTo(DataSource::class, 'data_source_id');
+    }
+
+    /**
+     * Рабочее пространство, которому принадлежит разговор.
+     */
+    public function workspace(): BelongsTo
+    {
+        return $this->belongsTo(Workspace::class);
     }
 
     /**

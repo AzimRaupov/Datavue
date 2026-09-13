@@ -31,3 +31,17 @@ Schedule::command('intents:retrain')
 Schedule::command('exports:prune')
     ->dailyAt('04:00')
     ->withoutOverlapping();
+
+// Проверка алертов: раз в минуту достаточно, чтобы не пропускать интервалы
+// от 15 минут (минимум конфигурации) — сама команда решает, кому пора,
+// и атомарно захватывает каждый алерт до постановки в очередь.
+Schedule::command('alerts:dispatch')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Протухшая история проверок — как и у выгрузок, накапливается бесконечно
+// без чистки.
+Schedule::command('alerts:prune')
+    ->dailyAt('04:30')
+    ->withoutOverlapping();

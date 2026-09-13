@@ -18,7 +18,7 @@ const isAuthPage = computed(() => {
 <template>
     <Header v-if="!isAuthPage" />
 
-    <main>
+    <main class="app-main">
         <router-view />
     </main>
 

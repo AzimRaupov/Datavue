@@ -29,17 +29,15 @@ class WidgetQueryRunner
     /**
      * Потолок строк, когда пагинация не включена.
      *
-     * Раньше этот лимит дописывался молча, и на большом наборе часть данных
-     * просто исчезала: маппер добросовестно заполнял пропуски нулями, а график
-     * показывал провал там, где строки отрезали. Теперь при упоре в потолок
-     * возвращается ошибка с предложением включить постраничный вывод —
-     * неверные числа хуже отказа.
+     * При упоре в потолок набор молча урезается до этого количества строк
+     * и мета помечается truncated => true — виджет рисуется по тому, что
+     * поместилось, а не превращается в ошибку.
      */
-    public const MAX_ROWS = 5000;
+    public const MAX_ROWS = 70;
 
     /** Размер страницы по умолчанию. */
     public const DEFAULT_PER_PAGE = 25;
-    public const MAX_PER_PAGE = 200;
+    public const MAX_PER_PAGE = 50;
 
     /**
      * Сколько строк берём в режиме проверки.
@@ -110,7 +108,7 @@ class WidgetQueryRunner
                 foreach ($queries as $name => $sql) {
                     $prepared = $this->prepare($sql, $filters, $input, stripLimit: false);
 
-                    foreach ($this->fetch($prepared, $this->sampleMeta(self::MAX_ROWS)) as $row) {
+                    foreach ($this->fetch($prepared, $this->sampleMeta(self::MAX_ROWS))['rows'] as $row) {
                         $rows[] = $row;
                     }
                 }
@@ -123,7 +121,12 @@ class WidgetQueryRunner
                     ? $this->sampleMeta()
                     : $this->buildMeta($prepared, $filters, $input);
 
-                $rows = $this->fetch($prepared, $meta);
+                $fetched = $this->fetch($prepared, $meta);
+                $rows = $fetched['rows'];
+
+                if ($fetched['truncated']) {
+                    $meta['truncated'] = true;
+                }
             }
         } catch (Throwable $e) {
             // Ошибку отдаём как есть: база называет причину точно,
@@ -311,7 +314,7 @@ class WidgetQueryRunner
     }
 
     /**
-     * @return array<int, array<string, mixed>>
+     * @return array{rows: array<int, array<string, mixed>>, truncated: bool}
      */
     private function fetch(array $prepared, array $meta): array
     {
@@ -340,18 +343,17 @@ class WidgetQueryRunner
             $this->router->query($wrapped['sql'], $wrapped['bindings'])
         );
 
-        // Данные не поместились — сообщаем явно. Молча отдать усечённый набор
-        // нельзя: маппер заполнит недостающие пересечения нулями, и график
-        // покажет провал там, где строки просто отрезали.
+        // Данные не поместились — урезаем до потолка и рисуем то, что есть,
+        // вместо отказа. Флаг truncated поднимается вызывающей стороной,
+        // чтобы фронт мог показать пометку об урезанных данных.
+        $truncated = false;
+
         if (!$meta['paginated'] && $meta['limit'] === null && count($rows) > self::MAX_ROWS) {
-            throw new RuntimeException(sprintf(
-                'Запрос вернул больше %s строк. Включите постраничный вывод или сузьте '
-                . 'выборку фильтрами: иначе часть данных не попадёт на график.',
-                number_format(self::MAX_ROWS, 0, '.', ' ')
-            ));
+            $truncated = true;
+            $rows = array_slice($rows, 0, self::MAX_ROWS);
         }
 
-        return $rows;
+        return ['rows' => $rows, 'truncated' => $truncated];
     }
 
     /**

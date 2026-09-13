@@ -1,0 +1,44 @@
+/*
+ * Раскладка на всю высоту экрана.
+ *
+ * У Tabler .page-center центрирует контент через flex (justify-content:center),
+ * но это работает только если .page реально растянут на всю высоту —
+ * а .page-center получает height:100% от родителя только если вся цепочка
+ * предков (html → body → #app → main) имеет явную высоту, а не auto.
+ * Без этого блока форма логина/регистрации прижималась к верху экрана,
+ * а не была по центру, как в оригинальном шаблоне Tabler.
+ */
+html, body, #app {
+    height: 100%;
+}
+
+#app {
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
+}
+
+.app-main {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+}
+
+/*
+ * Ощущение нативного приложения внутри WebView.
+ *
+ * overscroll-behavior убирает "резиновый" бounce и подтягивание системного
+ * pull-to-refresh при скролле до края страницы — в обычном браузере это
+ * нормально, а в обёрнутом в WebView приложении выглядит как баг.
+ *
+ * tap-highlight и touch-action убирают серую вспышку при тапе на Android
+ * и 300мс задержку перед реакцией на тап.
+ */
+html, body {
+    overscroll-behavior-y: contain;
+}
+
+a, button, .btn, .nav-link, .dropdown-item {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}

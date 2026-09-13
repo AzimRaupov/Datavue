@@ -1,10 +1,15 @@
 <?php
 
+use App\Http\Controllers\Alert\AlertController;
+use App\Http\Controllers\Alert\AlertRunController;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Chat\ChatController;
 use App\Http\Controllers\Chat\ExportController;
 use App\Http\Controllers\Chat\MessageController;
+use App\Http\Controllers\Dashboard\DashboardBuilderController;
 use App\Http\Controllers\Dashboard\DashboardController;
+use App\Http\Controllers\Dashboard\DashboardWidgetController;
+use App\Http\Controllers\Dashboard\WorkspaceController;
 use App\Http\Controllers\DataSource\DataSourceConnectionController;
 use App\Http\Controllers\DataSource\DataSourceController;
 use App\Http\Controllers\DataSource\DataSourceTypeController;
@@ -19,24 +24,12 @@ Route::get('/user', function (Request $request) {
 })->middleware('auth:sanctum');
 
 
-Route::post('/test', function (Request $request) {
-
-    $user = $request->user();
-
-    return response()->json([
-        'user' => $user,
-
-        'roles' => $user->getRoleNames(),
-
-        'permissions' => $user->getAllPermissions()
-            ->pluck('name'),
-    ]);
-})->middleware('auth:sanctum');
-
-
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
-Route::post('/get-user', [AuthController::class, 'getUser'])->middleware('auth:sanctum');
+// 'active' обязателен и здесь: без него отключённый сотрудник загружал бы
+// интерфейс целиком и упирался в 403 на каждом действии вместо понятного
+// «учётная запись отключена».
+Route::post('/get-user', [AuthController::class, 'getUser'])->middleware(['auth:sanctum', 'active']);
 
 // Метод в контроллере был, а маршрута к нему не существовало — выйти из
 // аккаунта было невозможно, токен оставался действительным навсегда.
@@ -52,6 +45,60 @@ Route::middleware(['auth:sanctum', 'active'])->prefix('company')->group(function
     Route::match(['put', 'patch'], 'chats/{chat}', [ChatController::class, 'update'])->middleware('permission:edit chats');
     Route::delete('chats/{chat}', [ChatController::class, 'destroy'])->middleware('permission:delete chats');
 
+    /*
+    | Рабочие пространства: задача, её дашборды и разговор с агентом.
+    |
+    | Страница пространства собирается одним запросом, а не набором: она
+    | открывается на каждом переключении дашборда, и ходить за одним и тем же
+    | четыре раза незачем.
+    |
+    | Маршруты по дашборду и по чату объявлены ДО '{workspace}', иначе
+    | 'by-dashboard' попадёт в параметр id.
+    */
+    Route::get('workspaces', [WorkspaceController::class, 'index'])
+        ->middleware('permission:view dashboards');
+    Route::post('workspaces', [WorkspaceController::class, 'store'])
+        ->middleware('permission:create dashboards');
+    Route::get('workspaces/by-dashboard/{dashboard}', [WorkspaceController::class, 'byDashboard'])
+        ->middleware('permission:view dashboards');
+    Route::get('workspaces/by-chat/{chat}', [WorkspaceController::class, 'byChat'])
+        ->middleware('permission:view chats');
+    Route::get('workspaces/{workspace}', [WorkspaceController::class, 'show'])
+        ->middleware('permission:view dashboards');
+    Route::match(['put', 'patch'], 'workspaces/{workspace}', [WorkspaceController::class, 'update'])
+        ->middleware('permission:edit dashboards');
+    Route::delete('workspaces/{workspace}', [WorkspaceController::class, 'destroy'])
+        ->middleware('permission:delete dashboards');
+    // Разговор пространства — заводится по кнопке «AI Ассистент».
+    Route::post('workspaces/{workspace}/chat', [WorkspaceController::class, 'attachChat'])
+        ->middleware('permission:create chats');
+
+    /*
+    | Алерты: проверки по расписанию с письмом на почту компании. Условие
+    | задаёт человек — метриками, SQL или Python; ИИ в эту ветку не вовлечён.
+    */
+    Route::get('workspaces/{workspace}/alerts', [AlertController::class, 'index'])
+        ->middleware('permission:view alerts');
+    Route::post('workspaces/{workspace}/alerts', [AlertController::class, 'store'])
+        ->middleware('permission:manage alerts');
+    Route::get('workspaces/{workspace}/alerts/schema', [AlertRunController::class, 'schema'])
+        ->middleware('permission:manage alerts');
+    Route::post('workspaces/{workspace}/alerts/preview', [AlertRunController::class, 'preview'])
+        ->middleware('permission:manage alerts');
+
+    Route::get('alerts/{alert}', [AlertController::class, 'show'])
+        ->middleware('permission:view alerts');
+    Route::match(['put', 'patch'], 'alerts/{alert}', [AlertController::class, 'update'])
+        ->middleware('permission:manage alerts');
+    Route::delete('alerts/{alert}', [AlertController::class, 'destroy'])
+        ->middleware('permission:manage alerts');
+    Route::post('alerts/{alert}/toggle', [AlertController::class, 'toggle'])
+        ->middleware('permission:manage alerts');
+    Route::post('alerts/{alert}/run', [AlertRunController::class, 'run'])
+        ->middleware('permission:manage alerts');
+    Route::get('alerts/{alert}/history', [AlertRunController::class, 'history'])
+        ->middleware('permission:view alerts');
+
     Route::get('dashboards', [DashboardController::class, 'index'])->middleware('permission:view dashboards');
     Route::get('dashboards/{dashboard}', [DashboardController::class, 'show'])->middleware('permission:view dashboards');
     Route::post('dashboards', [DashboardController::class, 'store'])->middleware('permission:create dashboards');
@@ -60,6 +107,39 @@ Route::middleware(['auth:sanctum', 'active'])->prefix('company')->group(function
     Route::match(['put', 'patch'], 'dashboards/{dashboard}/widgets', [DashboardController::class, 'updateWidgets'])
         ->middleware('permission:edit dashboards');
     Route::delete('dashboards/{dashboard}', [DashboardController::class, 'destroy'])->middleware('permission:delete dashboards');
+
+    /*
+    | Рабочее место сборки дашборда.
+    |
+    | Отделено от просмотра: здесь отдаётся код виджетов и схема источника,
+    | которые смотрящему дашборд не нужны. Написание кода закрыто отдельным
+    | правом — оно выполняется на сервере, в отличие от перестановки виджетов.
+    */
+    Route::middleware('permission:edit dashboards')->group(function () {
+        Route::get('dashboards/{dashboard}/edit', [DashboardBuilderController::class, 'edit']);
+        Route::get('dashboards/{dashboard}/schema', [DashboardBuilderController::class, 'schema']);
+        // Связи между таблицами — конструктор предлагает условие соединения.
+        Route::post('dashboards/{dashboard}/relations', [DashboardBuilderController::class, 'relations']);
+        Route::post('dashboards/{dashboard}/query', [DashboardBuilderController::class, 'query']);
+
+        Route::post('dashboards/{dashboard}/widgets', [DashboardWidgetController::class, 'store']);
+        Route::match(['put', 'patch'], 'dashboards/{dashboard}/widgets/{widget}', [DashboardWidgetController::class, 'update']);
+        Route::delete('dashboards/{dashboard}/widgets/{widget}', [DashboardWidgetController::class, 'destroy']);
+        Route::put('dashboards/{dashboard}/reorder', [DashboardWidgetController::class, 'reorder']);
+
+        Route::middleware('permission:write widget code')->group(function () {
+            // Основной способ задать содержимое виджета — SQL-запрос.
+            Route::post('dashboards/{dashboard}/widgets/{widget}/query/run', [DashboardWidgetController::class, 'runQuery']);
+            // Сборка запроса без выполнения — показать SQL во время настройки.
+            Route::post('dashboards/{dashboard}/widgets/{widget}/query/compose', [DashboardWidgetController::class, 'composeQuery']);
+            Route::put('dashboards/{dashboard}/widgets/{widget}/query', [DashboardWidgetController::class, 'saveQuery']);
+
+            // Python остался у виджетов, написанных до перехода на запросы.
+            Route::post('dashboards/{dashboard}/widgets/{widget}/run', [DashboardWidgetController::class, 'runDraft']);
+            Route::put('dashboards/{dashboard}/widgets/{widget}/code', [DashboardWidgetController::class, 'saveCode']);
+            Route::post('dashboards/{dashboard}/widgets/{widget}/code/restore', [DashboardWidgetController::class, 'restoreCode']);
+        });
+    });
 
     // Сообщения агенту — это работа с чатом, поэтому право на создание чата.
     Route::get('messages', [MessageController::class, 'index'])->middleware('permission:view chats');
@@ -133,6 +213,9 @@ Route::middleware(['auth:sanctum', 'active'])->prefix('company')->group(function
         Route::get('users/{user}', [\App\Http\Controllers\Company\UsersController::class, 'show'])
             ->middleware('permission:view users');
 
+        // Заведение и правка сотрудников. Сборка доступа галочками требует
+        // вдобавок права 'manage roles' — оно проверяется в контроллере,
+        // потому что зависит от тела запроса (UsersController::authorizeAccessChange).
         Route::middleware('permission:manage users')->group(function () {
             Route::post('users', [\App\Http\Controllers\Company\UsersController::class, 'store']);
             Route::match(['put', 'patch'], 'users/{user}', [\App\Http\Controllers\Company\UsersController::class, 'update']);

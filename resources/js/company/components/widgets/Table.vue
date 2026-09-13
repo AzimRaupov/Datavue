@@ -7,9 +7,9 @@
       отступы у него были свои.
     -->
     <div class="card">
-        <div class="card-header">
-            <h3 class="card-title">Таблица данных</h3>
-            <div class="card-actions">
+        <div class="card-header flex-wrap gap-2">
+            <h3 class="card-title">{{ t('widgets.table.title') }}</h3>
+            <div class="card-actions" style="min-width: 10rem; flex: 1 1 auto; max-width: 260px;">
                 <div class="input-icon">
                     <span class="input-icon-addon">
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
@@ -20,7 +20,7 @@
                         </svg>
                     </span>
                     <input v-model="searchQuery" type="text" class="form-control form-control-sm"
-                           placeholder="Поиск…" aria-label="Поиск по таблице" />
+                           :placeholder="t('widgets.table.search_placeholder')" :aria-label="t('widgets.table.search_aria_label')" />
                 </div>
             </div>
         </div>
@@ -53,23 +53,23 @@
                 </tr>
                 <tr v-if="filteredRows.length === 0">
                     <td :colspan="tableData.headers.length || 1" class="text-center text-secondary py-4">
-                        Ничего не найдено
+                        {{ t('widgets.table.no_results') }}
                     </td>
                 </tr>
                 </tbody>
             </table>
         </div>
 
-        <div class="card-footer d-flex align-items-center">
+        <div class="card-footer d-flex flex-wrap align-items-center gap-2">
             <p class="m-0 text-secondary">
-                Показано <span class="fw-bold">{{ shownStart }}-{{ shownEnd }}</span>
-                из <span class="fw-bold">{{ filteredRows.length }}</span>
+                {{ t('widgets.table.shown_prefix') }} <span class="fw-bold">{{ shownStart }}-{{ shownEnd }}</span>
+                {{ t('widgets.table.shown_of') }} <span class="fw-bold">{{ filteredRows.length }}</span>
             </p>
 
-            <ul class="pagination pagination-sm m-0 ms-auto">
+            <ul class="pagination pagination-sm m-0 ms-auto flex-nowrap overflow-x-auto">
                 <li class="page-item" :class="{ disabled: currentPage === 1 }">
                     <button class="page-link" :disabled="currentPage === 1" @click="currentPage--">
-                        Назад
+                        {{ t('widgets.table.back') }}
                     </button>
                 </li>
                 <li
@@ -82,7 +82,7 @@
                 </li>
                 <li class="page-item" :class="{ disabled: currentPage >= totalPages }">
                     <button class="page-link" :disabled="currentPage >= totalPages" @click="currentPage++">
-                        Вперёд
+                        {{ t('widgets.table.next') }}
                     </button>
                 </li>
             </ul>
@@ -92,6 +92,9 @@
 
 <script setup>
 import { ref, computed, watch } from "vue"
+import { useI18n } from "vue-i18n"
+
+const { t } = useI18n()
 
 const props = defineProps({
     // Сюда прилетает весь объект виджета

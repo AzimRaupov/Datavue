@@ -98,3 +98,32 @@ it('превращает пустое значение в NULL', function () {
 
     expect($result['sql'])->toBe('SELECT * FROM t WHERE (NULL IS NULL OR d >= NULL)');
 });
+
+it('не трогает двоеточие внутри строкового литерала', function () {
+    $binder = new SqlParameterBinder(supportsBindings: true);
+
+    // «:https» здесь — часть значения, а не параметр. Раньше подстановка
+    // шла по всему тексту, и условие превращалось в «LIKE '%url?%'»
+    // с лишней привязкой: виджет отбирал совсем не то, о чём просили.
+    $result = $binder->apply(
+        "SELECT * FROM t WHERE url LIKE '%url:https%' AND d >= :date_from",
+        ['date_from' => '2024-01-01', 'https' => null],
+        ['date_from' => 'date']
+    );
+
+    expect($result['sql'])->toBe("SELECT * FROM t WHERE url LIKE '%url:https%' AND d >= ?")
+        ->and($result['bindings'])->toBe(['2024-01-01']);
+});
+
+it('видит плейсхолдер после литерала с удвоенной кавычкой', function () {
+    $binder = new SqlParameterBinder(supportsBindings: true);
+
+    $result = $binder->apply(
+        "SELECT 'O''Brien:x' AS a FROM t WHERE d = :day",
+        ['day' => '2024-05-01'],
+        ['day' => 'date']
+    );
+
+    expect($result['sql'])->toBe("SELECT 'O''Brien:x' AS a FROM t WHERE d = ?")
+        ->and($result['bindings'])->toBe(['2024-05-01']);
+});

@@ -46,33 +46,58 @@ class SqlParameterBinder
     {
         $bindings = [];
 
-        // Плейсхолдеры перебираем в порядке появления в тексте: для позиционных
-        // параметров важен именно он.
-        $result = preg_replace_callback(
-            // (?<!:) — чтобы приведение типа PostgreSQL (col::date)
-            // не было принято за плейсхолдер.
-            '/(?<!:):([a-zA-Z_][a-zA-Z0-9_]*)/',
-            function (array $match) use ($values, $types, &$bindings) {
-                $name = $match[1];
+        $replace = function (string $chunk) use ($values, $types, &$bindings): string {
+            // Плейсхолдеры перебираем в порядке появления в тексте: для позиционных
+            // параметров важен именно он.
+            return preg_replace_callback(
+                // (?<!:) — чтобы приведение типа PostgreSQL (col::date)
+                // не было принято за плейсхолдер.
+                '/(?<!:):([a-zA-Z_][a-zA-Z0-9_]*)/',
+                function (array $match) use ($values, $types, &$bindings) {
+                    $name = $match[1];
 
-                // Незнакомый плейсхолдер оставляем как есть: возможно, это
-                // приведение типа в PostgreSQL (`col::date`), а не параметр.
-                if (!array_key_exists($name, $values)) {
-                    return $match[0];
-                }
+                    // Незнакомый плейсхолдер оставляем как есть: возможно, это
+                    // приведение типа в PostgreSQL (`col::date`), а не параметр.
+                    if (!array_key_exists($name, $values)) {
+                        return $match[0];
+                    }
 
-                $value = $this->cast($values[$name], $types[$name] ?? self::TYPE_STRING);
+                    $value = $this->cast($values[$name], $types[$name] ?? self::TYPE_STRING);
 
-                if ($this->supportsBindings) {
-                    $bindings[] = $value;
+                    if ($this->supportsBindings) {
+                        $bindings[] = $value;
 
-                    return '?';
-                }
+                        return '?';
+                    }
 
-                return $this->literal($value);
-            },
-            $sql
+                    return $this->literal($value);
+                },
+                $chunk
+            );
+        };
+
+        // Строковые литералы обходим стороной. Двоеточие внутри кавычек —
+        // это данные, а не параметр: условие вида «name LIKE '%url:https%'»
+        // превращалось в «'%url?%'» с лишней привязкой, и запрос отбирал
+        // совсем не то, о чём просили.
+        $parts = preg_split(
+            "/('(?:\\\\.|''|[^'\\\\])*')/",
+            $sql,
+            -1,
+            PREG_SPLIT_DELIM_CAPTURE
         );
+
+        if ($parts === false) {
+            return ['sql' => $replace($sql), 'bindings' => $bindings];
+        }
+
+        $result = '';
+
+        foreach ($parts as $index => $part) {
+            // Нечётные части — сами литералы, они попали в результат
+            // preg_split как захваченная группа.
+            $result .= $index % 2 === 1 ? $part : $replace($part);
+        }
 
         return ['sql' => $result, 'bindings' => $bindings];
     }

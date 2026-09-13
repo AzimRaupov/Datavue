@@ -9,6 +9,7 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from "vue"
 import ApexCharts from "apexcharts"
+import { colorsFor } from "./palette.js"
 
 /**
  * Семейство "bar": сравнение метрики по категориям.
@@ -87,16 +88,7 @@ const renderChart = async () => {
         yaxis: {
             labels: { padding: 4 },
         },
-        colors: [
-            "var(--chart-color-1)",
-            "var(--chart-color-2)",
-            "var(--chart-color-3)",
-            "var(--chart-color-4)",
-            "var(--chart-color-5)",
-            "var(--chart-color-6)",
-            "var(--chart-color-7)",
-            "var(--chart-color-8)",
-        ],
+        colors: colorsFor(props.options),
         // Легенда нужна только когда рядов больше одного — иначе она
         // дублирует заголовок виджета.
         legend: {

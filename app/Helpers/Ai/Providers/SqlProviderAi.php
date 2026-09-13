@@ -21,6 +21,25 @@ abstract class SqlProviderAi
      */
     abstract protected function dialectRules(): string;
 
+    /**
+     * То же самое, но для потребителя, который собирает промпт сам.
+     *
+     * WidgetQueryAi просит у модели не программу, а SQL-спецификацию, поэтому
+     * готовые промпты этого класса ему не подходят — нужны только название
+     * диалекта и его правила, вставленные в свой текст. Метод существует
+     * ради того, чтобы описание диалекта осталось в одном месте: иначе
+     * правило вроде TRY_CAST придётся дублировать и оно разойдётся.
+     *
+     * @return array{name: string, rules: string}
+     */
+    public function dialectHints(): array
+    {
+        return [
+            'name' => $this->dialectName(),
+            'rules' => $this->dialectRules(),
+        ];
+    }
+
 
     public function reViewErrorsWidget($data){
         $dialect = $this->dialectName();

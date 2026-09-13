@@ -3,7 +3,7 @@
 namespace App\Events;
 
 use App\Models\DataSource;
-use Illuminate\Broadcasting\Channel;
+use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
@@ -35,10 +35,14 @@ class DataSourceGroupingProgress implements ShouldBroadcastNow
         return 'DataSourceGroupingProgress';
     }
 
+    /**
+     * Приватный канал: в подписях шагов едут имена таблиц клиента.
+     * Кого пускать, решает routes/channels.php.
+     */
     public function broadcastOn(): array
     {
         return [
-            new Channel('data_source.' . $this->dataSource->id),
+            new PrivateChannel('data_source.' . $this->dataSource->id),
         ];
     }
 

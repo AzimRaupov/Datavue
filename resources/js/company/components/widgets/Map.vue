@@ -2,7 +2,7 @@
     <div class="col-md-6">
         <div class="card">
             <div class="card-body">
-                <h3 class="card-title">World map</h3>
+                <h3 class="card-title">{{ t('widgets.map.title') }}</h3>
                 <div class="ratio ratio-4x3">
                     <div>
                         <div id="map-world-merc" class="w-100 h-100"></div>
@@ -15,6 +15,10 @@
 </template>
 
 <script setup>
+import { useI18n } from "vue-i18n"
+
+const { t } = useI18n()
+
 document.addEventListener("DOMContentLoaded", function () {
     const map = new jsVectorMap({
         selector: "#map-world-merc",

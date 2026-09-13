@@ -1,5 +1,5 @@
 <script setup>
-import { ref, provide, onMounted, watch, nextTick } from 'vue';
+import { ref, computed, provide, onMounted, watch, nextTick } from 'vue';
 import axios from 'axios';
 
 import Header from './Header.vue';
@@ -15,7 +15,28 @@ const error = ref(null);
 const toastRef = ref(null);
 provide('toast', toastRef);
 
+// У директора свой минимальный верх (лого/меню пользователя внутри его
+// собственной страницы) — общая шапка со ссылками на конструктор, источники
+// и сотрудников ему не нужна и всё равно вела бы на страницы без доступа.
+const isDirector = computed(() => (user.value?.roles ?? []).includes('director'));
+
+/**
+ * Без токена, в WebView, у пользователя нет адресной строки, чтобы вручную
+ * перейти на /login — раньше в этом случае просто рисовалась страница
+ * "не найдено", и попасть в приложение можно было только переустановкой.
+ */
+function redirectToLogin() {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    window.location.href = '/login';
+}
+
 async function getUser() {
+    if (!token) {
+        redirectToLogin();
+        return;
+    }
+
     try {
         const response = await axios.post(
             '/api/get-user',
@@ -36,6 +57,13 @@ async function getUser() {
         );
 
     } catch (err) {
+        // Токен просрочен/отозван — это не ошибка, а нормальный повод
+        // отправить человека на вход заново, а не показывать ему 404.
+        if (err.response?.status === 401) {
+            redirectToLogin();
+            return;
+        }
+
         console.error(err);
 
         error.value =
@@ -168,7 +196,7 @@ watch(user, async (value) => {
     <!-- Пользователь авторизован -->
     <template v-else-if="user">
         <div class="page">
-            <Header />
+            <Header v-if="!isDirector" />
 
             <router-view />
         </div>

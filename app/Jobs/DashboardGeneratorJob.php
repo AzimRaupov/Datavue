@@ -25,14 +25,21 @@ class DashboardGeneratorJob implements ShouldQueue
     public $dataSourceId;
 
     /**
+     * Пустой дашборд, который нужно заполнить, вместо создания нового.
+     * Null — обычный путь: дашборда ещё нет, генератор заведёт свой.
+     */
+    public $dashboardId;
+
+    /**
      * Create a new job instance.
      */
-    public function __construct($message_id, $chat_id, $user_id, $dataSourceId)
+    public function __construct($message_id, $chat_id, $user_id, $dataSourceId, $dashboardId = null)
     {
         $this->message_id = $message_id;
         $this->chat_id = $chat_id;
         $this->user_id = $user_id;
         $this->dataSourceId = $dataSourceId;
+        $this->dashboardId = $dashboardId;
     }
 
     public function handle(): void
@@ -48,6 +55,7 @@ class DashboardGeneratorJob implements ShouldQueue
             $generator = new DashboardGenerator(
                 $this->chat_id,
                 $this->message_id,
+                $this->dashboardId,
             );
             $grouping = new \App\Helpers\DataSource\DataSourceGrouping($this->dataSourceId);
 

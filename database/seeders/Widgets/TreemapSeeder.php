@@ -46,7 +46,6 @@ TEXT,
                 'description' => 'Блоки в одной цветовой гамме, оттенок по величине. Выбор по умолчанию: подчёркивает '
                     .'размер, а не принадлежность.',
                 'options' => ['chartType' => 'treemap', 'distributed' => false],
-                'is_default' => true,
             ],
             [
                 'name' => 'distributed',
@@ -54,6 +53,8 @@ TEXT,
                 'description' => 'Каждый блок своего цвета. Берите, когда категории нужно различать между собой '
                     .'(бренды, направления), а блоков не больше ~12.',
                 'options' => ['chartType' => 'treemap', 'distributed' => true],
+                'is_default' => true,
+
             ],
         ];
     }
