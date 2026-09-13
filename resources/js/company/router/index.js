@@ -15,6 +15,7 @@ import SourceShow from "../pages/sources/ShowPage.vue";
 import SourceCreate from "../pages/sources/CreatePage.vue";
 import ChatsIndex from "../pages/chats/IndexPage.vue";
 import AlertForm from "../pages/alerts/AlertForm.vue";
+import DirectorPage from "../pages/director/IndexPage.vue";
 
 const routes = [
     {
@@ -162,8 +163,43 @@ const routes = [
         path: '/widgets',
         name: 'company.widgets',
         component: AllWidgets
-    }
+    },
+
+    /*
+    | Директор: единственный экран роли — чат с историей, как в обычных
+    | ИИ-приложениях. Конструктор, источники и настройки ему не показываются
+    | (см. guard ниже), генерация/перегенерация/экспорт работают через тот же
+    | чат, что и у остальных ролей.
+    */
+    {
+        path: '/director',
+        name: 'director.home',
+        component: DirectorPage,
+    },
+    {
+        path: '/director/:chat(\\d+)',
+        name: 'director.chat',
+        component: DirectorPage,
+    },
 ];
+
+/**
+ * Роль читаем прямо из localStorage, как и остальные компоненты (Header.vue,
+ * WorkspacePage.vue) — в приложении нет отдельного стора пользователя.
+ */
+function currentRoles() {
+    try {
+        return JSON.parse(localStorage.getItem('user') || 'null')?.roles ?? [];
+    } catch {
+        return [];
+    }
+}
+
+// У директора нет прав ни на что, кроме чатов и просмотра дашбордов —
+// конструктор/источники/сотрудники ему всё равно ответят 403. Редирект здесь
+// чисто ради интерфейса: чтобы старая закладка или прямой адрес не показывали
+// пустую страницу с ошибкой, а сразу уводили в его единственный экран.
+const DIRECTOR_ALLOWED_ROUTES = new Set(['director.home', 'director.chat', 'settings.profile']);
 
 const router = createRouter({
 
@@ -173,6 +209,12 @@ const router = createRouter({
 
 router.beforeEach((to, from, next) => {
     NProgress.start();
+
+    if (currentRoles().includes('director') && !DIRECTOR_ALLOWED_ROUTES.has(to.name)) {
+        next({ name: 'director.home' });
+        return;
+    }
+
     next();
 });
 

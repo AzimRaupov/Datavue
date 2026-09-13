@@ -91,3 +91,39 @@
         width: calc(100vw - 1.5rem);
     }
 }
+
+/*
+ * Ощущение нативного приложения внутри WebView.
+ *
+ * overscroll-behavior убирает "резиновый" bounce и системный pull-to-refresh
+ * при скролле до края страницы — в обычном браузере это нормально, а в
+ * обёрнутом в WebView приложении читается как баг.
+ *
+ * tap-highlight и touch-action убирают серую вспышку при тапе на Android
+ * и штатную 300мс задержку перед реакцией на тап.
+ */
+html, body {
+    overscroll-behavior-y: contain;
+}
+
+a, button, .btn, .nav-link, .dropdown-item {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+
+/*
+ * Safe area: отступы под системные вырезы/жесты (актуально для сборки под
+ * iOS в будущем — на Android WebView эти env()-переменные равны 0 и ничего
+ * не меняют, поэтому правило безопасно уже сейчас).
+ */
+.navbar {
+    padding-top: env(safe-area-inset-top, 0px);
+}
+
+.btn-floating {
+    bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+}
+
+.chat-fab {
+    bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+}

@@ -3,7 +3,7 @@
   "appName": "Datavue",
   "webDir": "public/build",
   "server": {
-    "url": "http://192.168.123.44:8000",
+    "url": "http://192.168.10.196:8000",
     "cleartext": true
   }
 }

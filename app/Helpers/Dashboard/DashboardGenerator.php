@@ -53,7 +53,7 @@ class DashboardGenerator
 
     protected DashboardAi $dashboardGeneratorAi;
 
-    public function __construct($chat_id, $message_id)
+    public function __construct($chat_id, $message_id, $dashboardId = null)
     {
         $this->chat = AiChat::query()->with('user', 'extractedData')->find($chat_id);
         $this->message = AiChatMessage::query()->find($message_id);
@@ -80,14 +80,38 @@ class DashboardGenerator
             ->where('is_ai_selectable', true)
             ->with(['types', 'selectableTypes'])
             ->get();
-        $this->dashboard = Dashboard::query()->create([
-            'chat_id' => $chat_id,
-            'company_id' => $this->chat->company_id,
-            // Дашборд появляется В рабочем пространстве разговора: без этого
-            // он не попал бы ни в один список и открыть его было бы негде.
-            'workspace_id' => $this->chat->workspace_id,
-            'status' => 'empty',
-        ]);
+        // Если пользователь уже стоит на пустом дашборде (завёл его вручную
+        // кнопкой «Новый дашборд» и тут же попросил агента собрать аналитику),
+        // заполняем именно его — иначе рядом появлялся бы дубль: старый навсегда
+        // пустой и новый с виджетами. Дашборд с виджетами сюда не попадает —
+        // это гарантирует вызывающий код (RouterTask), но условие на всякий
+        // случай проверяется и здесь: испортить чужую работу опаснее, чем
+        // один раз завести лишний дашборд.
+        $existing = $dashboardId
+            ? Dashboard::query()
+                ->where('id', $dashboardId)
+                ->where('company_id', $this->chat->company_id)
+                ->withCount('widgets')
+                ->first()
+            : null;
+
+        if ($existing && $existing->widgets_count === 0) {
+            $existing->chat_id = $chat_id;
+            $existing->workspace_id = $existing->workspace_id ?? $this->chat->workspace_id;
+            $existing->status = 'empty';
+            $existing->save();
+
+            $this->dashboard = $existing;
+        } else {
+            $this->dashboard = Dashboard::query()->create([
+                'chat_id' => $chat_id,
+                'company_id' => $this->chat->company_id,
+                // Дашборд появляется В рабочем пространстве разговора: без этого
+                // он не попал бы ни в один список и открыть его было бы негде.
+                'workspace_id' => $this->chat->workspace_id,
+                'status' => 'empty',
+            ]);
+        }
 
         $this->tasks_statuses = TaskStatus::query()
             ->pluck('id', 'name')

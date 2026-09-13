@@ -115,6 +115,19 @@ class ChatContext
         return $this->dashboard !== null;
     }
 
+    /**
+     * Дашборд, который есть смысл перестраивать «изменениями».
+     *
+     * Дашборд без виджетов (например, только что создан вручную кнопкой
+     * «Новый дашборд») с точки зрения намерения пользователя ничем не
+     * отличается от отсутствия дашборда: менять в нём нечего, значит
+     * «создай дашборд» тут значит РОВНО ТО ЖЕ, что и в пустом чате.
+     */
+    public function hasDashboardWithWidgets(): bool
+    {
+        return $this->dashboard !== null && $this->dashboardWidgets->isNotEmpty();
+    }
+
     public function hasGroups(): bool
     {
         return $this->groups->isNotEmpty();

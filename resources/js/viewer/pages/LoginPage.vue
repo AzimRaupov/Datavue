@@ -46,8 +46,12 @@
                     </div>
 
 
+                    <div v-if="generalError" class="alert alert-danger py-2 px-3 small">{{ generalError }}</div>
+
                     <div class="form-footer">
-                        <button type="submit" class="btn btn-primary w-100">{{ t('auth.page_login')}}</button>
+                        <button type="submit" class="btn btn-primary w-100" :disabled="loading">
+                            {{ loading ? '...' : t('auth.page_login') }}
+                        </button>
                     </div>
                 </div>
             </form>
@@ -68,20 +72,32 @@ const form = reactive({
     'password': '',
 });
 
+const generalError = ref(null);
+const loading = ref(false);
+
 async function login() {
+    if (loading.value) return;
+
+    loading.value = true;
+    generalError.value = null;
+
     try {
         const response = await api.post('/login', form);
 
         if (response.data.token) {
             localStorage.setItem('token', response.data.token);
-
         }
 
-        console.log(response.data);
-        // window.location.replace('/company');
+        if (response.data.user) {
+            localStorage.setItem('user', JSON.stringify(response.data.user));
+        }
+
+        window.location.href = '/company';
 
     } catch (error) {
-        console.log('REGISTER ERROR:', error.response?.data || error.message);
+        generalError.value = error.response?.data?.message || 'Не удалось войти. Попробуйте ещё раз.';
+    } finally {
+        loading.value = false;
     }
 }
 

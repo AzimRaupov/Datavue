@@ -13,6 +13,10 @@ import WidgetSettingsDrawer from "../../components/builder/WidgetSettingsDrawer.
 import WidgetCodeModal from "../../components/builder/WidgetCodeModal.vue";
 import AiChatSidebar from "../../components/chat/AiChatSidebar.vue";
 import AlertList from "../../components/alerts/AlertList.vue";
+import DashboardWidgetsView from "../../components/dashboard/DashboardWidgetsView.vue";
+import { typesOf, currentTypeId, changeWidgetType } from "../../utils/widgetTypes.js";
+import { usePrintArea } from "../../composables/usePrintArea.js";
+import { dashboardStatusInfo } from "../../utils/dashboardStatus.js";
 
 /**
  * Рабочее пространство: его дашборды, чат с агентом и конструктор на одной
@@ -101,15 +105,6 @@ const isGenerating = computed(() =>
     ["generating_scheme", "generating_widgets"].includes(dashboard.value?.status)
 );
 
-const DASHBOARD_STATUS = {
-    empty: { key: "workspacePage.dashboard_status.empty", cls: "bg-secondary-lt" },
-    generating_scheme: { key: "workspacePage.dashboard_status.generating_scheme", cls: "bg-azure-lt" },
-    generating_widgets: { key: "workspacePage.dashboard_status.generating_widgets", cls: "bg-azure-lt" },
-    reviewing: { key: "workspacePage.dashboard_status.reviewing", cls: "bg-azure-lt" },
-    completed: { key: "workspacePage.dashboard_status.completed", cls: "bg-green-lt" },
-    failed: { key: "workspacePage.dashboard_status.failed", cls: "bg-red-lt" },
-};
-
 const WIDGET_STATUS = {
     draft: { key: "workspacePage.widget_status.draft", cls: "bg-secondary-lt" },
     active: { key: "workspacePage.widget_status.active", cls: "bg-green-lt" },
@@ -123,16 +118,7 @@ function statusOf(widget) {
 }
 
 function dashboardStatus(item) {
-    const entry = DASHBOARD_STATUS[item?.status];
-    return entry ? { text: t(entry.key), cls: entry.cls } : { text: item?.status ?? "", cls: "bg-secondary-lt" };
-}
-
-function typesOf(widget) {
-    return widget?.widget?.types ?? [];
-}
-
-function currentTypeId(widget) {
-    return widget.widget_type_id ?? widget.widget_type?.id ?? null;
+    return dashboardStatusInfo(item?.status, t);
 }
 
 // --- Загрузка ---------------------------------------------------------------
@@ -444,11 +430,7 @@ async function renameWidget(widget, title) {
  */
 async function changeType(widget, typeId) {
     try {
-        const { data } = await api.patch(
-            `/dashboards/${dashboardId.value}/widgets/${widget.id}`,
-            { widget_type_id: Number(typeId) }
-        );
-
+        const data = await changeWidgetType(dashboardId.value, widget, typeId);
         replaceWidget(data);
     } catch (err) {
         notice.value = err.response?.data?.message || t("workspacePage.errors.change_type_failed");
@@ -651,72 +633,7 @@ function onChatDashboard(id) {
 // --- Печать -----------------------------------------------------------------
 
 const exportArea = ref(null);
-
-const EXPAND_SELECTOR =
-    "[style*='overflow'], .overflow-auto, .overflow-scroll, .table-responsive, .scroll, .chart-container, canvas, .echarts, .apexcharts-canvas";
-
-function expandScrollableAreas(root) {
-    if (!root) return [];
-
-    const restoreList = [];
-    const nodes = [root, ...root.querySelectorAll(EXPAND_SELECTOR)];
-
-    nodes.forEach((el) => {
-        const original = {
-            overflow: el.style.overflow,
-            overflowX: el.style.overflowX,
-            overflowY: el.style.overflowY,
-            maxHeight: el.style.maxHeight,
-            height: el.style.height,
-        };
-
-        const computed = window.getComputedStyle(el);
-        const hasClip =
-            ["auto", "scroll", "hidden"].includes(computed.overflow) ||
-            ["auto", "scroll", "hidden"].includes(computed.overflowY) ||
-            (computed.maxHeight && computed.maxHeight !== "none");
-
-        if (hasClip) {
-            el.style.setProperty("overflow", "visible", "important");
-            el.style.setProperty("overflow-x", "visible", "important");
-            el.style.setProperty("overflow-y", "visible", "important");
-            el.style.setProperty("max-height", "none", "important");
-
-            if (el.scrollHeight > el.clientHeight) {
-                el.style.setProperty("height", "auto", "important");
-            }
-
-            restoreList.push({ el, original });
-        }
-    });
-
-    return restoreList;
-}
-
-function restoreScrollableAreas(restoreList) {
-    restoreList.forEach(({ el, original }) => {
-        el.style.overflow = original.overflow;
-        el.style.overflowX = original.overflowX;
-        el.style.overflowY = original.overflowY;
-        el.style.maxHeight = original.maxHeight;
-        el.style.height = original.height;
-    });
-}
-
-let printRestoreList = [];
-
-function handleBeforePrint() {
-    printRestoreList = expandScrollableAreas(exportArea.value);
-}
-
-function handleAfterPrint() {
-    restoreScrollableAreas(printRestoreList);
-    printRestoreList = [];
-}
-
-function printDashboard() {
-    window.print();
-}
+const { printDashboard } = usePrintArea(exportArea);
 
 // --- Жизненный цикл ---------------------------------------------------------
 
@@ -729,9 +646,6 @@ onMounted(async () => {
     if (createModalEl.value) createModal = new Modal(createModalEl.value);
 
     if (isEditing.value && canEdit.value) await loadSchema();
-
-    window.addEventListener("beforeprint", handleBeforePrint);
-    window.addEventListener("afterprint", handleAfterPrint);
 });
 
 onBeforeUnmount(() => {
@@ -742,9 +656,6 @@ onBeforeUnmount(() => {
     createModal?.dispose();
 
     if (currentChannelName) echo.leave(currentChannelName);
-
-    window.removeEventListener("beforeprint", handleBeforePrint);
-    window.removeEventListener("afterprint", handleAfterPrint);
 });
 </script>
 
@@ -1133,9 +1044,9 @@ onBeforeUnmount(() => {
                      увидит смотрящий. -->
                 <div v-else ref="exportArea">
                     <div ref="canvas">
-                        <template v-for="widget in widgets" :key="widget.id">
-                            <!-- Режим сборки -->
-                            <div v-if="isEditing" class="card mb-3 builder-card">
+                        <!-- Режим сборки -->
+                        <template v-if="isEditing">
+                            <div v-for="widget in widgets" :key="widget.id" class="card mb-3 builder-card">
                                 <div class="card-header builder-drag d-flex flex-wrap align-items-center gap-2">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
                                          viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -1225,34 +1136,19 @@ onBeforeUnmount(() => {
                                     </div>
                                 </div>
                             </div>
-
-                            <!-- Режим просмотра -->
-                            <div v-else class="row row-cards widgets-content mb-3">
-                                <div class="col-12">
-                                    <div class="d-flex align-items-center mb-2">
-                                        <h3 class="mb-0 flex-fill">{{ widget.title }}</h3>
-
-                                        <select
-                                            v-if="canEdit && typesOf(widget).length > 1"
-                                            class="form-select form-select-sm w-auto ms-2 d-print-none"
-                                            :value="currentTypeId(widget)"
-                                            :aria-label="t('workspacePage.widget_type_aria', { title: widget.title })"
-                                            @change="changeType(widget, $event.target.value)"
-                                        >
-                                            <option v-for="type in typesOf(widget)" :key="type.id" :value="type.id">
-                                                {{ type.title || type.name }}
-                                            </option>
-                                        </select>
-                                    </div>
-
-                                    <WidgetContainer
-                                        :widget="widget"
-                                        :chat-id="chat?.id ?? null"
-                                        :refresh-token="refreshToken"
-                                    />
-                                </div>
-                            </div>
                         </template>
+
+                        <!-- Режим просмотра -->
+                        <DashboardWidgetsView
+                            v-else
+                            :widgets="widgets"
+                            :dashboard-id="dashboardId"
+                            :chat-id="chat?.id ?? null"
+                            :refresh-token="refreshToken"
+                            :can-edit="canEdit"
+                            @widget-updated="replaceWidget"
+                            @error="notice = $event"
+                        />
                     </div>
                 </div>
             </div>

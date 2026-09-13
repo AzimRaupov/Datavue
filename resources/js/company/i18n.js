@@ -1099,6 +1099,82 @@ const messages = {
                 completed: 'Завершено',
                 failed: 'Ошибка',
             },
+            dashboard_card: {
+                title: 'Дашборд готов',
+                open: 'Открыть →',
+            },
+        },
+
+        director: {
+            app_name: 'Директор',
+            errors: {
+                load_failed: 'Не удалось загрузить список чатов',
+                rename_failed: 'Не удалось переименовать чат',
+                delete_failed: 'Не удалось удалить чат',
+            },
+            sidebar: {
+                new_chat: 'Новый чат',
+                empty: 'Пока нет ни одного разговора — начните первый.',
+                source_deleted: 'источник удалён',
+                chat_actions_aria: 'Действия с чатом',
+                rename: 'Переименовать',
+                delete: 'Удалить',
+            },
+            topbar: {
+                toggle_sidebar: 'Показать историю чатов',
+            },
+            user_menu: {
+                open: 'Меню пользователя',
+            },
+            new_chat: {
+                title: 'Новый чат',
+                subtitle: 'Выберите источник данных, о котором хотите спросить агента.',
+                source_label: 'Источник данных',
+                source_placeholder: 'Выберите источник',
+                no_sources_hint: 'Источники данных не подключены — обратитесь к администратору компании.',
+                title_label: 'Название чата (необязательно)',
+                title_placeholder: 'Например, «Продажи за квартал»',
+                submit: 'Начать разговор',
+                errors: {
+                    create_failed: 'Не удалось создать чат',
+                },
+            },
+            empty: {
+                prompt: 'Выберите чат из истории слева или начните новый.',
+            },
+            chat_panel: {
+                untitled: 'Разговор с агентом',
+                open_dashboard: 'Дашборд',
+                errors: {
+                    no_access: 'Нет доступа к этому чату',
+                    load_failed: 'Не удалось загрузить чат',
+                },
+            },
+            dashboard_viewer: {
+                back: 'Назад к чату',
+                untitled: 'Дашборд',
+                print: 'Печать',
+                version_select_aria: 'Версия дашборда',
+                version_fallback: 'Версия №{id}',
+                generating: {
+                    title: 'Агент строит дашборд…',
+                    subtitle: 'Обычно это занимает меньше минуты.',
+                },
+                empty: {
+                    title: 'В дашборде пока нет виджетов',
+                    subtitle: 'Попросите агента добавить их в чате.',
+                },
+                errors: {
+                    no_access: 'Нет доступа к этому дашборду',
+                    load_failed: 'Не удалось загрузить дашборд',
+                },
+            },
+            delete_modal: {
+                title: 'Удалить чат?',
+                body: 'Чат «{name}» и все его дашборды будут удалены без возможности восстановления.',
+                cancel: 'Отмена',
+                confirm: 'Удалить',
+            },
         },
     },
 
@@ -2200,6 +2276,82 @@ const messages = {
                 completed: 'Completed',
                 failed: 'Failed',
             },
+            dashboard_card: {
+                title: 'Dashboard is ready',
+                open: 'Open →',
+            },
+        },
+
+        director: {
+            app_name: 'Director',
+            errors: {
+                load_failed: 'Failed to load the chat list',
+                rename_failed: 'Failed to rename the chat',
+                delete_failed: 'Failed to delete the chat',
+            },
+            sidebar: {
+                new_chat: 'New chat',
+                empty: 'No conversations yet — start the first one.',
+                source_deleted: 'source deleted',
+                chat_actions_aria: 'Chat actions',
+                rename: 'Rename',
+                delete: 'Delete',
+            },
+            topbar: {
+                toggle_sidebar: 'Show chat history',
+            },
+            user_menu: {
+                open: 'User menu',
+            },
+            new_chat: {
+                title: 'New chat',
+                subtitle: 'Pick the data source you want to ask the agent about.',
+                source_label: 'Data source',
+                source_placeholder: 'Choose a source',
+                no_sources_hint: 'No data sources are connected yet — ask your company admin.',
+                title_label: 'Chat title (optional)',
+                title_placeholder: 'E.g. "Quarterly sales"',
+                submit: 'Start the conversation',
+                errors: {
+                    create_failed: 'Failed to create the chat',
+                },
+            },
+            empty: {
+                prompt: 'Pick a chat from the history on the left, or start a new one.',
+            },
+            chat_panel: {
+                untitled: 'Conversation with the agent',
+                open_dashboard: 'Dashboard',
+                errors: {
+                    no_access: 'You don’t have access to this chat',
+                    load_failed: 'Failed to load the chat',
+                },
+            },
+            dashboard_viewer: {
+                back: 'Back to chat',
+                untitled: 'Dashboard',
+                print: 'Print',
+                version_select_aria: 'Dashboard version',
+                version_fallback: 'Version #{id}',
+                generating: {
+                    title: 'The agent is building the dashboard…',
+                    subtitle: 'This usually takes less than a minute.',
+                },
+                empty: {
+                    title: 'This dashboard has no widgets yet',
+                    subtitle: 'Ask the agent to add some in the chat.',
+                },
+                errors: {
+                    no_access: 'You don’t have access to this dashboard',
+                    load_failed: 'Failed to load the dashboard',
+                },
+            },
+            delete_modal: {
+                title: 'Delete chat?',
+                body: 'The chat "{name}" and all of its dashboards will be permanently deleted.',
+                cancel: 'Cancel',
+                confirm: 'Delete',
+            },
         },
     },
 
@@ -3300,6 +3452,82 @@ const messages = {
                 in_progress: 'Дар ҷараён',
                 completed: 'Анҷом ёфт',
                 failed: 'Хатогӣ',
+            },
+            dashboard_card: {
+                title: 'Дашборд тайёр аст',
+                open: 'Кушодан →',
+            },
+        },
+
+        director: {
+            app_name: 'Директор',
+            errors: {
+                load_failed: 'Боркунии рӯйхати чатҳо муяссар нашуд',
+                rename_failed: 'Иваз кардани номи чат муяссар нашуд',
+                delete_failed: 'Нест кардани чат муяссар нашуд',
+            },
+            sidebar: {
+                new_chat: 'Чати нав',
+                empty: 'Ҳанӯз ягон гуфтугӯ нест — аввалинро оғоз кунед.',
+                source_deleted: 'манбаъ нест шудааст',
+                chat_actions_aria: 'Амалҳо бо чат',
+                rename: 'Иваз кардани ном',
+                delete: 'Нест кардан',
+            },
+            topbar: {
+                toggle_sidebar: 'Нишон додани таърихи чатҳо',
+            },
+            user_menu: {
+                open: 'Менюи корбар',
+            },
+            new_chat: {
+                title: 'Чати нав',
+                subtitle: 'Манбаи маълумотро, ки мехоҳед аз агент дар бораи он пурсед, интихоб кунед.',
+                source_label: 'Манбаи маълумот',
+                source_placeholder: 'Манбаъро интихоб кунед',
+                no_sources_hint: 'Ягон манбаи маълумот пайваст нашудааст — ба администратори ширкат муроҷиат кунед.',
+                title_label: 'Номи чат (ихтиёрӣ)',
+                title_placeholder: 'Масалан, «Фурӯш барои семоҳа»',
+                submit: 'Гуфтугӯро оғоз кунед',
+                errors: {
+                    create_failed: 'Эҳдоси чат муяссар нашуд',
+                },
+            },
+            empty: {
+                prompt: 'Аз таърихи чап чатеро интихоб кунед ё нави онро оғоз кунед.',
+            },
+            chat_panel: {
+                untitled: 'Гуфтугӯ бо агент',
+                open_dashboard: 'Дашборд',
+                errors: {
+                    no_access: 'Ба ин чат дастрасӣ нест',
+                    load_failed: 'Боркунии чат муяссар нашуд',
+                },
+            },
+            dashboard_viewer: {
+                back: 'Бозгашт ба чат',
+                untitled: 'Дашборд',
+                print: 'Чоп',
+                version_select_aria: 'Версияи дашборд',
+                version_fallback: 'Версияи №{id}',
+                generating: {
+                    title: 'Агент дашбордро месозад…',
+                    subtitle: 'Одатан ин камтар аз як дақиқа вақт мегирад.',
+                },
+                empty: {
+                    title: 'Дар ин дашборд ҳанӯз виджетҳо нестанд',
+                    subtitle: 'Аз агент дар чат хоҳиш кунед, ки илова кунад.',
+                },
+                errors: {
+                    no_access: 'Ба ин дашборд дастрасӣ нест',
+                    load_failed: 'Боркунии дашборд муяссар нашуд',
+                },
+            },
+            delete_modal: {
+                title: 'Чат нест карда шавад?',
+                body: 'Чати «{name}» ва ҳамаи дашбордҳои он бебозгашт нест карда мешаванд.',
+                cancel: 'Бекор кардан',
+                confirm: 'Нест кардан',
             },
         },
     },

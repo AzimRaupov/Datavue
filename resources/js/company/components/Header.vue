@@ -149,187 +149,187 @@ const logout = async () => {
                      кнопку настроек внизу справа. -->
                 <div class="d-flex me-2">
                     <!-- BEGIN NOTIFICATIONS -->
-                    <div class="nav-item dropdown d-flex">
-                        <a
-                            href="#"
-                            class="nav-link px-0"
-                            data-bs-toggle="dropdown"
-                            tabindex="-1"
-                            :aria-label="t('header.show_notifications')"
-                            data-bs-auto-close="outside"
-                            aria-expanded="false"
-                        >
-                            <!-- Download SVG icon from http://tabler.io/icons/icon/bell -->
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                width="24"
-                                height="24"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                aria-hidden="true"
-                                focusable="false"
-                                class="icon icon-1"
-                            >
-                                <path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6" />
-                                <path d="M9 17v1a3 3 0 0 0 6 0v-1" />
-                            </svg>
-                            <span class="badge bg-red"></span>
-                        </a>
-                        <!-- BEGIN NAVBAR NOTIFICATIONS -->
-                        <div class="dropdown-menu dropdown-menu-arrow dropdown-menu-end dropdown-menu-card">
-                            <div class="card">
-                                <div class="card-header d-flex">
-                                    <h3 class="card-title">{{ t('header.notifications') }}</h3>
-                                    <div class="btn-close ms-auto" data-bs-dismiss="dropdown"></div>
-                                </div>
-                                <div class="list-group list-group-flush list-group-hoverable">
-                                    <div class="list-group-item">
-                                        <div class="row align-items-center">
-                                            <div class="col-auto"><span class="status-dot status-dot-animated bg-red d-block"></span></div>
-                                            <div class="col text-truncate">
-                                                <a href="#" class="text-body d-block">{{ t('header.notification_example_1') }}</a>
-                                                <div class="d-block text-secondary text-truncate mt-n1">{{ t('header.notification_desc_1') }}</div>
-                                            </div>
-                                            <div class="col-auto">
-                                                <a href="#" class="list-group-item-actions">
-                                                    <!-- Download SVG icon from http://tabler.io/icons/icon/star -->
-                                                    <svg
-                                                        xmlns="http://www.w3.org/2000/svg"
-                                                        width="24"
-                                                        height="24"
-                                                        viewBox="0 0 24 24"
-                                                        fill="none"
-                                                        stroke="currentColor"
-                                                        stroke-width="2"
-                                                        stroke-linecap="round"
-                                                        stroke-linejoin="round"
-                                                        aria-hidden="true"
-                                                        focusable="false"
-                                                        class="icon text-muted icon-2"
-                                                    >
-                                                        <path
-                                                            d="M12 17.75l-6.172 3.245l1.179 -6.873l-5 -4.867l6.9 -1l3.086 -6.253l3.086 6.253l6.9 1l-5 4.867l1.179 6.873l-6.158 -3.245"
-                                                        />
-                                                    </svg>
-                                                </a>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="list-group-item">
-                                        <div class="row align-items-center">
-                                            <div class="col-auto"><span class="status-dot d-block"></span></div>
-                                            <div class="col text-truncate">
-                                                <a href="#" class="text-body d-block">{{ t('header.notification_example_2') }}</a>
-                                                <div class="d-block text-secondary text-truncate mt-n1">{{ t('header.notification_desc_2') }}</div>
-                                            </div>
-                                            <div class="col-auto">
-                                                <a href="#" class="list-group-item-actions show">
-                                                    <!-- Download SVG icon from http://tabler.io/icons/icon/star -->
-                                                    <svg
-                                                        xmlns="http://www.w3.org/2000/svg"
-                                                        width="24"
-                                                        height="24"
-                                                        viewBox="0 0 24 24"
-                                                        fill="none"
-                                                        stroke="currentColor"
-                                                        stroke-width="2"
-                                                        stroke-linecap="round"
-                                                        stroke-linejoin="round"
-                                                        aria-hidden="true"
-                                                        focusable="false"
-                                                        class="icon text-yellow icon-2"
-                                                    >
-                                                        <path
-                                                            d="M12 17.75l-6.172 3.245l1.179 -6.873l-5 -4.867l6.9 -1l3.086 -6.253l3.086 6.253l6.9 1l-5 4.867l1.179 6.873l-6.158 -3.245"
-                                                        />
-                                                    </svg>
-                                                </a>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="list-group-item">
-                                        <div class="row align-items-center">
-                                            <div class="col-auto"><span class="status-dot d-block"></span></div>
-                                            <div class="col text-truncate">
-                                                <a href="#" class="text-body d-block">{{ t('header.notification_example_3') }}</a>
-                                                <div class="d-block text-secondary text-truncate mt-n1">{{ t('header.notification_desc_3') }}</div>
-                                            </div>
-                                            <div class="col-auto">
-                                                <a href="#" class="list-group-item-actions">
-                                                    <!-- Download SVG icon from http://tabler.io/icons/icon/star -->
-                                                    <svg
-                                                        xmlns="http://www.w3.org/2000/svg"
-                                                        width="24"
-                                                        height="24"
-                                                        viewBox="0 0 24 24"
-                                                        fill="none"
-                                                        stroke="currentColor"
-                                                        stroke-width="2"
-                                                        stroke-linecap="round"
-                                                        stroke-linejoin="round"
-                                                        aria-hidden="true"
-                                                        focusable="false"
-                                                        class="icon text-muted icon-2"
-                                                    >
-                                                        <path
-                                                            d="M12 17.75l-6.172 3.245l1.179 -6.873l-5 -4.867l6.9 -1l3.086 -6.253l3.086 6.253l6.9 1l-5 4.867l1.179 6.873l-6.158 -3.245"
-                                                        />
-                                                    </svg>
-                                                </a>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="list-group-item">
-                                        <div class="row align-items-center">
-                                            <div class="col-auto"><span class="status-dot status-dot-animated bg-green d-block"></span></div>
-                                            <div class="col text-truncate">
-                                                <a href="#" class="text-body d-block">{{ t('header.notification_example_4') }}</a>
-                                                <div class="d-block text-secondary text-truncate mt-n1">{{ t('header.notification_desc_4') }}</div>
-                                            </div>
-                                            <div class="col-auto">
-                                                <a href="#" class="list-group-item-actions">
-                                                    <!-- Download SVG icon from http://tabler.io/icons/icon/star -->
-                                                    <svg
-                                                        xmlns="http://www.w3.org/2000/svg"
-                                                        width="24"
-                                                        height="24"
-                                                        viewBox="0 0 24 24"
-                                                        fill="none"
-                                                        stroke="currentColor"
-                                                        stroke-width="2"
-                                                        stroke-linecap="round"
-                                                        stroke-linejoin="round"
-                                                        aria-hidden="true"
-                                                        focusable="false"
-                                                        class="icon text-muted icon-2"
-                                                    >
-                                                        <path
-                                                            d="M12 17.75l-6.172 3.245l1.179 -6.873l-5 -4.867l6.9 -1l3.086 -6.253l3.086 6.253l6.9 1l-5 4.867l1.179 6.873l-6.158 -3.245"
-                                                        />
-                                                    </svg>
-                                                </a>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="card-body">
-                                    <div class="row">
-                                        <div class="col">
-                                            <a href="#" class="btn btn-2 w-100"> {{ t('header.archive_all') }} </a>
-                                        </div>
-                                        <div class="col">
-                                            <a href="#" class="btn btn-2 w-100"> {{ t('header.mark_all_read') }} </a>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <!-- END NAVBAR NOTIFICATIONS -->
-                    </div>
+<!--                    <div class="nav-item dropdown d-flex">-->
+<!--                        <a-->
+<!--                            href="#"-->
+<!--                            class="nav-link px-0"-->
+<!--                            data-bs-toggle="dropdown"-->
+<!--                            tabindex="-1"-->
+<!--                            :aria-label="t('header.show_notifications')"-->
+<!--                            data-bs-auto-close="outside"-->
+<!--                            aria-expanded="false"-->
+<!--                        >-->
+<!--                            &lt;!&ndash; Download SVG icon from http://tabler.io/icons/icon/bell &ndash;&gt;-->
+<!--                            <svg-->
+<!--                                xmlns="http://www.w3.org/2000/svg"-->
+<!--                                width="24"-->
+<!--                                height="24"-->
+<!--                                viewBox="0 0 24 24"-->
+<!--                                fill="none"-->
+<!--                                stroke="currentColor"-->
+<!--                                stroke-width="2"-->
+<!--                                stroke-linecap="round"-->
+<!--                                stroke-linejoin="round"-->
+<!--                                aria-hidden="true"-->
+<!--                                focusable="false"-->
+<!--                                class="icon icon-1"-->
+<!--                            >-->
+<!--                                <path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6" />-->
+<!--                                <path d="M9 17v1a3 3 0 0 0 6 0v-1" />-->
+<!--                            </svg>-->
+<!--                            <span class="badge bg-red"></span>-->
+<!--                        </a>-->
+<!--                        &lt;!&ndash; BEGIN NAVBAR NOTIFICATIONS &ndash;&gt;-->
+<!--                        <div class="dropdown-menu dropdown-menu-arrow dropdown-menu-end dropdown-menu-card">-->
+<!--                            <div class="card">-->
+<!--                                <div class="card-header d-flex">-->
+<!--                                    <h3 class="card-title">{{ t('header.notifications') }}</h3>-->
+<!--                                    <div class="btn-close ms-auto" data-bs-dismiss="dropdown"></div>-->
+<!--                                </div>-->
+<!--                                <div class="list-group list-group-flush list-group-hoverable">-->
+<!--                                    <div class="list-group-item">-->
+<!--                                        <div class="row align-items-center">-->
+<!--                                            <div class="col-auto"><span class="status-dot status-dot-animated bg-red d-block"></span></div>-->
+<!--                                            <div class="col text-truncate">-->
+<!--                                                <a href="#" class="text-body d-block">{{ t('header.notification_example_1') }}</a>-->
+<!--                                                <div class="d-block text-secondary text-truncate mt-n1">{{ t('header.notification_desc_1') }}</div>-->
+<!--                                            </div>-->
+<!--                                            <div class="col-auto">-->
+<!--                                                <a href="#" class="list-group-item-actions">-->
+<!--                                                    &lt;!&ndash; Download SVG icon from http://tabler.io/icons/icon/star &ndash;&gt;-->
+<!--                                                    <svg-->
+<!--                                                        xmlns="http://www.w3.org/2000/svg"-->
+<!--                                                        width="24"-->
+<!--                                                        height="24"-->
+<!--                                                        viewBox="0 0 24 24"-->
+<!--                                                        fill="none"-->
+<!--                                                        stroke="currentColor"-->
+<!--                                                        stroke-width="2"-->
+<!--                                                        stroke-linecap="round"-->
+<!--                                                        stroke-linejoin="round"-->
+<!--                                                        aria-hidden="true"-->
+<!--                                                        focusable="false"-->
+<!--                                                        class="icon text-muted icon-2"-->
+<!--                                                    >-->
+<!--                                                        <path-->
+<!--                                                            d="M12 17.75l-6.172 3.245l1.179 -6.873l-5 -4.867l6.9 -1l3.086 -6.253l3.086 6.253l6.9 1l-5 4.867l1.179 6.873l-6.158 -3.245"-->
+<!--                                                        />-->
+<!--                                                    </svg>-->
+<!--                                                </a>-->
+<!--                                            </div>-->
+<!--                                        </div>-->
+<!--                                    </div>-->
+<!--                                    <div class="list-group-item">-->
+<!--                                        <div class="row align-items-center">-->
+<!--                                            <div class="col-auto"><span class="status-dot d-block"></span></div>-->
+<!--                                            <div class="col text-truncate">-->
+<!--                                                <a href="#" class="text-body d-block">{{ t('header.notification_example_2') }}</a>-->
+<!--                                                <div class="d-block text-secondary text-truncate mt-n1">{{ t('header.notification_desc_2') }}</div>-->
+<!--                                            </div>-->
+<!--                                            <div class="col-auto">-->
+<!--                                                <a href="#" class="list-group-item-actions show">-->
+<!--                                                    &lt;!&ndash; Download SVG icon from http://tabler.io/icons/icon/star &ndash;&gt;-->
+<!--                                                    <svg-->
+<!--                                                        xmlns="http://www.w3.org/2000/svg"-->
+<!--                                                        width="24"-->
+<!--                                                        height="24"-->
+<!--                                                        viewBox="0 0 24 24"-->
+<!--                                                        fill="none"-->
+<!--                                                        stroke="currentColor"-->
+<!--                                                        stroke-width="2"-->
+<!--                                                        stroke-linecap="round"-->
+<!--                                                        stroke-linejoin="round"-->
+<!--                                                        aria-hidden="true"-->
+<!--                                                        focusable="false"-->
+<!--                                                        class="icon text-yellow icon-2"-->
+<!--                                                    >-->
+<!--                                                        <path-->
+<!--                                                            d="M12 17.75l-6.172 3.245l1.179 -6.873l-5 -4.867l6.9 -1l3.086 -6.253l3.086 6.253l6.9 1l-5 4.867l1.179 6.873l-6.158 -3.245"-->
+<!--                                                        />-->
+<!--                                                    </svg>-->
+<!--                                                </a>-->
+<!--                                            </div>-->
+<!--                                        </div>-->
+<!--                                    </div>-->
+<!--                                    <div class="list-group-item">-->
+<!--                                        <div class="row align-items-center">-->
+<!--                                            <div class="col-auto"><span class="status-dot d-block"></span></div>-->
+<!--                                            <div class="col text-truncate">-->
+<!--                                                <a href="#" class="text-body d-block">{{ t('header.notification_example_3') }}</a>-->
+<!--                                                <div class="d-block text-secondary text-truncate mt-n1">{{ t('header.notification_desc_3') }}</div>-->
+<!--                                            </div>-->
+<!--                                            <div class="col-auto">-->
+<!--                                                <a href="#" class="list-group-item-actions">-->
+<!--                                                    &lt;!&ndash; Download SVG icon from http://tabler.io/icons/icon/star &ndash;&gt;-->
+<!--                                                    <svg-->
+<!--                                                        xmlns="http://www.w3.org/2000/svg"-->
+<!--                                                        width="24"-->
+<!--                                                        height="24"-->
+<!--                                                        viewBox="0 0 24 24"-->
+<!--                                                        fill="none"-->
+<!--                                                        stroke="currentColor"-->
+<!--                                                        stroke-width="2"-->
+<!--                                                        stroke-linecap="round"-->
+<!--                                                        stroke-linejoin="round"-->
+<!--                                                        aria-hidden="true"-->
+<!--                                                        focusable="false"-->
+<!--                                                        class="icon text-muted icon-2"-->
+<!--                                                    >-->
+<!--                                                        <path-->
+<!--                                                            d="M12 17.75l-6.172 3.245l1.179 -6.873l-5 -4.867l6.9 -1l3.086 -6.253l3.086 6.253l6.9 1l-5 4.867l1.179 6.873l-6.158 -3.245"-->
+<!--                                                        />-->
+<!--                                                    </svg>-->
+<!--                                                </a>-->
+<!--                                            </div>-->
+<!--                                        </div>-->
+<!--                                    </div>-->
+<!--                                    <div class="list-group-item">-->
+<!--                                        <div class="row align-items-center">-->
+<!--                                            <div class="col-auto"><span class="status-dot status-dot-animated bg-green d-block"></span></div>-->
+<!--                                            <div class="col text-truncate">-->
+<!--                                                <a href="#" class="text-body d-block">{{ t('header.notification_example_4') }}</a>-->
+<!--                                                <div class="d-block text-secondary text-truncate mt-n1">{{ t('header.notification_desc_4') }}</div>-->
+<!--                                            </div>-->
+<!--                                            <div class="col-auto">-->
+<!--                                                <a href="#" class="list-group-item-actions">-->
+<!--                                                    &lt;!&ndash; Download SVG icon from http://tabler.io/icons/icon/star &ndash;&gt;-->
+<!--                                                    <svg-->
+<!--                                                        xmlns="http://www.w3.org/2000/svg"-->
+<!--                                                        width="24"-->
+<!--                                                        height="24"-->
+<!--                                                        viewBox="0 0 24 24"-->
+<!--                                                        fill="none"-->
+<!--                                                        stroke="currentColor"-->
+<!--                                                        stroke-width="2"-->
+<!--                                                        stroke-linecap="round"-->
+<!--                                                        stroke-linejoin="round"-->
+<!--                                                        aria-hidden="true"-->
+<!--                                                        focusable="false"-->
+<!--                                                        class="icon text-muted icon-2"-->
+<!--                                                    >-->
+<!--                                                        <path-->
+<!--                                                            d="M12 17.75l-6.172 3.245l1.179 -6.873l-5 -4.867l6.9 -1l3.086 -6.253l3.086 6.253l6.9 1l-5 4.867l1.179 6.873l-6.158 -3.245"-->
+<!--                                                        />-->
+<!--                                                    </svg>-->
+<!--                                                </a>-->
+<!--                                            </div>-->
+<!--                                        </div>-->
+<!--                                    </div>-->
+<!--                                </div>-->
+<!--                                <div class="card-body">-->
+<!--                                    <div class="row">-->
+<!--                                        <div class="col">-->
+<!--                                            <a href="#" class="btn btn-2 w-100"> {{ t('header.archive_all') }} </a>-->
+<!--                                        </div>-->
+<!--                                        <div class="col">-->
+<!--                                            <a href="#" class="btn btn-2 w-100"> {{ t('header.mark_all_read') }} </a>-->
+<!--                                        </div>-->
+<!--                                    </div>-->
+<!--                                </div>-->
+<!--                            </div>-->
+<!--                        </div>-->
+<!--                        &lt;!&ndash; END NAVBAR NOTIFICATIONS &ndash;&gt;-->
+<!--                    </div>-->
                     <!-- END NOTIFICATIONS -->
                     <!-- BEGIN APPS -->
                     <!-- END APPS -->
@@ -426,7 +426,7 @@ const logout = async () => {
                                 <path d="M10 3.2a9 9 0 1 0 10.8 10.8a1 1 0 0 0 -1 -1h-6.8a2 2 0 0 1 -2 -2v-7a.9 .9 0 0 0 -1 -.8" />
                                 <path d="M15 3.5a9 9 0 0 1 5.5 5.5h-4.5a1 1 0 0 1 -1 -1v-4.5" />
                             </svg>
-                            {{ t('header.analytics') }}</a
+                            {{ t('header.overview') }}</a
                         >
                         <div class="dropdown-divider"></div>
                         <router-link
@@ -457,9 +457,7 @@ const logout = async () => {
                             </svg>
                             {{ t('header.all_widgets') }}
                         </router-link>
-                        <a class="dropdown-item" href="./settings.html">{{ t('header.settings_privacy') }}</a>
-                        <a class="dropdown-item" href="#">{{ t('header.help') }}</a>
-                        <a class="dropdown-item" href="#" @click.prevent="logout">
+                       <a class="dropdown-item" href="#" @click.prevent="logout">
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
                                  fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
                                  stroke-linejoin="round" aria-hidden="true" focusable="false"

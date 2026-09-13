@@ -82,7 +82,7 @@
     "src": "node_modules/@tabler/core/dist/img/flags/tj.svg"
   },
   "resources/css/admin/app.css": {
-    "file": "assets/app-JEHC4DOa.css",
+    "file": "assets/app-Cd0L-7od.css",
     "name": "app",
     "names": [
       "app.css"
@@ -100,7 +100,7 @@
     "isEntry": true
   },
   "resources/css/viewer/app.css": {
-    "file": "assets/app-x1XGuNl0.css",
+    "file": "assets/app-ByGVVxHY.css",
     "name": "app",
     "names": [
       "app.css"
@@ -121,7 +121,7 @@
     ]
   },
   "resources/js/company/app.js": {
-    "file": "assets/app-fPYlSv63.js",
+    "file": "assets/app-C3AaHDUQ.js",
     "name": "app",
     "src": "resources/js/company/app.js",
     "isEntry": true,
@@ -130,11 +130,11 @@
       "_tabler-theme-C0lHGzeR.js"
     ],
     "css": [
-      "assets/app-bX6BJww5.css"
+      "assets/app-6Ma_jRAw.css"
     ]
   },
   "resources/js/viewer/app.js": {
-    "file": "assets/app-CefRpxjY.js",
+    "file": "assets/app-YjNKF9AK.js",
     "name": "app",
     "src": "resources/js/viewer/app.js",
     "isEntry": true,

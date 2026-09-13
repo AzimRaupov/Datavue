@@ -88,13 +88,26 @@ class RolePermissionSeeder extends Seeder
             'view data sources',
             'view alerts',
         ],
+
+        // Директор работает только через чат с ИИ-агентом: заводит разговоры
+        // и смотрит готовые дашборды. Конструктор, источники и админка ему
+        // не нужны — вся его работа идёт через RouterTask (генерация,
+        // перегенерация, выгрузка), а не через прямые права на дашборды.
+        'director' => [
+            'view chats',
+            'create chats',
+            'edit chats',
+            'delete chats',
+            'view dashboards',
+            'view data sources',
+        ],
     ];
 
     /**
      * Роли, которые company_admin может назначать сотрудникам.
      * super_admin сюда намеренно не входит — это платформенная роль.
      */
-    public const ASSIGNABLE_ROLES = ['company_admin', 'analyst', 'viewer'];
+    public const ASSIGNABLE_ROLES = ['company_admin', 'analyst', 'viewer', 'director'];
 
     /**
      * Права по разделам — для настройки доступа сотрудника вручную.
