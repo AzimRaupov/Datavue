@@ -268,6 +268,7 @@ const messages = {
             compute_failed: 'Виджет не посчитался',
             unknown_widget_type: 'Неизвестный тип виджета: {type}',
             load_error: 'Не удалось загрузить данные виджета.',
+            truncated_notice: 'Показана часть данных — набор слишком большой для одного графика.',
         },
 
         sourcesIndex: {
@@ -1445,6 +1446,7 @@ const messages = {
             compute_failed: 'Widget failed to compute',
             unknown_widget_type: 'Unknown widget type: {type}',
             load_error: 'Failed to load widget data.',
+            truncated_notice: 'Showing partial data — the full set is too large for one chart.',
         },
 
         sourcesIndex: {
@@ -2622,6 +2624,7 @@ const messages = {
             compute_failed: 'Виҷет ҳисоб нашуд',
             unknown_widget_type: 'Навъи номаълуми виҷет: {type}',
             load_error: 'Маълумоти виҷетро бор карда нашуд.',
+            truncated_notice: 'Қисми маълумот нишон дода мешавад — маҷмӯа барои як график калон аст.',
         },
 
         sourcesIndex: {

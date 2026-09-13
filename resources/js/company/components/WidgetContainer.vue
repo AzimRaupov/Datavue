@@ -27,6 +27,7 @@ const widget = computed(() => props.widget);
 const contentWidget = ref(null);
 const isLoading = ref(false);
 const loadError = ref(null);
+const contentMeta = ref(null);
 
 /**
  * Семейство виджета определяет, ЧЕМ рисовать, а тип — КАК.
@@ -69,6 +70,8 @@ const contentHasData = computed(() => hasData(familyName.value, contentWidget.va
 
 const showWidget = computed(() => family.value && isReady.value && contentHasData.value);
 
+const isTruncated = computed(() => Boolean(contentMeta.value?.truncated));
+
 const widgetProps = computed(() => propsFor(familyName.value, contentWidget.value, typeOptions.value));
 
 /**
@@ -86,6 +89,7 @@ async function getWidgetContent() {
         isLoading.value = true;
         contentWidget.value = null;
         loadError.value = null;
+        contentMeta.value = null;
 
         const response = await api.post(
             "/get-widget-content/" + widget.value.id,
@@ -99,6 +103,7 @@ async function getWidgetContent() {
         // содержимое приходит строкой в output и разбирается здесь.
         if (response.data.data && typeof response.data.data === "object") {
             contentWidget.value = response.data.data;
+            contentMeta.value = response.data.meta ?? null;
 
             return;
         }
@@ -157,11 +162,15 @@ onMounted(async () => {
 
 <template>
     <div v-if="family">
-        <component
-            v-if="showWidget"
-            :is="family.component"
-            v-bind="widgetProps"
-        />
+        <template v-if="showWidget">
+            <!-- Данные урезаны до потолка строк: показываем то, что поместилось, и предупреждаем -->
+
+
+            <component
+                :is="family.component"
+                v-bind="widgetProps"
+            />
+        </template>
 
         <!-- Виджет не посчитался: показываем причину, а не пустое место -->
         <div v-else-if="loadError" class="card">

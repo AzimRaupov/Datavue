@@ -48,6 +48,71 @@ export function familyOf(name) {
 }
 
 /**
+ * Потолок числа точек на один график.
+ *
+ * ApexCharts рисует SVG-узел на каждую точку, а на дашборде одновременно
+ * отрисовывается несколько виджетов сразу — лишние точки одного графика
+ * подвешивают вкладку целиком, а не только его. 200 — уже принятая в
+ * проекте граница «одной страницы данных» (WidgetQueryRunner::MAX_PER_PAGE
+ * на бэке), и график с таким числом точек всё ещё читаем глазом: больше
+ * категорий на оси X всё равно превращается в нечитаемую кашу подписей
+ * раньше, чем начинает лагать браузер.
+ */
+const MAX_POINTS = 200;
+
+/**
+ * Обрезает series[i].data и параллельный ему массив категорий/подписей
+ * до одной длины (bar, combo, line, radar-spider).
+ */
+function capByAxis(series, axis) {
+    if (!Array.isArray(series) || !Array.isArray(axis)) {
+        return { series, axis };
+    }
+
+    const limit = Math.min(axis.length, MAX_POINTS);
+
+    return {
+        series: series.map(item =>
+            item && Array.isArray(item.data)
+                ? { ...item, data: item.data.slice(0, limit) }
+                : item
+        ),
+        axis: axis.slice(0, limit),
+    };
+}
+
+/**
+ * Обрезает плоский числовой series вместе с параллельным labels
+ * (pie, radial, funnel, radar-polarArea) — точка и подпись всегда идут парой.
+ */
+function capFlat(series, labels) {
+    if (!Array.isArray(series)) {
+        return { series, labels };
+    }
+
+    const limit = Math.min(series.length, MAX_POINTS);
+
+    return {
+        series: series.slice(0, limit),
+        labels: Array.isArray(labels) ? labels.slice(0, limit) : labels,
+    };
+}
+
+/**
+ * Обрезает собственные точки каждого ряда — у scatter/heatmap/treemap нет
+ * общей оси категорий, координаты точки лежат прямо в data ряда.
+ */
+function capOwnData(series) {
+    if (!Array.isArray(series)) return series;
+
+    return series.map(item =>
+        item && Array.isArray(item.data)
+            ? { ...item, data: item.data.slice(0, MAX_POINTS) }
+            : item
+    );
+}
+
+/**
  * Красит ли это семейство ряды выбранной палитрой.
  *
  * Незнакомое семейство считаем красящим: скрытая настройка хуже лишней —
@@ -74,28 +139,39 @@ export function propsFor(familyName, content, options = {}) {
             return { table: data, options };
 
         case "bar":
-        case "combo":
-            return { series: data.series, categories: data.categories ?? [], options };
+        case "combo": {
+            const { series, axis } = capByAxis(data.series, data.categories ?? []);
+            return { series, categories: axis, options };
+        }
 
-        case "line":
+        case "line": {
+            const { series, axis } = capByAxis(data.series, data.labels ?? []);
+            return { series, labels: axis, options };
+        }
+
         case "pie":
         case "radial":
-        case "funnel":
-            return { series: data.series, labels: data.labels ?? [], options };
+        case "funnel": {
+            const { series, labels } = capFlat(data.series, data.labels ?? []);
+            return { series, labels, options };
+        }
 
         case "scatter":
         case "heatmap":
         case "treemap":
-            return { series: data.series, options };
+            return { series: capOwnData(data.series), options };
 
-        case "radar":
-            // polar-area приходит с labels, обычный радар — с categories.
-            return {
-                series: data.series,
-                categories: data.categories ?? [],
-                labels: data.labels ?? [],
-                options,
-            };
+        case "radar": {
+            // polar-area приходит с labels (точка = число, пары с labels),
+            // обычный радар — с categories (точка = data ряда, пары с ними).
+            if (options.chartType === "polarArea") {
+                const { series, labels } = capFlat(data.series, data.labels ?? data.categories ?? []);
+                return { series, categories: data.categories ?? [], labels, options };
+            }
+
+            const { series, axis } = capByAxis(data.series, data.categories ?? []);
+            return { series, categories: axis, labels: data.labels ?? [], options };
+        }
 
         default:
             return { options };

@@ -1344,6 +1344,22 @@ body.chat-page .page {
     opacity: 1;
 }
 
+/* Правый отступ .container-xl рассчитан на свободный край экрана
+   (см. tabler-overrides.css), а тут справа — не край, а панель чата.
+   На широких экранах он раздувал пустое место перед чатом до 40px;
+   оставляем отступ только там, где рядом действительно край окна. */
+@media (min-width: 768px) {
+    .dashboard-main .container-xl:not(.container-tight):not(.container-narrow) {
+        padding-right: 0.75rem;
+    }
+}
+
+@media (min-width: 1400px) {
+    .dashboard-main .container-xl:not(.container-tight):not(.container-narrow) {
+        padding-right: 1rem;
+    }
+}
+
 /* Пустое пространство должно стоять по центру видимой области, а не
    прижиматься к шапке: у самого .empty (Tabler) высота 100% родителя,
    а родитель — .container-xl — высоты не задаёт и подстраивается под
