@@ -20,13 +20,14 @@ const props = defineProps({
     },
 });
 
+const emit = defineEmits(["unavailable"]);
+
 const { t } = useI18n();
 
 const widget = computed(() => props.widget);
 
 const contentWidget = ref(null);
 const isLoading = ref(false);
-const loadError = ref(null);
 const contentMeta = ref(null);
 
 /**
@@ -85,10 +86,17 @@ const PLACEHOLDER_BARS = [45, 70, 35, 85, 55, 95, 40, 65];
 async function getWidgetContent() {
     if (!widget.value?.id) return;
 
+    // Виджет, который не удалось сгенерировать, не запрашиваем вовсе —
+    // он просто не показывается, без предупреждений и заглушек.
+    if (widget.value.status === "failed") {
+        emit("unavailable", widget.value.id);
+
+        return;
+    }
+
     try {
         isLoading.value = true;
         contentWidget.value = null;
-        loadError.value = null;
         contentMeta.value = null;
 
         const response = await api.post(
@@ -123,13 +131,9 @@ async function getWidgetContent() {
             : null;
 
     } catch (err) {
-        // Раньше ошибка уходила только в консоль, и виджет молча оставался
-        // заглушкой — понять, что он сломан, было нельзя. Теперь причина
-        // видна на месте: запрос сообщает, какой колонки не хватает.
-        loadError.value =
-            err.response?.data?.error ||
-            err.response?.data?.message ||
-            t("widgetContainer.load_error");
+        // Виджет не смог посчитаться — не показываем его вовсе, а не заглушку
+        // или сообщение об ошибке.
+        emit("unavailable", widget.value.id);
 
         console.error("Ошибка загрузки данных виджета:", err);
     } finally {
@@ -172,27 +176,8 @@ onMounted(async () => {
             />
         </template>
 
-        <!-- Виджет не посчитался: показываем причину, а не пустое место -->
-        <div v-else-if="loadError" class="card">
-            <div class="card-body">
-                <div class="d-flex align-items-start gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
-                         fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                         stroke-linejoin="round" class="text-danger flex-shrink-0 mt-1" aria-hidden="true">
-                        <path d="M12 9v4" />
-                        <path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0z" />
-                        <path d="M12 16h.01" />
-                    </svg>
-                    <div>
-                        <div class="fw-bold">{{ t('widgetContainer.compute_failed') }}</div>
-                        <div class="text-secondary small widget-error">{{ loadError }}</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
         <!-- Плейсхолдеры на время генерации: форма подсказывает, что появится -->
-        <template v-else>
+        <template v-else-if="widget.status !== 'failed'">
             <div v-if="family.placeholder === 'counters'" class="row g-2">
                 <div class="col-6 col-xl-3" v-for="n in 4" :key="n">
                     <div class="card">
