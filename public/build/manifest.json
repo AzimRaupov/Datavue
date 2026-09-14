@@ -82,7 +82,7 @@
     "src": "node_modules/@tabler/core/dist/img/flags/tj.svg"
   },
   "resources/css/admin/app.css": {
-    "file": "assets/app-Cd0L-7od.css",
+    "file": "assets/app-BykSTdcu.css",
     "name": "app",
     "names": [
       "app.css"
@@ -121,7 +121,7 @@
     ]
   },
   "resources/js/company/app.js": {
-    "file": "assets/app-C3AaHDUQ.js",
+    "file": "assets/app-BEHPH1OS.js",
     "name": "app",
     "src": "resources/js/company/app.js",
     "isEntry": true,
@@ -130,7 +130,7 @@
       "_tabler-theme-C0lHGzeR.js"
     ],
     "css": [
-      "assets/app-6Ma_jRAw.css"
+      "assets/app-ChAnNlcI.css"
     ]
   },
   "resources/js/viewer/app.js": {

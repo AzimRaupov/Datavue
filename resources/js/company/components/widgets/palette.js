@@ -55,3 +55,28 @@ export function colorsFor(options = {}) {
 
     return result;
 }
+
+/**
+ * Heatmap и treemap не заливают ряд одним цветом — они высчитывают оттенок
+ * сами, через ручной разбор hex/rgb-строки (см. ApexCharts Utils.shadeColor).
+ * CSS-переменная вроде "var(--chart-color-1)" этим разбором не парсится,
+ * и результат — один и тот же серый на всех ячейках независимо от значения.
+ * Остальные семейства (bar, line, pie…) заливку красят через путь, который
+ * переменные умеет резолвить сам, поэтому им эта функция не нужна.
+ */
+export function resolveThemeColors(colors) {
+    if (typeof document === "undefined") return colors;
+
+    return colors.map((color) => {
+        if (typeof color !== "string" || !color.trim().startsWith("var(")) return color;
+
+        const probe = document.createElement("span");
+        probe.style.cssText = "position:fixed;left:-9999px;visibility:hidden;";
+        probe.style.color = color;
+        document.body.appendChild(probe);
+        const resolved = getComputedStyle(probe).color;
+        probe.remove();
+
+        return resolved || color;
+    });
+}

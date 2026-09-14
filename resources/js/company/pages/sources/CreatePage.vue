@@ -45,6 +45,9 @@ const formErrors = ref({});
 const dataFile = ref(null);
 const fileInputEl = ref(null);
 
+/** Режим шага 2 у провайдеров с kind=database, у которых есть ещё и путь "загрузить дамп". */
+const uploadMode = ref('connect');
+
 const createdSource = ref(null);
 const tables = ref([]);
 
@@ -82,6 +85,20 @@ const fileAccept = computed(() =>
 );
 
 /**
+ * У MySQL, помимо обычного подключения по хосту, есть путь "загрузить .sql
+ * дамп": бэкенд сам поднимает базу и импортирует его командой `mysql`, что
+ * годится и для больших файлов — не нужно тянуть дамп через PHP-память.
+ * Для остальных СУБД импорта из файла нет, поэтому переключатель им не нужен.
+ */
+const supportsDumpUpload = computed(
+    () => kind.value === 'database' && provider.value?.name === 'mysql'
+);
+
+const isDumpUpload = computed(
+    () => supportsDumpUpload.value && uploadMode.value === 'upload'
+);
+
+/**
  * Версию спрашиваем только там, где она влияет на генерируемый SQL:
  * у внешних СУБД и у готовых файлов-баз.
  */
@@ -98,6 +115,8 @@ const isFormValid = computed(() => {
     }
 
     if (kind.value === 'api') return !!form.sheet_url.trim();
+
+    if (isDumpUpload.value) return !!dataFile.value && !!form.version;
 
     return (
         !!form.version && !!form.host && !!form.port &&
@@ -147,6 +166,8 @@ function selectProvider(id) {
     selectedProviderId.value = id;
     formError.value = null;
     formErrors.value = {};
+    uploadMode.value = 'connect';
+    dataFile.value = null;
 }
 
 function goToConfig() {
@@ -163,6 +184,12 @@ function goToConfig() {
 function backToProvider() {
     step.value = STEP_PROVIDER;
     formError.value = null;
+    formErrors.value = {};
+}
+
+function setUploadMode(mode) {
+    uploadMode.value = mode;
+    dataFile.value = null;
     formErrors.value = {};
 }
 
@@ -202,6 +229,14 @@ async function submitConfig() {
         } else if (kind.value === 'api') {
             payload.append('connection_type', 'google_sheet');
             payload.append('sheet_url', form.sheet_url.trim());
+        } else if (isDumpUpload.value) {
+            // .sql-дамп для MySQL: бэкенд создаёт базу и импортирует её
+            // командой `mysql`, поэтому источник хранится как local-файл,
+            // а type_id указывает СУБД, в которую нужно импортировать.
+            payload.append('connection_type', 'local');
+            payload.append('data_file', dataFile.value);
+            payload.append('type_id', provider.value.id);
+            payload.append('version', form.version);
         } else {
             payload.append('connection_type', 'remote');
             payload.append('type_id', provider.value.id);
@@ -464,54 +499,98 @@ onUnmounted(stopListening);
 
                         <!-- ВНЕШНЯЯ БАЗА -->
                         <template v-else>
-                            <div class="row">
-                                <div class="col-12 col-md-8">
-                                    <div class="mb-3">
-                                        <label class="form-label required">{{ t('sourcesCreate.steps.config.host_label') }}</label>
-                                        <input v-model="form.host" type="text" class="form-control"
-                                               placeholder="127.0.0.1" :disabled="isLoading" />
-                                    </div>
-                                </div>
-                                <div class="col-12 col-md-4">
-                                    <div class="mb-3">
-                                        <label class="form-label required">{{ t('sourcesCreate.steps.config.port_label') }}</label>
-                                        <input v-model="form.port" type="number" class="form-control"
-                                               :disabled="isLoading" />
-                                    </div>
-                                </div>
-                                <div class="col-12 col-md-8">
-                                    <div class="mb-3">
-                                        <label class="form-label required">{{ t('sourcesCreate.steps.config.database_label') }}</label>
-                                        <input v-model="form.database" type="text" class="form-control"
-                                               :disabled="isLoading" />
-                                    </div>
-                                </div>
-                                <div class="col-12 col-md-4">
-                                    <div class="mb-3">
-                                        <label class="form-label required">{{ t('sourcesCreate.steps.config.version_label') }}</label>
-                                        <input v-model="form.version" type="text" class="form-control"
-                                               :placeholder="versionPlaceholder" :disabled="isLoading" />
-                                    </div>
-                                </div>
-                                <div class="col-12 col-md-6">
-                                    <div class="mb-3">
-                                        <label class="form-label required">{{ t('sourcesCreate.steps.config.username_label') }}</label>
-                                        <input v-model="form.username" type="text" class="form-control"
-                                               :disabled="isLoading" />
-                                    </div>
-                                </div>
-                                <div class="col-12 col-md-6">
-                                    <div class="mb-3">
-                                        <label class="form-label">{{ t('sourcesCreate.steps.config.password_label') }}</label>
-                                        <input v-model="form.password" type="password" class="form-control"
-                                               autocomplete="new-password" :disabled="isLoading" />
-                                    </div>
+                            <!-- У MySQL, помимо подключения к серверу, есть путь "загрузить
+                                 .sql дамп" — импортирует его на сервере команда `mysql`. -->
+                            <div v-if="supportsDumpUpload" class="mb-3">
+                                <div class="form-selectgroup">
+                                    <label class="form-selectgroup-item">
+                                        <input type="radio" class="form-selectgroup-input" name="upload_mode"
+                                               :checked="uploadMode === 'connect'" :disabled="isLoading"
+                                               @change="setUploadMode('connect')" />
+                                        <span class="form-selectgroup-label">
+                                            {{ t('sourcesCreate.steps.config.mode_connect') }}
+                                        </span>
+                                    </label>
+                                    <label class="form-selectgroup-item">
+                                        <input type="radio" class="form-selectgroup-input" name="upload_mode"
+                                               :checked="uploadMode === 'upload'" :disabled="isLoading"
+                                               @change="setUploadMode('upload')" />
+                                        <span class="form-selectgroup-label">
+                                            {{ t('sourcesCreate.steps.config.mode_upload') }}
+                                        </span>
+                                    </label>
                                 </div>
                             </div>
 
-                            <div class="alert alert-info mb-0">
-                                {{ t('sourcesCreate.steps.config.db_check_notice') }}
-                            </div>
+                            <template v-if="isDumpUpload">
+                                <div class="mb-3">
+                                    <label class="form-label required">{{ t('sourcesCreate.steps.config.file_label') }}</label>
+                                    <input ref="fileInputEl" type="file" class="form-control"
+                                           :class="{ 'is-invalid': formErrors.data_file }"
+                                           accept=".sql" @change="handleDataFile" :disabled="isLoading" />
+                                    <div v-if="formErrors.data_file" class="invalid-feedback">
+                                        {{ formErrors.data_file[0] }}
+                                    </div>
+                                    <div class="form-hint">{{ t('sourcesCreate.steps.config.sql_dump_hint') }}</div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label required">{{ t('sourcesCreate.steps.config.version_label') }}</label>
+                                    <input v-model="form.version" type="text" class="form-control"
+                                           :placeholder="versionPlaceholder" :disabled="isLoading" />
+                                </div>
+                            </template>
+
+                            <template v-else>
+                                <div class="row">
+                                    <div class="col-12 col-md-8">
+                                        <div class="mb-3">
+                                            <label class="form-label required">{{ t('sourcesCreate.steps.config.host_label') }}</label>
+                                            <input v-model="form.host" type="text" class="form-control"
+                                                   placeholder="127.0.0.1" :disabled="isLoading" />
+                                        </div>
+                                    </div>
+                                    <div class="col-12 col-md-4">
+                                        <div class="mb-3">
+                                            <label class="form-label required">{{ t('sourcesCreate.steps.config.port_label') }}</label>
+                                            <input v-model="form.port" type="number" class="form-control"
+                                                   :disabled="isLoading" />
+                                        </div>
+                                    </div>
+                                    <div class="col-12 col-md-8">
+                                        <div class="mb-3">
+                                            <label class="form-label required">{{ t('sourcesCreate.steps.config.database_label') }}</label>
+                                            <input v-model="form.database" type="text" class="form-control"
+                                                   :disabled="isLoading" />
+                                        </div>
+                                    </div>
+                                    <div class="col-12 col-md-4">
+                                        <div class="mb-3">
+                                            <label class="form-label required">{{ t('sourcesCreate.steps.config.version_label') }}</label>
+                                            <input v-model="form.version" type="text" class="form-control"
+                                                   :placeholder="versionPlaceholder" :disabled="isLoading" />
+                                        </div>
+                                    </div>
+                                    <div class="col-12 col-md-6">
+                                        <div class="mb-3">
+                                            <label class="form-label required">{{ t('sourcesCreate.steps.config.username_label') }}</label>
+                                            <input v-model="form.username" type="text" class="form-control"
+                                                   :disabled="isLoading" />
+                                        </div>
+                                    </div>
+                                    <div class="col-12 col-md-6">
+                                        <div class="mb-3">
+                                            <label class="form-label">{{ t('sourcesCreate.steps.config.password_label') }}</label>
+                                            <input v-model="form.password" type="password" class="form-control"
+                                                   autocomplete="new-password" :disabled="isLoading" />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="alert alert-info mb-0">
+                                    {{ t('sourcesCreate.steps.config.db_check_notice') }}
+                                </div>
+                            </template>
                         </template>
 
                         <div v-if="formError" class="alert alert-danger mt-3 mb-0" role="alert">

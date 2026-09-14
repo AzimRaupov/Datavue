@@ -9,7 +9,7 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from "vue"
 import ApexCharts from "apexcharts"
-import { colorsFor } from "./palette.js"
+import { colorsFor, resolveThemeColors } from "./palette.js"
 
 /**
  * Семейство "heatmap": метрика на пересечении двух измерений.
@@ -26,36 +26,65 @@ const chartRef = ref(null)
 let chart = null
 
 /**
- * Пороговые диапазоны строим по реальному минимуму и максимуму: фиксированные
- * границы на чужих данных дали бы одноцветную матрицу.
+ * Один общий диапазон цвета на всю матрицу ломается, когда у строк разный
+ * порядок величин («экономкласс» и «бизнес-класс» бронирований отличаются
+ * в разы): строка с маленькими числами занимает крошечный кусочек общей
+ * шкалы и красится в один и тот же оттенок по всей длине, хотя внутри неё
+ * разброс есть. Поэтому ApexCharts получает не сами значения, а положение
+ * ячейки внутри диапазона ЕЁ СТРОКИ (0..100) — а настоящее число прячем
+ * рядом в realValue и достаём его же в тултипе, чтобы человек видел не
+ * проценты, а исходную величину.
  */
-const buildRanges = (series) => {
-    const values = series.flatMap((row) =>
-        (row.data ?? []).map((cell) => Number(cell?.y ?? 0))
-    ).filter(Number.isFinite)
+function rowMinMax(row) {
+    const values = (row.data ?? []).map((cell) => Number(cell?.y ?? 0)).filter(Number.isFinite)
 
-    if (!values.length) return undefined
+    if (!values.length) return { min: 0, max: 0 }
 
-    const min = Math.min(...values)
-    const max = Math.max(...values)
-    const step = (max - min) / 4 || 1
+    return { min: Math.min(...values), max: Math.max(...values) }
+}
 
-    const colors = [
+function normalizeSeries(series) {
+    return series.map((row) => {
+        const { min, max } = rowMinMax(row)
+        const span = max - min
+
+        return {
+            name: row.name,
+            data: (row.data ?? []).map((cell) => {
+                const realValue = Number(cell?.y ?? 0)
+                const relative = span > 0 ? ((realValue - min) / span) * 100 : 50
+
+                return { x: cell?.x, y: Math.round(relative * 100) / 100, realValue }
+            }),
+        }
+    })
+}
+
+/** Ступени по относительной шкале 0..100 — она одна и та же для всех строк. */
+const buildRanges = () => {
+    // Раскладка диапазона (getShadeColor → shadeColor) разбирает цвет вручную
+    // регуляркой на hex/rgb — «var(--chart-color-3)» она не парсит и на любом
+    // значении молча откатывается к запасному серому (#999999 в hexToRgba).
+    // Резолвим переменные в реальный rgb() заранее, как и для colors ниже.
+    const colors = resolveThemeColors([
         "var(--chart-color-3)",
         "var(--chart-color-4)",
         "var(--chart-color-2)",
         "var(--chart-color-8)",
-    ]
+    ])
+    const step = 100 / colors.length
 
-    return colors.map((color, index) => ({
-        from: min + step * index,
-        to: index === colors.length - 1 ? max : min + step * (index + 1),
-        color,
-        name: `${Math.round(min + step * index)} — ${Math.round(
-            index === colors.length - 1 ? max : min + step * (index + 1)
-        )}`,
-    }))
+    return colors.map((color, index) => {
+        const from = step * index
+        const to = index === colors.length - 1 ? 100 : step * (index + 1)
+
+        return { from, to, color, name: `${Math.round(from)}–${Math.round(to)}%` }
+    })
 }
+
+/** Настоящее значение ячейки — apex хранит объект точки как есть в w.config. */
+const realValueOf = (w, seriesIndex, dataPointIndex) =>
+    w?.config?.series?.[seriesIndex]?.data?.[dataPointIndex]?.realValue
 
 const renderChart = async () => {
     await nextTick()
@@ -69,7 +98,8 @@ const renderChart = async () => {
     if (!props.series.length) return
 
     const discrete = props.options.discrete === true
-    const ranges = discrete ? buildRanges(props.series) : undefined
+    const series = normalizeSeries(props.series)
+    const ranges = discrete ? buildRanges() : undefined
 
     chart = new ApexCharts(chartRef.value, {
         chart: {
@@ -88,10 +118,13 @@ const renderChart = async () => {
             },
         },
         dataLabels: { enabled: false },
-        series: props.series,
-        tooltip: { theme: "dark" },
+        series,
+        tooltip: {
+            theme: "dark",
+            y: { formatter: (_value, opts) => realValueOf(opts?.w, opts?.seriesIndex, opts?.dataPointIndex) },
+        },
         stroke: { width: 1 },
-        colors: colorsFor(props.options),
+        colors: resolveThemeColors(colorsFor(props.options)),
         xaxis: {
             type: "category",
             labels: { rotate: -45, trim: true },
