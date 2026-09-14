@@ -22,6 +22,9 @@ class User extends Authenticatable
         'password',
         'company_id',
         'is_active',
+        'ai_consent_at',
+        'terms_accepted_at',
+        'marketing_consent_at',
     ];
 
     protected $hidden = [

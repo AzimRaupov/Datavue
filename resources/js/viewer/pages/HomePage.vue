@@ -16,14 +16,14 @@ const { t } = useI18n();
                 <div class="my-5">
                     <div class="row g-3 justify-content-center">
                         <div class="col-auto">
-                            <a href="#" class="btn btn-lg btn-primary">{{ t('home.hero.cta_primary') }}</a>
+                            <router-link to="/register" class="btn btn-lg btn-primary">{{ t('home.hero.cta_primary') }}</router-link>
                         </div>
                         <div class="col-auto">
-                            <a href="#" class="btn btn-lg" target="_blank" rel="noopener noreferrer">{{ t('home.hero.cta_secondary') }}</a>
+                            <a href="#demo-preview" class="btn btn-lg">{{ t('home.hero.cta_secondary') }}</a>
                         </div>
                     </div>
                 </div>
-                <div class="hero-img img-overlap-margin">
+                <div id="demo-preview" class="hero-img img-overlap-margin">
                     <div class="browser">
                         <div class="browser-header">
                             <div class="row align-items-center">
@@ -35,13 +35,7 @@ const { t } = useI18n();
                                     </div>
                                 </div>
                                 <div class="col-8">
-                                    <a
-                                        href="#"
-                                        class="browser-input"
-                                        data-bs-toggle="tooltip"
-                                        data-bs-placement="top"
-                                        :title="t('home.hero.demo_tooltip')"
-                                    >
+                                    <span class="browser-input">
                                         <svg
                                             xmlns="http://www.w3.org/2000/svg"
                                             width="24"
@@ -59,7 +53,7 @@ const { t } = useI18n();
                                             <path d="M3 12h2l3 -9l4 18l3 -9h4" />
                                         </svg>
                                         datavue.startcoding.tj
-                                    </a>
+                                    </span>
                                 </div>
                             </div>
                         </div>
@@ -212,13 +206,13 @@ const { t } = useI18n();
                     {{ t('home.cta.description') }}
                 </p>
                 <div class="btn-list justify-content-center mt-6">
-                    <a href="#" class="btn btn-primary btn-2"> {{ t('home.cta.start') }} </a>
-                    <a href="#" class="btn btn-3">
+                    <router-link to="/register" class="btn btn-primary btn-2"> {{ t('home.cta.start') }} </router-link>
+                    <router-link to="/ai-consent" class="btn btn-3">
                         {{ t('home.cta.learn_more') }}
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-end icon-2">
                             <path d="M9 6l6 6l-6 6" />
                         </svg>
-                    </a>
+                    </router-link>
                 </div>
             </div>
         </section>
@@ -303,159 +297,6 @@ const { t } = useI18n();
                             <line x1="0" y1="0" x2="500" y2="400"></line>
                             <line x1="0" y1="400" x2="500" y2="0"></line>
                         </svg>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Pricing Section -->
-        <section class="section pt-0">
-            <div class="container">
-                <div class="pricing">
-                    <div class="pricing-card">
-                        <h4 class="pricing-title">{{ t('home.pricing.starter.title') }}</h4>
-                        <div class="pricing-price">
-                            <span class="pricing-price-currency">₽</span>0
-                            <div class="pricing-price-description">
-                                <div>{{ t('home.pricing.starter.period') }}</div>
-                            </div>
-                        </div>
-                        <ul class="pricing-features my-5">
-                            <li>
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-inline me-1 text-green icon-3">
-                                    <path d="M5 12l5 5l10 -10" />
-                                </svg>{{ t('home.pricing.starter.feature1') }}
-                            </li>
-                            <li>
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-inline me-1 text-green icon-3">
-                                    <path d="M5 12l5 5l10 -10" />
-                                </svg>{{ t('home.pricing.starter.feature2') }}
-                            </li>
-                            <li>
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-inline me-1 text-green icon-3">
-                                    <path d="M5 12l5 5l10 -10" />
-                                </svg>{{ t('home.pricing.starter.feature3') }}
-                            </li>
-                            <li>
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-inline me-1 text-green icon-3">
-                                    <path d="M5 12l5 5l10 -10" />
-                                </svg>{{ t('home.pricing.starter.feature4') }}
-                            </li>
-                        </ul>
-                        <div class="pricing-btn"><a href="#" class="btn w-100">{{ t('home.pricing.starter.cta') }}</a></div>
-                    </div>
-                    <div class="pricing-card featured">
-                        <div class="pricing-label"><div class="badge bg-primary text-primary-fg">{{ t('home.pricing.pro.badge') }}</div></div>
-                        <h4 class="pricing-title">{{ t('home.pricing.pro.title') }}</h4>
-                        <div class="pricing-price">
-                            <span class="pricing-price-currency">₽</span>990
-                            <div class="pricing-price-description">
-                                <div>{{ t('home.pricing.pro.period') }}</div>
-                            </div>
-                        </div>
-                        <ul class="pricing-features my-5">
-                            <li>
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-inline me-1 text-green icon-3">
-                                    <path d="M5 12l5 5l10 -10" />
-                                </svg>{{ t('home.pricing.pro.feature1') }}
-                            </li>
-                            <li>
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-inline me-1 text-green icon-3">
-                                    <path d="M5 12l5 5l10 -10" />
-                                </svg>{{ t('home.pricing.pro.feature2') }}
-                            </li>
-                            <li>
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-inline me-1 text-green icon-3">
-                                    <path d="M5 12l5 5l10 -10" />
-                                </svg>{{ t('home.pricing.pro.feature3') }}
-                            </li>
-                            <li>
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-inline me-1 text-green icon-3">
-                                    <path d="M5 12l5 5l10 -10" />
-                                </svg>{{ t('home.pricing.pro.feature4') }}
-                            </li>
-                        </ul>
-                        <div class="pricing-btn"><a href="#" class="btn w-100 btn-primary">{{ t('home.pricing.pro.cta') }}</a></div>
-                    </div>
-                    <div class="pricing-card">
-                        <h4 class="pricing-title">{{ t('home.pricing.enterprise.title') }}</h4>
-                        <div class="pricing-price">
-                            <span class="pricing-price-currency"></span>{{ t('home.pricing.enterprise.price') }}
-                            <div class="pricing-price-description">
-                                <div>{{ t('home.pricing.enterprise.period') }}</div>
-                            </div>
-                        </div>
-                        <ul class="pricing-features my-5">
-                            <li>
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-inline me-1 text-green icon-3">
-                                    <path d="M5 12l5 5l10 -10" />
-                                </svg>{{ t('home.pricing.enterprise.feature1') }}
-                            </li>
-                            <li>
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-inline me-1 text-green icon-3">
-                                    <path d="M5 12l5 5l10 -10" />
-                                </svg>{{ t('home.pricing.enterprise.feature2') }}
-                            </li>
-                            <li>
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-inline me-1 text-green icon-3">
-                                    <path d="M5 12l5 5l10 -10" />
-                                </svg>{{ t('home.pricing.enterprise.feature3') }}
-                            </li>
-                            <li>
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-inline me-1 text-green icon-3">
-                                    <path d="M5 12l5 5l10 -10" />
-                                </svg>{{ t('home.pricing.enterprise.feature4') }}
-                            </li>
-                        </ul>
-                        <div class="pricing-btn"><a href="#" class="btn w-100">{{ t('home.pricing.enterprise.cta') }}</a></div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Team License Section -->
-        <section class="section">
-            <div class="container">
-                <div class="bg-body-tertiary p-6 rounded-4">
-                    <div class="row g-4 align-items-center">
-                        <div class="col-lg">
-                            <h3 class="h2">{{ t('home.team.title') }}</h3>
-                            <p class="m-0 text-secondary">{{ t('home.team.description') }}</p>
-                        </div>
-                        <div class="col-lg">
-                            <ul class="list-unstyled m-0">
-                                <li>
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-inline me-1 text-green icon-3">
-                                        <path d="M5 12l5 5l10 -10" />
-                                    </svg>{{ t('home.team.feature1') }}
-                                </li>
-                                <li>
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-inline me-1 text-green icon-3">
-                                        <path d="M5 12l5 5l10 -10" />
-                                    </svg>{{ t('home.team.feature2') }}
-                                </li>
-                                <li>
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-inline me-1 text-green icon-3">
-                                        <path d="M5 12l5 5l10 -10" />
-                                    </svg>{{ t('home.team.feature3') }}
-                                </li>
-                                <li>
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-inline me-1 text-green icon-3">
-                                        <path d="M5 12l5 5l10 -10" />
-                                    </svg>{{ t('home.team.feature4') }}
-                                </li>
-                            </ul>
-                        </div>
-                        <div class="col-6-sm col-lg">
-                            <div class="pricing-price m-0">
-                                <span class="pricing-price-currency">₽</span>4 990
-                                <div class="pricing-price-description">
-                                    <div>{{ t('home.team.price_per') }}</div>
-                                    <div>{{ t('home.team.price_period') }}</div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-6-sm col-lg-auto"><a href="#" class="btn btn-primary w-100">{{ t('home.team.cta') }}</a></div>
                     </div>
                 </div>
             </div>
@@ -569,7 +410,7 @@ const { t } = useI18n();
                             </div>
                         </div>
                         <div class="mt-5">
-                            <a class="btn btn-primary" href="#">{{ t('home.support.cta') }}</a>
+                            <router-link class="btn btn-primary" to="/register">{{ t('home.support.cta') }}</router-link>
                         </div>
                     </div>
                 </div>

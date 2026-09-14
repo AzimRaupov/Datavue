@@ -2,11 +2,11 @@
     <div class="page page-center">
         <div class="container container-tight py-4">
             <div class="text-center mb-4">
-                <!-- BEGIN NAVBAR LOGO --><a href="." aria-label="Tabler" class="navbar-brand navbar-brand-autodark"
+                <!-- BEGIN NAVBAR LOGO --><router-link to="/" aria-label="Datavue" class="navbar-brand navbar-brand-autodark"
             >
                 <img :src="'/logos/logo.png'" width="135" />
 
-            </a
+            </router-link
             ><!-- END NAVBAR LOGO -->
             </div>
             <form class="card card-md" @submit.prevent="register" autocomplete="off" novalidate>
@@ -30,9 +30,9 @@
                     <div class="mb-3">
                         <label class="form-label">{{ t('auth.input_password')}}</label>
                         <div class="input-group input-group-flat">
-                            <input v-model="form.password" type="password"  class="form-control" placeholder="Password" autocomplete="off" />
+                            <input v-model="form.password" :type="showPassword ? 'text' : 'password'"  class="form-control" placeholder="Password" autocomplete="off" />
                             <span class="input-group-text">
-                  <a href="#" class="link-secondary" title="Show password" data-bs-toggle="tooltip"
+                  <button type="button" class="link-secondary p-0 border-0 bg-transparent lh-1" title="Show password" @click="showPassword = !showPassword"
                   ><!-- Download SVG icon from http://tabler.io/icons/icon/eye -->
                     <svg
                         xmlns="http://www.w3.org/2000/svg"
@@ -50,7 +50,7 @@
                     >
                       <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
                       <path d="M21 12c-2.4 4 -5.4 6 -9 6c-3.6 0 -6.6 -2 -9 -6c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6" /></svg
-                    ></a>
+                    ></button>
                 </span>
                         </div>
                     </div>
@@ -58,9 +58,9 @@
                     <div class="mb-3">
                         <label class="form-label">{{ t('auth.input_confirm_password')}}</label>
                         <div class="input-group input-group-flat">
-                            <input v-model="form.password_confirmation" type="password"  class="form-control" placeholder="Password" autocomplete="off" />
+                            <input v-model="form.password_confirmation" :type="showPasswordConfirmation ? 'text' : 'password'"  class="form-control" placeholder="Password" autocomplete="off" />
                             <span class="input-group-text">
-                  <a href="#" class="link-secondary" title="Show password" data-bs-toggle="tooltip"
+                  <button type="button" class="link-secondary p-0 border-0 bg-transparent lh-1" title="Show password" @click="showPasswordConfirmation = !showPasswordConfirmation"
                   ><!-- Download SVG icon from http://tabler.io/icons/icon/eye -->
                     <svg
                         xmlns="http://www.w3.org/2000/svg"
@@ -78,17 +78,45 @@
                     >
                       <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
                       <path d="M21 12c-2.4 4 -5.4 6 -9 6c-3.6 0 -6.6 -2 -9 -6c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6" /></svg
-                    ></a>
+                    ></button>
                 </span>
                         </div>
                     </div>
 
 
                     <div v-if="errors.password" class="invalid-feedback d-block mb-2">{{ errors.password[0] }}</div>
+
+                    <div class="mb-2">
+                        <label class="form-check">
+                            <input v-model="form.terms_consent" type="checkbox" class="form-check-input" />
+                            <span class="form-check-label">
+                                {{ t('auth.terms_consent_prefix') }}
+                                <router-link to="/terms" target="_blank" rel="noopener noreferrer">{{ t('auth.terms_link') }}</router-link>
+                                {{ t('auth.terms_consent_and') }}
+                                <router-link to="/privacy" target="_blank" rel="noopener noreferrer">{{ t('auth.privacy_link') }}</router-link>
+                                {{ t('auth.terms_consent_suffix') }}
+                            </span>
+                        </label>
+                        <div v-if="errors.terms_consent" class="invalid-feedback d-block">{{ errors.terms_consent[0] }}</div>
+                    </div>
+
+                    <div class="mb-2">
+                        <label class="form-check">
+                            <input v-model="form.ai_consent" type="checkbox" class="form-check-input" />
+                            <span class="form-check-label">
+                                {{ t('auth.ai_consent_checkbox') }}
+                                <router-link to="/ai-consent" target="_blank" rel="noopener noreferrer">{{ t('auth.ai_consent_link') }}</router-link>
+                            </span>
+                        </label>
+                        <div v-if="errors.ai_consent" class="invalid-feedback d-block">{{ errors.ai_consent[0] }}</div>
+                    </div>
+
+
+
                     <div v-if="generalError" class="alert alert-danger py-2 px-3 small">{{ generalError }}</div>
 
                     <div class="form-footer">
-                        <button type="submit" class="btn btn-primary w-100" :disabled="loading">
+                        <button type="submit" class="btn btn-primary w-100" :disabled="loading || !form.ai_consent || !form.terms_consent">
                             {{ loading ? '...' : t('auth.page_register') }}
                         </button>
                     </div>
@@ -112,8 +140,14 @@ const form = reactive({
     'name': '',
     'email': '',
     'password': '',
-    'password_confirmation':''
+    'password_confirmation':'',
+    'ai_consent': false,
+    'terms_consent': false,
+    'marketing_consent': false
 });
+
+const showPassword = ref(false);
+const showPasswordConfirmation = ref(false);
 
 // Ошибки валидации с бэкенда, по полям — раньше они просто уходили в консоль,
 // и пользователь не понимал, почему форма не отправляется.

@@ -33,6 +33,9 @@ class AuthController extends Controller
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email',
             'password' => 'required|min:6|confirmed',
+            'ai_consent' => 'required|accepted',
+            'terms_consent' => 'required|accepted',
+            'marketing_consent' => 'nullable|boolean',
         ]);
 
         $result = DB::transaction(function () use ($data) {
@@ -47,6 +50,9 @@ class AuthController extends Controller
                 'company_id' => $company->id,
                 'password' => Hash::make($data['password']),
                 'is_active' => true,
+                'ai_consent_at' => now(),
+                'terms_accepted_at' => now(),
+                'marketing_consent_at' => !empty($data['marketing_consent']) ? now() : null,
             ]);
 
             $company->owner_id = $user->id;
