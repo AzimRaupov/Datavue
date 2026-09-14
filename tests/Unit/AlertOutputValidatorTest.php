@@ -2,14 +2,6 @@
 
 use App\Helpers\Alert\AlertOutputValidator;
 
-/**
- * Контракт вывода Python-условия алерта.
- *
- * Ключевое правило: отсутствие "triggered" или мусор в stdout — это ОШИБКА
- * проверки, а не «условие не выполнено». Смешать эти два случая значит
- * получить алерт, который выглядит здоровым, пока молча ничего не проверяет.
- */
-
 it('принимает валидный вывод', function () {
     $result = (new AlertOutputValidator())->validate([
         json_encode(['triggered' => true, 'value' => 12, 'message' => 'мало заказов', 'rows' => [['a' => 1]]]),

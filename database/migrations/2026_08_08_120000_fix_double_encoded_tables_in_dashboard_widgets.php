@@ -7,16 +7,7 @@ use Illuminate\Support\Facades\Log;
 
 return new class extends Migration
 {
-    /**
-     * Чинит поле tables у виджетов, созданных через обновление дашборда.
-     *
-     * DashboardReGenerator сам вызывал json_encode перед записью, хотя модель
-     * кодирует значение кастом. Результат — JSON-строка вместо JSON-массива,
-     * а при повторных обновлениях кодирование накладывалось ещё раз. Чтение
-     * такого поля возвращало строку, и getSchema() падал с TypeError.
-     *
-     * Здесь разворачиваем накопившиеся слои и записываем нормальный массив.
-     */
+
     public function up(): void
     {
         $fixed = 0;
@@ -30,7 +21,6 @@ return new class extends Migration
                         continue;
                     }
 
-                    // Корректная запись — это JSON-массив. Всё остальное чиним.
                     $decoded = json_decode($row->tables, true);
 
                     if (is_array($decoded)) {
@@ -52,11 +42,8 @@ return new class extends Migration
         Log::info('Migration: dashboard_widgets.tables normalized', ['fixed' => $fixed]);
     }
 
-    /**
-     * Откат не предусмотрен: возвращать данные в заведомо сломанный вид незачем.
-     */
     public function down(): void
     {
-        //
+
     }
 };

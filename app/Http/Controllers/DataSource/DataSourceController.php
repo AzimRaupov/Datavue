@@ -20,16 +20,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
-/**
- * Источники данных компании.
- *
- * Порядок работы: компания подключает источник здесь, а потом заводит на нём
- * сколько угодно чатов (см. ChatController::store). Раньше источник можно было
- * получить только вместе с новым чатом, и переиспользовать его было нельзя.
- *
- * Все запросы жёстко ограничены компанией текущего пользователя — источник
- * чужой компании не найдётся ни при каких правах.
- */
 class DataSourceController extends Controller
 {
     public function index(Request $request)
@@ -48,16 +38,11 @@ class DataSourceController extends Controller
     {
         $source = $this->findForCompany($request, $id);
 
-        // Чаты теперь заводятся в рабочем пространстве (см. WorkspaceController),
-        // источник ими больше не грузим — только его собственные атрибуты.
         $source->load([
             'type:id,name,label',
             'creator:id,name',
         ]);
 
-        // Разобранная схема: сколько смысловых групп и таблиц нашлось.
-        // Пусто — значит источник ещё ни разу не разбирали, разбор произойдёт
-        // при первом же вопросе в чате.
         $groups = DataSourceGroup::query()
             ->where('data_source_id', $source->id)
             ->withCount('tables')
@@ -109,8 +94,6 @@ class DataSourceController extends Controller
             ]);
         }
 
-        // Неудачное подключение — это ошибка запроса, а не успешный ответ
-        // с флагом success:false: фронту незачем разбирать HTTP 200 вручную.
         if (!$result['success']) {
             return response()->json([
                 'success' => false,
@@ -125,13 +108,6 @@ class DataSourceController extends Controller
         ], 201);
     }
 
-    /**
-     * Шаг 2 мастера: что мы вообще нашли в источнике.
-     *
-     * Показывается пользователю до группировки, чтобы он убедился, что
-     * подключились к той базе, и увидел объём работы. Тяжёлого анализа схемы
-     * здесь нет — только список таблиц.
-     */
     public function tables(Request $request, $id)
     {
         $source = $this->findForCompany($request, $id);
@@ -148,31 +124,17 @@ class DataSourceController extends Controller
         return response()->json([
             'success' => true,
             'tables' => $tables,
-            // Группировка уже могла быть посчитана — например, если источник
-            // добавляли раньше и мастер открыли повторно.
+
             'already_grouped' => DataSourceGroup::query()
                 ->where('data_source_id', $source->id)
                 ->exists(),
         ]);
     }
 
-    /**
-     * Шаг 3 мастера: ставит группировку таблиц в очередь.
-     *
-     * Отвечает сразу — сама работа идёт в DataSourceGroupingJob, а её ход
-     * приходит на фронт событиями DataSourceGroupingProgress по каналу
-     * data_source.{id}. Раньше группировка выполнялась прямо здесь и на
-     * большой схеме упиралась в таймаут.
-     *
-     * Это та же DataSourceGrouping, которой потом пользуется генератор
-     * дашбордов, поэтому работа не пропадает — первый дашборд построится
-     * быстрее.
-     */
     public function group(Request $request, $id)
     {
         $source = $this->findForCompany($request, $id);
 
-        // Группировка — платная операция, при исчерпанном лимите не запускаем.
         if (AiUsage::limitReached($request->user()->company)) {
             return response()->json([
                 'success' => false,
@@ -181,7 +143,6 @@ class DataSourceController extends Controller
             ], 429);
         }
 
-        // Повторный клик по кнопке не должен ставить вторую такую же задачу.
         if (in_array($source->grouping_status, ['queued', 'in_progress'], true)) {
             return response()->json([
                 'success' => true,
@@ -205,14 +166,6 @@ class DataSourceController extends Controller
         ], 202);
     }
 
-    /**
-     * Обновление данных источника.
-     *
-     * Для Google-таблицы новый ввод не нужен — она перечитывается по
-     * сохранённой ссылке. Для файла присылается новая версия того же формата.
-     * Разобранная база перезаписывается по прежнему пути, поэтому все
-     * построенные дашборды продолжают работать: у них меняются только цифры.
-     */
     public function refresh(Request $request, $id)
     {
         $source = $this->findForCompany($request, $id);
@@ -225,7 +178,6 @@ class DataSourceController extends Controller
             ],
         ]);
 
-        // Разбор большого файла не укладывается в стандартные 30 секунд.
         set_time_limit(600);
 
         $refresher = new DataSourceRefresher($source, $request->user());
@@ -239,16 +191,12 @@ class DataSourceController extends Controller
             ], 422);
         }
 
-        // Схема источника закэширована для конструктора виджетов. После
-        // перезалива состав таблиц и колонок мог измениться, и без сброса
-        // конструктор ещё несколько минут предлагал бы то, чего уже нет.
         SourceSchema::forget($source->id);
 
         return response()->json([
             'success' => true,
             'message' => $result['message'],
-            // Состав таблиц мог измениться — фронт покажет, что именно,
-            // и предложит пересобрать группировку.
+
             'schema_changed' => $result['schema_changed'] ?? false,
             'added_tables' => $result['added_tables'] ?? [],
             'removed_tables' => $result['removed_tables'] ?? [],
@@ -256,13 +204,6 @@ class DataSourceController extends Controller
         ]);
     }
 
-    /**
-     * Состояние группировки.
-     *
-     * Нужен как запасной путь к сокету: если событие потерялось или
-     * пользователь открыл страницу уже после старта, мастер опрашивает
-     * этот эндпоинт и показывает актуальное состояние.
-     */
     public function groupingStatus(Request $request, $id)
     {
         $source = $this->findForCompany($request, $id);
@@ -277,11 +218,6 @@ class DataSourceController extends Controller
         ]);
     }
 
-    /**
-     * Правится только то, что можно править безопасно: имя, версия и
-     * реквизиты внешнего подключения. Тип и разобранный файл менять нельзя —
-     * на них уже завязаны построенные дашборды.
-     */
     public function update(Request $request, $id)
     {
         $source = $this->findForCompany($request, $id);
@@ -297,8 +233,7 @@ class DataSourceController extends Controller
                 'port' => 'sometimes|required|integer',
                 'database' => 'sometimes|required|string',
                 'username' => 'sometimes|required|string',
-                // Пустой пароль означает «оставить прежний»: наружу мы его
-                // не отдаём, и форма редактирования его не знает.
+
                 'password' => 'sometimes|nullable|string',
             ];
         }
@@ -311,7 +246,6 @@ class DataSourceController extends Controller
 
         $source->fill($data)->save();
 
-        // Могли поменяться база или хост — читать схему нужно заново.
         SourceSchema::forget($source->id);
 
         return response()->json([
@@ -320,12 +254,6 @@ class DataSourceController extends Controller
         ]);
     }
 
-    /**
-     * Удаление источника вместе со всем, что на нём построено: чатами,
-     * их дашбордами и разобранной схемой. Без источника всё это неработоспособно,
-     * поэтому оставлять «висящие» чаты бессмысленно — фронт предупреждает
-     * пользователя количеством затрагиваемых чатов из index/show.
-     */
     public function destroy(Request $request, $id)
     {
         $source = $this->findForCompany($request, $id);
@@ -345,9 +273,6 @@ class DataSourceController extends Controller
             DataSourceTable::query()->where('data_source_id', $source->id)->delete();
             DataSourceGroup::query()->where('data_source_id', $source->id)->delete();
 
-            // Алерты источника не должны продолжать проверяться на "нет
-            // источника" вплоть до авто-отключения по счётчику ошибок —
-            // источник удалён осознанно, значит и причина известна сразу.
             Alert::query()
                 ->where('data_source_id', $source->id)
                 ->update([
@@ -355,8 +280,6 @@ class DataSourceController extends Controller
                     'disabled_reason' => 'Источник данных удалён.',
                 ]);
 
-            // Разобранный файл источника занимает место и после удаления
-            // записи уже никому не нужен.
             if ($source->isFileBased() && $source->path && is_file($source->path)) {
                 @unlink($source->path);
             }

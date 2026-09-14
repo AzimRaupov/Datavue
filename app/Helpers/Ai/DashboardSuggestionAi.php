@@ -4,27 +4,12 @@ namespace App\Helpers\Ai;
 
 use Illuminate\Support\Facades\Log;
 
-/**
- * Подбирает 2–4 варианта дашборда, с которых осмысленно начать работу
- * с конкретным источником данных.
- *
- * На вход идут смысловые группы таблиц (результат DataSourceGrouping) —
- * то есть модель видит не сырую схему, а уже осмысленную картину:
- * «Продажи и заказы», «Клиенты», «Склад». Этого достаточно, чтобы
- * предложить темы дашбордов, и заметно дешевле полной схемы.
- */
 class DashboardSuggestionAi
 {
-    /** Сколько вариантов просим у модели. */
+
     private const MIN_SUGGESTIONS = 2;
     private const MAX_SUGGESTIONS = 4;
 
-    /**
-     * @param array $groups Компактные группы: [['name','description','tables'=>[...]], ...]
-     * @param array $widgetTypes Доступные типы виджетов: [['name','description'], ...]
-     *
-     * @return array{total_tokens: int, suggestions: array<int, array{title: string, prompt: string, description: string}>}
-     */
     public function generate(array $groups, array $widgetTypes = [], ?string $sourceName = null): array
     {
         $min = self::MIN_SUGGESTIONS;
@@ -129,7 +114,6 @@ TEXT;
         ];
     }
 
-
     private function normalize(mixed $content): array
     {
         $items = $content['suggestions'] ?? $content;
@@ -148,8 +132,6 @@ TEXT;
             $title = trim((string) ($item['title'] ?? ''));
             $promptText = trim((string) ($item['prompt'] ?? ''));
 
-            // Вариант без готового сообщения агенту бесполезен: по клику
-            // будет нечего отправить.
             if ($title === '' || $promptText === '') {
                 continue;
             }

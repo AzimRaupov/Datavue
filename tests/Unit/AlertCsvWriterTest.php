@@ -2,21 +2,12 @@
 
 use App\Helpers\Alert\AlertCsvWriter;
 
-// Нужен загруженный конфиг (exports.csv_delimiter) — это единственное,
-// что отличает эти тесты от чистого PHPUnit-теста без Laravel.
 uses(Tests\TestCase::class);
-
-/**
- * Файл каждой проверки алерта: разделитель из exports.csv_delimiter (по
- * умолчанию «;» — под Excel с русской локалью) и BOM в начале, иначе
- * кириллица в заголовках превращается в крокозябры.
- */
 
 function readCsv(string $path, string $delimiter = ';'): array
 {
     $content = file_get_contents($path);
-    // BOM всегда должен быть первым — если тест его случайно съест при
-    // сравнении, ошибка будет там же, где реальные пользователи её увидят.
+
     expect(substr($content, 0, 3))->toBe("\xEF\xBB\xBF");
 
     $lines = array_filter(explode("\n", trim(substr($content, 3))), fn ($l) => $l !== '');

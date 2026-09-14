@@ -22,29 +22,12 @@ class TableDataHandler
 
     private array $allowedExtensions = ['csv', 'xlsx', 'xls'];
 
-    /**
-     * Сколько первых строк листа просматриваем в поисках начала данных.
-     * Если реальные данные начинаются позже (например, огромная шапка
-     * с несколькими блоками пояснений), увеличьте это значение.
-     */
     private int $headerSearchWindow = 25;
 
-    /**
-     * Минимальная доля непустых ячеек в строке, чтобы вообще
-     * рассматривать её как заголовок или как данные.
-     */
     private float $minNonNullRatio = 0.3;
 
-    /**
-     * Порог доли текстовых ячеек, начиная с которого строка считается
-     * "похожей на заголовок".
-     */
     private float $headerTextRatioThreshold = 0.5;
 
-    /**
-     * Порог доли числовых ячеек, начиная с которого строка считается
-     * "похожей на данные".
-     */
     private float $dataNumericRatioThreshold = 0.3;
 
     public function __construct(string $filePath, string $outputPath, $dbFilePath)
@@ -57,11 +40,6 @@ class TableDataHandler
         $this->dbFilePath = $dbFilePath;
     }
 
-    /**
-     * Запускает процесс обработки и возвращает массив с результатом.
-     *
-     * @return array
-     */
     public function handle(): array
     {
         try {
@@ -131,7 +109,6 @@ class TableDataHandler
 
         $this->stats['source_extension'] = $extension;
 
-        // 1. Читаем файл и превращаем каждый лист/csv в набор строк
         $sheets = $extension === 'csv'
             ? $this->readCsv($this->filePath)
             : $this->readExcel($this->filePath);
@@ -140,7 +117,6 @@ class TableDataHandler
             throw new \RuntimeException("Не удалось извлечь данные из файла: {$this->filePath}");
         }
 
-        // 2. Генерируем CREATE TABLE + INSERT для каждой таблицы (листа/csv)
         $createStatements = [];
         $insertStatements = [];
         $usedNames = [];
@@ -152,7 +128,7 @@ class TableDataHandler
 
             $tableName = $this->makeUniqueTableName($this->sanitizeIdentifier($sheetName), $usedNames);
 
-            $header = array_shift($rows); // Первая строка — заголовки (уже собранные readExcel/readCsv)
+            $header = array_shift($rows);
             $columns = $this->normalizeColumnNames($header);
 
             if (empty($columns)) {
@@ -172,7 +148,6 @@ class TableDataHandler
         $this->stats['create_count'] = count($createStatements);
         $this->stats['insert_batches'] = count($insertStatements);
 
-        // 3. Формируем итоговый SQL-контент
         $content = "-- Сгенерировано для DuckDB (из Excel/CSV)\n";
         $content .= "-- Источник: {$this->filePath}\n";
         $content .= "-- Дата: " . now()->toDateTimeString() . "\n";
@@ -247,10 +222,6 @@ class TableDataHandler
                 continue;
             }
 
-            // Разворачиваем объединённые ячейки (заголовки-группы,
-            // "растянутые" по горизонтали/вертикали значения и т.п.),
-            // чтобы дальнейший анализ строк видел реальные значения,
-            // а не null рядом с одной заполненной ячейкой.
             $rows = $this->expandMergedCells($sheet, $rows);
 
             $rows = $this->trimEmptyTrailingColumns($rows);
@@ -273,15 +244,6 @@ class TableDataHandler
         return $result;
     }
 
-    /**
-     * Копирует значение "мастер"-ячейки объединённого диапазона
-     * во все остальные ячейки этого диапазона. Работает для любых
-     * merge-блоков — заголовков, растянутых по вертикали подписей и т.д.
-     *
-     * $rows — массив со сквозной нумерацией 0..N, где индекс строки/
-     * столбца соответствует смещению от A1 (т.к. диапазон чтения
-     * всегда начинается с A1).
-     */
     private function expandMergedCells(Worksheet $sheet, array $rows): array
     {
         foreach ($sheet->getMergeCells() as $mergeRange) {
@@ -331,9 +293,6 @@ class TableDataHandler
             }
         }
 
-        // Не удалось уверенно найти начало данных в пределах окна поиска —
-        // откатываемся к простому и предсказуемому старому поведению:
-        // первая строка листа — заголовок.
         if ($firstDataRowIndex === null) {
             $header = array_shift($rows);
 
@@ -360,7 +319,7 @@ class TableDataHandler
 
         return [$headerRow, $dataRows];
     }
-    
+
     private function looksLikeHeaderRow(array $row): bool
     {
         $stats = $this->rowStats($row);
@@ -371,10 +330,6 @@ class TableDataHandler
             && $stats['distinct'] >= 2;
     }
 
-    /**
-     * Строка похожа на строку данных: заметная часть ячеек заполнена
-     * и заметная доля из них — числа.
-     */
     private function looksLikeDataRow(array $row): bool
     {
         $stats = $this->rowStats($row);
@@ -421,7 +376,6 @@ class TableDataHandler
             'distinct' => count($distinctValues),
         ];
     }
-
 
     private function buildCompoundHeaderRow(array $headerRows): array
     {
@@ -500,11 +454,7 @@ class TableDataHandler
 
     private function sanitizeIdentifier(string $name): string
     {
-        // \p{L}/\p{N} — любая буква и цифра любого алфавита, не только
-        // латиница и стандартный русский а-я/А-Я. Старое правило резало
-        // буквы, которых нет в русском, но есть в таджикском (ҳ, ӣ, ҷ, қ,
-        // ғ, ӯ) и даже в русском «ё» — «Деҳот» превращалось в «де_от»,
-        // и по такому имени колонки уже не понять, что это за данные.
+
         $name = preg_replace('/[^\p{L}\p{N}_]/u', '_', trim($name));
         $name = preg_replace('/_+/', '_', $name);
         $name = trim($name, '_');

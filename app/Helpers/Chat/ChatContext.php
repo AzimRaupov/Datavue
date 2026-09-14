@@ -10,35 +10,13 @@ use App\Models\DataSourceGroup;
 use App\Models\Widget;
 use Illuminate\Support\Collection;
 
-/**
- * Единый сборщик контекста чата для AI.
- *
- * Раньше роутеру задач передавались только title+instruction виджетов, поэтому
- * модель физически не могла ответить на вопросы вида «какие у меня виджеты»,
- * «что порекомендуешь добавить», «какие данные доступны» — и от безысходности
- * выбирала перегенерацию дашборда на любой запрос со словом «добавить».
- *
- * Этот класс собирает всё, что агент должен знать о текущем состоянии:
- * источник данных, смысловые группы таблиц, текущий дашборд с виджетами,
- * другие дашборды чата и каталог доступных типов виджетов.
- */
 class ChatContext
 {
-    /** Ограничения, чтобы промпт не разрастался на больших базах. */
+
     private const MAX_GROUPS = 25;
 
-    /** Потолок на размер ответа инструмента «таблицы групп». */
     public const MAX_TABLES_PER_REQUEST = 120;
 
-    /**
-     * Группы, отобранные под текущий вопрос.
-     *
-     * Пусто — значит отбор не проводился, и все группы показываются одинаково,
-     * только заголовками. Состав таблиц раскрывается лишь у отобранных групп:
-     * так в модель уезжает десяток нужных таблиц, а не весь справочник.
-     *
-     * @var array<int, int>
-     */
     private array $focusedGroupIds = [];
 
     public ?DataSource $dataSource = null;
@@ -57,17 +35,11 @@ class ChatContext
         public int $chatId,
         public ?int $dashboardId = null
     ) {
-        // Источник берём у чата: он принадлежит компании и переиспользуется
-        // несколькими чатами, поэтому искать его по data_sources.chat_id больше
-        // нельзя (см. AiChat::resolveDataSource — там же запасной путь для
-        // чатов, созданных до разделения источников и чатов).
+
         $chat = AiChat::query()->find($chatId);
 
         $this->dataSource = $chat?->resolveDataSource(['type']);
 
-        // Дашборды теперь живут в рабочем пространстве, а не на чате: в одном
-        // пространстве рядом стоят и собранные агентом, и собранные руками,
-        // и агент обязан видеть их все.
         $workspaceId = $chat?->workspace_id;
 
         $this->dashboard = $dashboardId
@@ -96,9 +68,6 @@ class ChatContext
                 ->get()
             : collect();
 
-        // Только те типы, что реально готовы к использованию — тот же фильтр,
-        // что применяют генераторы, чтобы агент не советовал виджет, который
-        // потом невозможно создать.
         $this->widgetTypes = Widget::query()
             ->where('is_ai_selectable', true)
             ->with('selectableTypes')
@@ -115,14 +84,6 @@ class ChatContext
         return $this->dashboard !== null;
     }
 
-    /**
-     * Дашборд, который есть смысл перестраивать «изменениями».
-     *
-     * Дашборд без виджетов (например, только что создан вручную кнопкой
-     * «Новый дашборд») с точки зрения намерения пользователя ничем не
-     * отличается от отсутствия дашборда: менять в нём нечего, значит
-     * «создай дашборд» тут значит РОВНО ТО ЖЕ, что и в пустом чате.
-     */
     public function hasDashboardWithWidgets(): bool
     {
         return $this->dashboard !== null && $this->dashboardWidgets->isNotEmpty();
@@ -133,13 +94,6 @@ class ChatContext
         return $this->groups->isNotEmpty();
     }
 
-    /**
-     * Раскрывает состав перечисленных групп — тот же приём, что в генераторе
-     * дашборда: сначала по названиям и описаниям выбираются нужные группы,
-     * и только их таблицы попадают в промпт.
-     *
-     * @param  array<int, int|string>  $groupIds
-     */
     public function focusOnGroups(array $groupIds): void
     {
         $known = $this->groups->pluck('id');
@@ -152,18 +106,11 @@ class ChatContext
             ->all();
     }
 
-    /**
-     * @return array<int, int>
-     */
     public function focusedGroupIds(): array
     {
         return $this->focusedGroupIds;
     }
 
-    /**
-     * Группы в компактном виде для шага отбора: id, название, описание.
-     * Ровно то, что получает DashboardGenerator::defineGroups().
-     */
     public function groupsForSelection(): Collection
     {
         return $this->groups->map(fn (DataSourceGroup $group) => [
@@ -173,21 +120,11 @@ class ChatContext
         ])->values();
     }
 
-    /**
-     * Сколько всего таблиц разложено по группам источника.
-     */
     public function totalTablesCount(): int
     {
         return (int) $this->groups->sum(fn (DataSourceGroup $group) => $group->tables->count());
     }
 
-    /**
-     * Состав выбранных групп — тот же приём, что и в генераторе дашборда:
-     * сначала модель выбирает группы, и только их таблицы попадают в промпт.
-     *
-     * @param  array<int|string>  $groupIds
-     * @return array{tables: array<int, array<string, mixed>>, unknown_groups: array<int, int>, truncated: bool}
-     */
     public function tablesForGroups(array $groupIds): array
     {
         $requested = collect($groupIds)
@@ -196,7 +133,6 @@ class ChatContext
             ->unique()
             ->values();
 
-        // Берём только группы этого источника — id из ответа модели доверять нельзя.
         $known = $this->groups->whereIn('id', $requested->all())->keyBy('id');
 
         $tables = $known
@@ -215,10 +151,6 @@ class ChatContext
         ];
     }
 
-    /**
-     * Все известные имена таблиц источника — запасной путь, когда группировка
-     * ещё не выполнялась и выбирать не из чего.
-     */
     public function allTableNames(): array
     {
         return $this->groups
@@ -228,9 +160,6 @@ class ChatContext
             ->all();
     }
 
-    /**
-     * Компактное представление контекста для подстановки в промпт.
-     */
     public function toArray(): array
     {
         return [
@@ -250,9 +179,6 @@ class ChatContext
                     'tables_count' => $group->tables->count(),
                 ];
 
-                // Состав раскрываем только у групп, отобранных под этот вопрос.
-                // Остальные видны заголовками — агент может дозапросить их
-                // инструментом "tables", если отбор промахнулся.
                 if (in_array($group->id, $this->focusedGroupIds, true)) {
                     $entry['tables'] = $group->tables
                         ->take(self::MAX_TABLES_PER_REQUEST)
@@ -295,8 +221,7 @@ class ChatContext
             'available_widget_types' => $this->widgetTypes->map(fn (Widget $w) => [
                 'name' => $w->name,
                 'description' => $w->description,
-                // Варианты отрисовки внутри семейства — чтобы агент мог советовать
-                // не только «столбчатую диаграмму», но и «горизонтальную».
+
                 'types' => $w->selectableTypes->map(fn ($t) => [
                     'type' => $t->name,
                     'title' => $t->title,
@@ -314,13 +239,6 @@ class ChatContext
         );
     }
 
-    /**
-     * Дашборды этой работы.
-     *
-     * Основной признак — рабочее пространство. Запасной, по chat_id, оставлен
-     * для дашбордов, созданных до пространств, у которых новая колонка могла
-     * остаться пустой.
-     */
     private function dashboardsOf(int $chatId, ?int $workspaceId)
     {
         return Dashboard::query()->where(function ($query) use ($chatId, $workspaceId) {

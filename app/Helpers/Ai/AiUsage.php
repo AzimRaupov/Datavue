@@ -6,18 +6,9 @@ use App\Models\AiUsageLog;
 use App\Models\Company;
 use Illuminate\Support\Facades\Log;
 
-/**
- * Учёт расхода токенов и месячный лимит компании.
- */
 class AiUsage
 {
-    /**
-     * Записывает расход по текущему контексту.
-     *
-     * Вызывается из AIService после каждого ответа модели. Если контекст
-     * не выставлен (например, вызов из tinker), запись пропускается — но это
-     * повод поправить место вызова, поэтому пишем предупреждение в лог.
-     */
+
     public static function record(int $tokens, ?string $model = null): void
     {
         if ($tokens <= 0) {
@@ -45,8 +36,7 @@ class AiUsage
                 'tokens' => $tokens,
             ]);
         } catch (\Throwable $e) {
-            // Учёт не должен ронять основную работу: ответ модель уже дала,
-            // терять его из-за проблемы с записью статистики нельзя.
+
             Log::error('AiUsage: не удалось записать расход', [
                 'error' => $e->getMessage(),
                 'tokens' => $tokens,
@@ -54,7 +44,6 @@ class AiUsage
         }
     }
 
-    /** Израсходовано компанией за текущий месяц. */
     public static function usedThisMonth(int $companyId): int
     {
         return (int) AiUsageLog::query()
@@ -63,12 +52,6 @@ class AiUsage
             ->sum('tokens');
     }
 
-    /**
-     * Исчерпан ли месячный лимит.
-     *
-     * Лимит не задан — расход не ограничен: платформа не должна вставать
-     * из-за того, что администратор не заполнил поле.
-     */
     public static function limitReached(?Company $company): bool
     {
         if (!$company || !$company->ai_token_limit) {
@@ -78,11 +61,6 @@ class AiUsage
         return self::usedThisMonth($company->id) >= $company->ai_token_limit;
     }
 
-    /**
-     * Сводка для интерфейса и для сообщений об ошибке.
-     *
-     * @return array{limit: ?int, used: int, remaining: ?int, percent: ?int, reached: bool, by_operation: array}
-     */
     public static function summary(Company $company): array
     {
         $used = self::usedThisMonth($company->id);

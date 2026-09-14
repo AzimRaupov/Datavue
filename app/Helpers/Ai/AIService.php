@@ -25,9 +25,6 @@ class AIService
         $this->responseFormat = $responseFormat;
     }
 
-    /**
-     * Отправка запроса в OpenAI
-     */
     public function ask(string $prompt, ?string $systemPrompt = null): string|array
     {
         $open_ai = new OpenAi($this->apiKey);
@@ -37,7 +34,7 @@ class AIService
             'model'             => $this->model,
             'messages'          => [
                 ['role' => 'system', 'content' => $systemPrompt],
-                ['role' => 'user',   'content' => $prompt], // ← use the actual $prompt arg
+                ['role' => 'user',   'content' => $prompt],
             ],
             'temperature'       => 1.0,
             'frequency_penalty' => 0,
@@ -47,10 +44,6 @@ class AIService
         $decoded = json_decode($response, true);
         $text = $decoded['choices'][0]['message']['content'] ?? '';
 
-        // Учёт расхода — здесь, а не в вызывающих классах: через ask() проходят
-        // все обращения к модели (роутер задач, генерация и починка виджетов,
-        // группировка схемы, подбор вариантов), поэтому мимо учёта не пройдёт
-        // ни один вызов, включая те, что появятся позже.
         AiUsage::record(
             (int) ($decoded['usage']['total_tokens'] ?? 0),
             $this->model
@@ -58,8 +51,7 @@ class AIService
 
         if ($this->responseFormat === 'text') {
             return [
-                // ?? 0 обязателен: при ошибке или обрыве ответа блока usage
-                // может не быть вовсе, и обращение к нему валило весь запрос.
+
                 'total_tokens'=> $decoded['usage']['total_tokens'] ?? 0,
                 'content'=> $text,
             ];
@@ -69,13 +61,11 @@ class AIService
         $parsed = json_decode($clean, true);
 
         return [
-            // ?? 0 по той же причине, что и в ветке text выше: при ошибке
-            // или обрыве ответа блока usage может не быть вовсе.
+
             'total_tokens'=> $decoded['usage']['total_tokens'] ?? 0,
             'content'=> $parsed ?? [],
         ];
 
     }
-
 
 }

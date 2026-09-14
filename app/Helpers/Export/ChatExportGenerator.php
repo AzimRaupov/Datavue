@@ -20,25 +20,9 @@ use Illuminate\Support\Str;
 use RuntimeException;
 use Throwable;
 
-/**
- * Выгружает результат запроса пользователя в файл.
- *
- * Полный путь одной просьбы «посчитай топ-10 клиентов и сохрани в csv»:
- *
- *   1. Модель раскладывает просьбу на задачу, формат, заголовок и имя файла.
- *   2. По смысловым группам источника отбираются нужные таблицы и их схема.
- *   3. Модель пишет main(), который получает данные и вызывает save_result().
- *   4. Скрипт выполняется; при падении ошибка возвращается модели на починку.
- *   5. Файл регистрируется в chat_exports и попадает в чат ссылкой.
- *
- * Почему через Python, а не через PHP: тот же путь уже используется для
- * виджетов, а pandas + openpyxl/reportlab/python-docx дают четыре формата
- * одним рантаймом. Сам файл при этом пишет платформа, а не модель —
- * см. ExportCodeTemplater.
- */
 class ChatExportGenerator
 {
-    /** Сколько таблиц максимум уходит в промпт вместе со схемой. */
+
     private const MAX_TABLES = 25;
 
     public ?AiChat $chat = null;
@@ -53,7 +37,6 @@ class ChatExportGenerator
 
     private int $totalTokens = 0;
 
-    /** Пояснение модели, если задачу не удалось выполнить дословно. */
     private string $modelNote = '';
 
     public function __construct(
@@ -83,9 +66,6 @@ class ChatExportGenerator
         return $this->totalTokens;
     }
 
-    /**
-     * @return array{export: ChatExport, answer: string, total_tokens: int}
-     */
     public function handle(): array
     {
         $spec = $this->defineSpec();
@@ -120,11 +100,6 @@ class ChatExportGenerator
         ];
     }
 
-    /**
-     * Что выгружаем, в каком формате и как назовём файл.
-     *
-     * @return array{format: string, instruction: string, title: string, file_name: string}
-     */
     private function defineSpec(): array
     {
         $context = new ChatContext($this->chatId);
@@ -149,15 +124,12 @@ class ChatExportGenerator
 
             $spec = is_array($response['content'] ?? null) ? $response['content'] : [];
         } catch (Throwable $e) {
-            // Шаг вспомогательный: без него остаётся исходная формулировка
-            // пользователя и формат, распознанный по его же словам.
+
             Log::warning('ChatExportGenerator: spec detection failed', [
                 'error' => $e->getMessage(),
             ]);
         }
 
-        // Слова пользователя важнее ответа модели: если он написал «в pdf»,
-        // а модель предложила csv — прав пользователь.
         $format = ExportFormat::detect($this->message->message)
             ?? ExportFormat::detect($this->instruction)
             ?? ExportFormat::normalize($spec['format'] ?? null);
@@ -186,10 +158,6 @@ class ChatExportGenerator
         return $resolved;
     }
 
-    /**
-     * Имя файла без расширения: латиница, дефисы, дата — чтобы выгрузки
-     * одного и того же отчёта в папке пользователя не сливались в одну.
-     */
     private function fileNameBase(?string $suggested, string $title): string
     {
         $base = Str::slug((string) $suggested);
@@ -205,16 +173,6 @@ class ChatExportGenerator
         return Str::limit($base, 40, '').'-'.now()->format('Y-m-d');
     }
 
-    /**
-     * Таблицы, из которых берутся данные.
-     *
-     * Тот же приём, что и в генераторе дашборда: сначала модель выбирает
-     * смысловые группы, и только их таблицы попадают в промпт вместе со
-     * схемой. На источнике в сотни таблиц полная схема не поместилась бы
-     * ни в контекст модели, ни в разумное время ответа.
-     *
-     * @return array<int, string>
-     */
     private function selectTables(string $instruction): array
     {
         $this->ensureGrouped();
@@ -224,7 +182,7 @@ class ChatExportGenerator
             ->get(['id', 'name', 'description']);
 
         if ($groups->isEmpty()) {
-            // Группировки нет — работаем по списку таблиц источника напрямую.
+
             return array_slice($this->router->showTables(), 0, self::MAX_TABLES);
         }
 
@@ -263,10 +221,6 @@ class ChatExportGenerator
         return $tables;
     }
 
-    /**
-     * Группировка таблиц — разовая операция на источник, но выгрузка может
-     * оказаться первым, о чём пользователь попросил в новом чате.
-     */
     private function ensureGrouped(): void
     {
         try {
@@ -286,14 +240,6 @@ class ChatExportGenerator
         }
     }
 
-    /**
-     * Куда положим файл.
-     *
-     * Каталог с токеном в имени: два экспорта одного отчёта не затирают
-     * друг друга, а по ссылке нельзя добраться до чужого файла подбором пути.
-     *
-     * @return array{0: string, 1: string}
-     */
     private function prepareTarget(array $spec): array
     {
         $fileName = $spec['file_name'].'.'.ExportFormat::extension($spec['format']);
@@ -309,11 +255,6 @@ class ChatExportGenerator
         return [$directory.'/'.$fileName, $fileName];
     }
 
-    /**
-     * Генерация кода, запуск и починка при ошибке.
-     *
-     * @return array{meta: array, code: string}
-     */
     private function buildFile(
         ExportCodeTemplater $templater,
         array $spec,
@@ -350,8 +291,7 @@ class ChatExportGenerator
             $meta = $this->extractMeta($run['output'] ?? []);
 
             if ($meta !== null && is_file($path) && filesize($path) > 0) {
-                // Скрипт мог записать файл не туда: путь задаём мы, но
-                // проверить дешевле, чем потом отдавать пользователю 404.
+
                 if (($meta['file'] ?? null) !== $path) {
                     Log::warning('ChatExportGenerator: unexpected output path', [
                         'expected' => $path,
@@ -405,12 +345,6 @@ class ChatExportGenerator
         );
     }
 
-    /**
-     * Отчёт save_result() из stdout.
-     *
-     * Ищем с конца: pandas и драйверы любят писать предупреждения,
-     * и нужная строка почти всегда последняя.
-     */
     private function extractMeta(array $output): ?array
     {
         foreach (array_reverse($output) as $line) {
@@ -447,10 +381,6 @@ class ChatExportGenerator
         return 'Файл создан пустым (0 байт) — данных в выгрузке не оказалось.';
     }
 
-    /**
-     * Питоновский traceback из вывода: модели нужна ошибка, а не сто строк
-     * предупреждений pandas перед ней.
-     */
     private function extractTraceback(array $output): string
     {
         $start = null;
@@ -468,10 +398,6 @@ class ChatExportGenerator
         return implode("\n", array_slice($output, $start));
     }
 
-    /**
-     * Код кладём рядом с файлом: когда выгрузка окажется неверной,
-     * первым делом смотрят именно на него.
-     */
     private function storeCode(string $path, string $code): void
     {
         try {
@@ -512,13 +438,6 @@ class ChatExportGenerator
         ]);
     }
 
-    /**
-     * Ответ в чат: предпросмотр содержимого и ссылка на файл.
-     *
-     * Предпросмотр собирается из данных, которые вернул сам скрипт, — второе
-     * обращение к модели здесь ничего не добавило бы, кроме расхода токенов
-     * и риска, что она перепишет числа по-своему.
-     */
     private function composeAnswer(ChatExport $export, array $meta): string
     {
         $lines = [];
@@ -583,7 +502,6 @@ class ChatExportGenerator
             return '';
         }
 
-        // Широкую таблицу в узком чате читать невозможно — показываем начало.
         $limit = 6;
         $cut = count($columns) > $limit;
         $columns = array_slice($columns, 0, $limit);
@@ -606,10 +524,6 @@ class ChatExportGenerator
         return implode("\n", array_merge([$header, $divider], $rows));
     }
 
-    /**
-     * Значение ячейки внутри markdown-таблицы: вертикальная черта и перенос
-     * строки развалили бы разметку.
-     */
     private function cell($value): string
     {
         $value = str_replace(['|', "\n", "\r"], ['\\|', ' ', ' '], (string) $value);

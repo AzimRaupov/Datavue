@@ -5,15 +5,11 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
-/**
- * Фильтр из каталога платформы: чем пользователь управляет на готовом виджете.
- */
 class WidgetFilter extends Model
 {
-    /** Платформа оборачивает готовый запрос — модель об этом не знает. */
+
     public const APPLIES_WRAPPER = 'wrapper';
 
-    /** Условие должно попасть внутрь SQL — плейсхолдеры пишет модель. */
     public const APPLIES_QUERY = 'query';
 
     protected $fillable = [
@@ -41,11 +37,6 @@ class WidgetFilter extends Model
         return $query->where('is_active', true);
     }
 
-    /**
-     * Фильтры, которые семейству положены всегда и без участия ИИ.
-     *
-     * @return \Illuminate\Database\Eloquent\Collection<int, WidgetFilter>
-     */
     public static function requiredFor(string $family)
     {
         return self::query()
@@ -56,14 +47,6 @@ class WidgetFilter extends Model
             ->values();
     }
 
-    /**
-     * Кандидаты, которые имеет смысл предложить модели.
-     *
-     * Датовые фильтры отсеиваются, когда в схеме виджета даты нет: незачем
-     * тратить промпт на вариант, которым всё равно нельзя воспользоваться.
-     *
-     * @return \Illuminate\Database\Eloquent\Collection<int, WidgetFilter>
-     */
     public static function candidatesFor(string $family, bool $hasDateColumn)
     {
         return self::query()

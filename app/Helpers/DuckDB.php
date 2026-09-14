@@ -30,13 +30,6 @@ class DuckDB
 
     }
 
-    /**
-     * Возвращает схему указанных таблиц.
-     * Если $tables пустой или не передан — возвращает схему всех таблиц базы.
-     *
-     * @param array $tables список имён таблиц (пусто = все таблицы)
-     * @return array [ 'table_name' => [ 'column_name' => ['type'=>..,'nullable'=>..,'key'=>..,'default'=>..] ] ]
-     */
     public function getSchema(array $tables = []): array
     {
         if (empty($tables)) {
@@ -80,10 +73,6 @@ class DuckDB
         return $schema;
     }
 
-    /**
-     * Простая защита от SQL/shell-инъекции через имя таблицы,
-     * т.к. запрос собирается конкатенацией строк и уходит в shell.
-     */
     private function isValidIdentifier(string $name): bool
     {
         return (bool) preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $name);

@@ -2,36 +2,13 @@
 
 namespace App\Helpers\Ai\Providers;
 
-/**
- * Общие промпты генерации и починки python-кода виджета для SQL-источников.
- *
- * Диалекты отличаются названием СУБД в тексте и несколькими правилами синтаксиса,
- * поэтому весь остальной текст живёт здесь одной копией: правки промпта
- * автоматически действуют на все SQL-источники, а не только на тот, где их внесли.
- */
 abstract class SqlProviderAi
 {
-    /**
-     * Название СУБД так, как оно должно звучать в промпте.
-     */
+
     abstract protected function dialectName(): string;
 
-    /**
-     * Правила, специфичные для диалекта: плейсхолдеры, цитирование, отличия синтаксиса.
-     */
     abstract protected function dialectRules(): string;
 
-    /**
-     * То же самое, но для потребителя, который собирает промпт сам.
-     *
-     * WidgetQueryAi просит у модели не программу, а SQL-спецификацию, поэтому
-     * готовые промпты этого класса ему не подходят — нужны только название
-     * диалекта и его правила, вставленные в свой текст. Метод существует
-     * ради того, чтобы описание диалекта осталось в одном месте: иначе
-     * правило вроде TRY_CAST придётся дублировать и оно разойдётся.
-     *
-     * @return array{name: string, rules: string}
-     */
     public function dialectHints(): array
     {
         return [
@@ -39,7 +16,6 @@ abstract class SqlProviderAi
             'rules' => $this->dialectRules(),
         ];
     }
-
 
     public function reViewErrorsWidget($data){
         $dialect = $this->dialectName();
@@ -139,7 +115,6 @@ TEXT;
 3. Схема базы данных (только для определения таблиц/колонок/связей, не для наименования результата).
 4. Технические соглашения (snake_case, английские идентификаторы и т.п.) — используются ТОЛЬКО если ни в задаче, ни в схеме нет явного указания.
 TEXT;
-
 
         $prompt = <<<TEXT
 Сгенерируй функцию:
@@ -271,22 +246,6 @@ TEXT;
         ];
     }
 
-
-    /**
-     * Промпт генерации main() для выгрузки результата запроса в файл.
-     *
-     * Отличие от виджета принципиальное: у виджета результат — JSON строго
-     * заданной схемы, который потом рисует фронт. Здесь результат — таблица,
-     * которую человек откроет в Excel или прочитает в PDF, поэтому заголовки
-     * колонок это уже не технические алиасы, а часть готового документа.
-     *
-     * Саму запись файла модель не пишет: за неё это делает save_result() из
-     * рантайма платформы (см. App\Helpers\Export\ExportCodeTemplater).
-     *
-     * @param  array{instruction: string, tables_scheme: string, runtime: string,
-     *               format: string, format_label: string, format_rules: string,
-     *               row_limit: int, title: string}  $data
-     */
     public function resultExport($data)
     {
         $dialect = $this->dialectName();
@@ -443,12 +402,6 @@ TEXT;
         ];
     }
 
-    /**
-     * Промпт починки main() выгрузки по ошибке запуска.
-     *
-     * @param  array{code: string, errors: string, output: string, instruction: string,
-     *               tables_scheme: string, format_label: string, title: string}  $data
-     */
     public function reViewErrorsExport($data)
     {
         $dialect = $this->dialectName();

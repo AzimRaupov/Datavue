@@ -32,12 +32,6 @@ class ConnectRemoteDb
         $this->connection();
     }
 
-    /**
-     * Имя типа источника из каталога → драйвер PDO.
-     *
-     * В каталоге тип называется "postgres", а Laravel ждёт "pgsql": без этого
-     * перевода проверка подключения к PostgreSQL падала на «Unsupported driver».
-     */
     private const DRIVERS = [
         'mysql' => 'mysql',
         'postgres' => 'pgsql',
@@ -61,7 +55,6 @@ class ConnectRemoteDb
     {
         $driver = $this->driver();
 
-        // У SQLite нет хоста и учётных данных — только путь к файлу.
         if ($driver === 'sqlite') {
             return $this->remoteConnection([
                 'driver' => 'sqlite',
@@ -101,10 +94,6 @@ class ConnectRemoteDb
         }
     }
 
-    /**
-     * Делает понятной самую частую причину отказа на новом типе источника —
-     * отсутствующее расширение PHP.
-     */
     private function explain(\Throwable $e): string
     {
         $message = $e->getMessage();

@@ -7,12 +7,6 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-/**
- * Сохранённая проверка над источником рабочего пространства: раз в заданный
- * интервал платформа выполняет её сама и, если условие выполнилось, шлёт
- * письмо. Условие задаёт человек — метриками через конструктор, сырым SQL
- * или Python; ИИ в эту ветку не вовлечён.
- */
 class Alert extends Model
 {
     protected $fillable = [
@@ -63,13 +57,10 @@ class Alert extends Model
         'state' => self::STATE_UNKNOWN,
     ];
 
-    /** Условие собирается конструктором (метрики → SQL через WidgetQueryComposer). */
     public const MODE_BUILDER = 'builder';
 
-    /** Условие — сырой SELECT/WITH под ReadOnlySqlGuard. */
     public const MODE_SQL = 'sql';
 
-    /** Условие — тело main() на Python, как у ручных виджетов. */
     public const MODE_PYTHON = 'python';
 
     public const STATE_UNKNOWN = 'unknown';
@@ -107,7 +98,6 @@ class Alert extends Model
         return $query->where('company_id', $companyId);
     }
 
-    /** Готов ли алерт к проверке прямо сейчас. */
     public function scopeDue(Builder $query)
     {
         return $query->where('is_active', true)

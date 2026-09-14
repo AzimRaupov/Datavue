@@ -11,15 +11,6 @@ use App\Models\UploadedFile;
 use App\Models\User;
 use Illuminate\Support\Facades\Log;
 
-/**
- * Разбирает загруженный файл и превращает его в готовый к запросам источник.
- *
- * Раньше класс работал «внутри чата»: путь хранения, имя импортируемой базы и
- * запись о ходе работ — всё строилось вокруг chat_id. С разделением источников
- * и чатов это стало неверным: файл загружают ДО того, как появится хоть один
- * чат, и один разобранный файл обслуживает потом сразу несколько чатов.
- * Поэтому здесь остались только компания и сам файл.
- */
 class DataSourceRouter
 {
     public UploadedFile $uploadFile;
@@ -35,15 +26,8 @@ class DataSourceRouter
 
     private const SUPPORTED_TABLE_TYPES = ['csv', 'xls', 'xlsx'];
 
-    /** Готовые базы SQLite: конвертировать нечего, файл уже является источником. */
     private const SUPPORTED_SQLITE_TYPES = ['db', 'sqlite', 'sqlite3'];
 
-    /**
-     * Тип источника, к которому привёл разбор файла.
-     *
-     * Контроллер раньше жёстко сохранял локальный источник как duckdb, из-за чего
-     * загруженный .sqlite регистрировался чужим типом и не открывался.
-     */
     public string $resolvedTypeName = 'duckdb';
 
     public function __construct($company_id, $upload_file_id, $user_id, $type_id = null)
@@ -53,8 +37,6 @@ class DataSourceRouter
         $this->dataSourceType = $type_id ? DataSourceType::query()->find($type_id) : null;
         $this->companyId = (int) $company_id;
 
-        // Ключ хранения — id загруженного файла: он уже уникален и известен до
-        // того, как источник получит собственный id.
         $this->storage = storage_path(
             'app/company/'.$this->companyId.'/sources/'.$this->uploadFile->id
         );
@@ -74,9 +56,6 @@ class DataSourceRouter
         $this->databaseName = 'data_source_' . $this->companyId . '_upload_' . $this->uploadFile->id;
     }
 
-    /**
-     * @return array{success: bool, message: string, extraction: ?DataSourceExtraction}
-     */
     public function handle(): array
     {
         try {
@@ -107,7 +86,7 @@ class DataSourceRouter
                 'success'    => true,
                 'message'    => $result['message'] ?? 'База данных успешно создана и файл импортирован.',
                 'extraction' => $extraction,
-                // null для table-хендлера, массив с host/port/... для mysql-дампа
+
                 'connection' => $result['connection'] ?? null,
                 'type_name'  => $this->resolvedTypeName,
             ];

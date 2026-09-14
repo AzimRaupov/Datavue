@@ -8,11 +8,6 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Queue\SerializesModels;
 
-/**
- * Проверка алерта завершилась ошибкой (запрос сломан, база недоступна, код
- * упал). Отправляется автору не чаще config('alerts.error_cooldown_hours'),
- * $disabled — когда ошибка привела к авто-отключению алерта.
- */
 class AlertBrokenMail extends Mailable
 {
     use Queueable, SerializesModels;

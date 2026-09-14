@@ -19,17 +19,9 @@ use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Throwable;
 
-/**
- * Всё, что происходит с содержимым алерта, кроме самого CRUD: схема источника
- * для конструктора, черновая проверка условия до сохранения, «проверить
- * сейчас» у сохранённого алерта и его история.
- */
 class AlertRunController extends Controller
 {
-    /**
-     * Схема источника пространства + словари конструктора — тот же набор,
-     * что DashboardBuilderController::schema() отдаёт конструктору виджетов.
-     */
+
     public function schema(Request $request, $workspaceId)
     {
         $workspace = $this->findWorkspace($request, $workspaceId);
@@ -68,13 +60,6 @@ class AlertRunController extends Controller
         ]);
     }
 
-    /**
-     * Черновая проверка условия до сохранения: собранный SQL (или вывод
-     * Python), строки результата и вердикт «сработало бы».
-     *
-     * Ничего не пишет ни в алерт, ни в историю, и не рассылает писем —
-     * это именно «покажи, что получится», а не проверка.
-     */
     public function preview(Request $request, $workspaceId)
     {
         $workspace = $this->findWorkspace($request, $workspaceId);
@@ -116,10 +101,6 @@ class AlertRunController extends Controller
     {
         $run = (new AlertRunner())->run($draft, $dataSource, (int) config('alerts.sample_rows'));
 
-        // Тот же разрешатель, что и при сохранении: в builder-режиме автор
-        // выбирает метрику по номеру, а не имя колонки — иначе превью может
-        // разойтись с тем, что реально сохранится (см. AlertController::
-        // checkCondition про историю бага «нет колонки»).
         if ($condition !== []) {
             $condition = AlertQueryBuilder::resolveConditionColumn($condition, $draft, $dataSource);
         }
@@ -161,10 +142,6 @@ class AlertRunController extends Controller
         ];
     }
 
-    /**
-     * «Проверить сейчас»: тот же путь, что и по расписанию, но без письма —
-     * иначе кнопка ради любопытства могла бы разбудить всю почту компании.
-     */
     public function run(Request $request, $id, AlertChecker $checker)
     {
         $alert = $this->find($request, $id);

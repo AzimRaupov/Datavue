@@ -38,11 +38,6 @@ class DataSource extends Model
         'options' => 'array',
     ];
 
-    /**
-     * Пароль от базы клиента наружу не отдаётся никогда: источники теперь
-     * перечисляются в общем списке компании, и без этого он уезжал бы
-     * во фронтенд в каждом ответе.
-     */
     protected $hidden = [
         'password',
     ];
@@ -62,27 +57,16 @@ class DataSource extends Model
         return $this->belongsTo(Company::class);
     }
 
-    /**
-     * Сотрудник, подключивший источник.
-     */
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
     }
 
-    /**
-     * Чаты, заведённые на этом источнике. Их может быть сколько угодно —
-     * ради этого источник и отвязан от конкретного чата.
-     */
     public function chats(): HasMany
     {
         return $this->hasMany(AiChat::class, 'data_source_id');
     }
 
-    /**
-     * Смысловые группы таблиц, полученные при разборе схемы.
-     * Разбор делается один раз на источник и переиспользуется всеми его чатами.
-     */
     public function groups(): HasMany
     {
         return $this->hasMany(DataSourceGroup::class, 'data_source_id');
@@ -93,32 +77,16 @@ class DataSource extends Model
         return $this->hasMany(DataSourceTable::class, 'data_source_id');
     }
 
-    /**
-     * Ограничивает выборку источниками одной компании.
-     * Используется во всех контроллерах — источник чужой компании
-     * не должен находиться ни при каких правах.
-     */
     public function scopeOfCompany(Builder $query, ?int $companyId): Builder
     {
         return $query->where('company_id', $companyId);
     }
 
-    /**
-     * Файл источника лежит внутри storage и удаляется вместе с источником.
-     */
     public function isFileBased(): bool
     {
         return $this->connection_type === 'local';
     }
 
-    /**
-     * Как называется исходный формат источника для пользователя.
-     *
-     * Показывать type->name нельзя: csv, xlsx и Google-таблицы разбираются
-     * в DuckDB, и в списке источников все они выглядели как «duckdb».
-     * Технический тип по-прежнему определяет, каким провайдером выполнять
-     * запросы, а здесь — то, что человек реально подключал.
-     */
     protected const FORMAT_LABELS = [
         'csv' => 'CSV',
         'txt' => 'CSV',
@@ -138,16 +106,11 @@ class DataSource extends Model
                 ?? mb_strtoupper($this->origin_format);
         }
 
-        // Внешняя база: исходный формат и есть её тип.
         return $this->relationLoaded('type') && $this->type
             ? ($this->type->label ?: $this->type->name)
             : '—';
     }
 
-    /**
-     * Ключ для цветного бейджа на фронте. Отдаётся отдельно от подписи,
-     * чтобы верстка не разбирала русский текст.
-     */
     public function getFormatKeyAttribute(): string
     {
         if ($this->origin_format) {
@@ -159,9 +122,5 @@ class DataSource extends Model
         return $this->relationLoaded('type') && $this->type ? $this->type->name : 'unknown';
     }
 
-    /**
-     * Подписи считаются на лету, но нужны в каждом ответе API, поэтому
-     * добавляются в сериализацию автоматически.
-     */
     protected $appends = ['format_label', 'format_key'];
 }

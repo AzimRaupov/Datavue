@@ -14,9 +14,7 @@ class DashboardAi
 
     public function __construct($dataSource)
     {
-        // При незнакомом типе фабрика падает сразу и по делу — раньше
-        // providerAi молча оставался null, и ошибка всплывала позже,
-        // внутри генерации кода виджета, без указания на причину.
+
         $this->providerAi = ProviderAiFactory::for($dataSource);
     }
 
@@ -145,14 +143,7 @@ PROMPT;
 
         return $response;
     }
-    /**
-     * Первый шаг выбора виджетов: какие семейства визуализаций вообще нужны.
-     *
-     * Полный каталог с формами данных и вариантами отрисовки занимал 61% промпта,
-     * из-за чего схема таблиц и запрос пользователя тонули в справочнике. Сначала
-     * сужаем круг по коротким описаниям, и только выбранные семейства уходят
-     * в основной промпт целиком.
-     */
+
     public function defineWidgetFamilies(string $familiesJson, string $schemaSummary, string $text): array
     {
         $prompt = <<<PROMPT
@@ -342,9 +333,7 @@ TEXT;
 
     public function generateWidgets($scheme, $widgets, $text, array $suggestedFamilies = [])
     {
-        // Предварительный отбор семейств уже нашёл в данных признаки под
-        // конкретные визуализации. Без передачи его результата сюда эта работа
-        // пропадала: модель заново скатывалась к столбикам.
+
         $suggestion = '';
 
         if ($suggestedFamilies) {
@@ -513,7 +502,6 @@ TEXT;
         return (new AIService(responseFormat: 'json',tokens: 8000))->ask($prompt);
     }
 
-
     private function mainBodySystemPrompt(): string
     {
         return <<<TEXT
@@ -555,7 +543,6 @@ TEXT;
 
     public function generateContentWidget($dashboard_widget, $tables_scheme, $codeTemplate)
     {
-
 
         $prompts = $this->providerAi->generateWidgetCode($dashboard_widget, $tables_scheme, $dashboard_widget->instruction, $codeTemplate);
         $response = (new AIService(responseFormat: 'text', tokens: 8000))->ask($prompts["prompt"], $prompts["system"]);

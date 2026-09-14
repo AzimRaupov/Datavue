@@ -15,9 +15,6 @@ class DefineTaskAi
         $this->task_list = $task_list;
     }
 
-    /**
-     * $data — контекст системы (см. App\Helpers\Chat\ChatContext::toArray()).
-     */
     public function defineTask($data)
     {
         $system = <<<TEXT

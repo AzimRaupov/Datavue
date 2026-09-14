@@ -37,9 +37,6 @@ class ReviewWidgetsDashboardJob implements ShouldQueue
             ->toArray();
     }
 
-    /**
-     * Execute the job.
-     */
     public function handle(): void
     {
         \App\Helpers\Ai\AiUsageContext::set(
@@ -72,8 +69,6 @@ class ReviewWidgetsDashboardJob implements ShouldQueue
             $task->save();
             $task->load('status');
 
-
-
             event(new \App\Events\MessageTasksChanged($this->message, $task));
             $this->dashboard->status = "completed";
             $this->dashboard->save();
@@ -81,7 +76,7 @@ class ReviewWidgetsDashboardJob implements ShouldQueue
         }
 
         } finally {
-            // Воркер долгоживущий — контекст обязан сбрасываться.
+
             \App\Helpers\Ai\AiUsageContext::clear();
         }
     }

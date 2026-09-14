@@ -7,9 +7,6 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Str;
 
-/**
- * Файл, сформированный по просьбе пользователя в чате.
- */
 class ChatExport extends Model
 {
     protected $fillable = [
@@ -43,16 +40,8 @@ class ChatExport extends Model
         ];
     }
 
-    /**
-     * Поля, которые не должны уезжать клиенту: путь на диске выдаёт структуру
-     * хранилища, а код — целиком содержимое запроса к базе компании.
-     */
     protected $hidden = ['path', 'code'];
 
-    /**
-     * Ссылка и человекочитаемый размер нужны фронту всегда, а вычисляются
-     * из полей, которые он и так получает.
-     */
     protected $appends = ['url', 'size_human', 'format_label'];
 
     public function chat(): BelongsTo
@@ -107,13 +96,9 @@ class ChatExport extends Model
             && is_file($this->path);
     }
 
-    /**
-     * Markdown-ссылка для вставки в ответ агента.
-     */
     public function markdownLink(): string
     {
-        // Формат и размер уже названы строкой выше в ответе — в подписи ссылки
-        // достаточно имени файла.
+
         return sprintf('[⬇ Скачать %s](%s)', $this->file_name, $this->url);
     }
 }

@@ -10,10 +10,6 @@ class DuckDbConnectionLocalProvider
 {
     public string $pathDb;
 
-    /**
-     * Кэш ключевых колонок, полученных из duckdb_constraints() и метаданных импорта.
-     * Формат: ['table_name' => ['column_name' => 'PRI'|'UNI'|'MUL']]
-     */
     private ?array $keyColumnsCache = null;
 
     public function __construct(string $pathDb)
@@ -21,9 +17,6 @@ class DuckDbConnectionLocalProvider
         $this->pathDb = $pathDb;
     }
 
-    /**
-     * Получить список таблиц
-     */
     public function showTables(): array
     {
         $rows = $this->query('SHOW TABLES');
@@ -36,9 +29,6 @@ class DuckDbConnectionLocalProvider
             ->toArray();
     }
 
-    /**
-     * Получить информацию о колонках таблицы
-     */
     public function showColumns(string $tableName): array
     {
         $rows = $this->query('DESCRIBE ' . $this->quoteIdentifier($tableName));
@@ -51,8 +41,6 @@ class DuckDbConnectionLocalProvider
 
                 $columnName = $row['column_name'] ?? $row['Field'] ?? null;
 
-                // Поле "key" из DESCRIBE у DuckDB ненадёжно (особенно для UNIQUE),
-                // поэтому приоритет отдаём данным из duckdb_constraints().
                 $key = $columnName !== null
                     ? ($keyColumns[$columnName] ?? ($row['key'] ?? $row['Key'] ?? ''))
                     : ($row['key'] ?? $row['Key'] ?? '');
@@ -103,9 +91,6 @@ class DuckDbConnectionLocalProvider
         }
     }
 
-    /**
-     * Выполнение SQL-запроса через DuckDB CLI
-     */
     public function query(string $query, array $bindings = [])
     {
         $command = [
@@ -126,7 +111,7 @@ class DuckDbConnectionLocalProvider
             }
 
             try {
-                // false -> декодируем как объекты (stdClass), как это делает DB::select() у MySQL
+
                 $decoded = json_decode($output, false, 512, JSON_THROW_ON_ERROR);
 
                 if (is_array($decoded)) {
@@ -153,7 +138,6 @@ class DuckDbConnectionLocalProvider
         return collect();
     }
 
-
     public function getSchema($tables_list = [], array $options = []): array
     {
         $tables = count($tables_list) > 0
@@ -166,12 +150,6 @@ class DuckDbConnectionLocalProvider
         $includeColumns = in_array('columns', $options);
         $includeRelations = isset($options['relations']);
         $includeSampleValues = in_array('sample_values', $options);
-
-        /*
-        |--------------------------------------------------------------------------
-        | Получаем все колонки таблиц
-        |--------------------------------------------------------------------------
-        */
 
         $allColumns = [];
 
@@ -213,12 +191,6 @@ class DuckDbConnectionLocalProvider
             $allColumns[$tableName] = $tableColumns;
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Определяем связи
-        |--------------------------------------------------------------------------
-        */
-
         $relations = [];
 
         if ($includeRelations) {
@@ -237,12 +209,6 @@ class DuckDbConnectionLocalProvider
                 'count' => count($relations),
             ]);
         }
-
-        /*
-        |--------------------------------------------------------------------------
-        | Формируем результат
-        |--------------------------------------------------------------------------
-        */
 
         foreach ($tables as $tableName) {
 
@@ -324,7 +290,6 @@ class DuckDbConnectionLocalProvider
         return $schema;
     }
 
-
     private function getTableCount(string $tableName): int
     {
         $query = sprintf(
@@ -337,10 +302,6 @@ class DuckDbConnectionLocalProvider
         return (int) ($result[0]->count_rows ?? 0);
     }
 
-    /**
-     * Колонка годится для примеров значений: текстовая и не первичный/уникальный ключ
-     * (там лежат идентификаторы, а не категории).
-     */
     private function isEnumerableType(string $type): bool
     {
         $normalized = strtolower(preg_replace('/\(.*\)/', '', $type) ?? $type);
@@ -350,17 +311,6 @@ class DuckDbConnectionLocalProvider
         ], true);
     }
 
-    /**
-     * Реальные значения колонки — то немногое, что превращает фильтр по значению
-     * из угадывания моделью в точный запрос (см. WidgetSpecAi/WidgetQueryAi).
-     *
-     * Ограничение выборки — сама проверка кардинальности: если различных значений
-     * больше лимита, колонка похожа на свободный текст, а не на категорию, и
-     * показывать модели обрезанный список опаснее, чем не показывать никакого —
-     * она примет неполный список за исчерпывающий.
-     *
-     * @return array<int, string>|null
-     */
     private function fetchSampleValues(string $tableName, string $columnName, int $limit = 20): ?array
     {
         $column = $this->quoteIdentifier($columnName);
@@ -394,13 +344,6 @@ class DuckDbConnectionLocalProvider
         return $values === [] ? null : $values;
     }
 
-    /**
-     * Возвращает карту key-колонок по всем таблицам БД.
-     * Сначала берём реальные DuckDB constraints, затем дополняем
-     * метаданными, которые MySqlDataHandler сохраняет из ALTER TABLE.
-     *
-     * Формат: ['table_name' => ['column_name' => 'PRI'|'UNI'|'MUL', ...]]
-     */
     private function getKeyColumns(): array
     {
         if ($this->keyColumnsCache !== null) {
@@ -431,8 +374,6 @@ class DuckDbConnectionLocalProvider
                 continue;
             }
 
-            // DuckDB CLI сериализует LIST-колонку в JSON-массив,
-            // но на всякий случай подстрахуемся, если пришла строка.
             if (!is_array($columnNames)) {
                 $decoded = json_decode((string) $columnNames, true);
                 $columnNames = is_array($decoded) ? $decoded : [$columnNames];
@@ -446,7 +387,6 @@ class DuckDbConnectionLocalProvider
                     continue;
                 }
 
-                // PRIMARY KEY приоритетнее UNIQUE, не перезаписываем
                 if (($keys[$tableName][$columnName] ?? null) === 'PRI') {
                     continue;
                 }
@@ -489,22 +429,9 @@ class DuckDbConnectionLocalProvider
         return $this->keyColumnsCache = $keys;
     }
 
-    /**
-     * Определение связей между таблицами
-     *
-     * 1. Реальный FOREIGN KEY (через duckdb_constraints())
-     * 2. Совпадение имени/типа колонок
-     * 3. Проверка реальных значений через JOIN
-     */
     private function detectRelations(array $schema): array
     {
         $relations = [];
-
-        /*
-        |--------------------------------------------------------------------------
-        | 1. Получаем реальные FOREIGN KEY
-        |--------------------------------------------------------------------------
-        */
 
         $foreignKeys = $this->getForeignKeyRelations();
 
@@ -527,12 +454,6 @@ class DuckDbConnectionLocalProvider
                 'type' => 'foreign_key',
             ];
         }
-
-        /*
-        |--------------------------------------------------------------------------
-        | 2. Проверяем связи по значениям
-        |--------------------------------------------------------------------------
-        */
 
         $tables = array_keys($schema);
 
@@ -600,9 +521,6 @@ class DuckDbConnectionLocalProvider
         return $relations;
     }
 
-    /**
-     * Получить реальные FOREIGN KEY связи через duckdb_constraints()
-     */
     private function getForeignKeyRelations(): array
     {
         $relations = [];
@@ -707,10 +625,6 @@ class DuckDbConnectionLocalProvider
         return $deduped;
     }
 
-    /**
-     * Разбирает содержимое скобок FOREIGN KEY (col1, col2) / REFERENCES
-     * t(col1, col2) на массив "голых" имён колонок без кавычек и пробелов.
-     */
     private function splitIdentifierList(string $raw): array
     {
         return array_values(array_filter(array_map(
@@ -719,9 +633,6 @@ class DuckDbConnectionLocalProvider
         ), fn ($part) => $part !== ''));
     }
 
-    /**
-     * Проверяет процент значений, которые существуют в target-таблице
-     */
     private function calculateMatchRate(
         string $fromTable,
         string $fromColumn,
@@ -760,9 +671,6 @@ class DuckDbConnectionLocalProvider
         return round(($matched / $total) * 100, 2);
     }
 
-    /**
-     * Проверяет совместимость типов
-     */
     private function areTypesCompatible(string $fromType, string $toType): bool
     {
         $fromType = strtolower(preg_replace('/\(.*\)/', '', $fromType));
@@ -789,9 +697,6 @@ class DuckDbConnectionLocalProvider
         return $fromType === $toType;
     }
 
-    /**
-     * Проверяет, существует ли уже такая связь
-     */
     private function relationExists(
         array $relations,
         string $fromTable,
@@ -814,9 +719,6 @@ class DuckDbConnectionLocalProvider
         return false;
     }
 
-    /**
-     * Экранирование идентификатора
-     */
     private function quoteIdentifier(string $identifier): string
     {
         return '"' . str_replace('"', '""', $identifier) . '"';

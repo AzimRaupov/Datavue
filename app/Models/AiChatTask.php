@@ -10,9 +10,6 @@ class AiChatTask extends Model
 {
     protected $fillable = ['chat_id', 'message_id', 'task_id', 'status_id','title','description'];
 
-
-
-
     public function task()
     {
         return $this->belongsTo(Task::class, 'task_id');

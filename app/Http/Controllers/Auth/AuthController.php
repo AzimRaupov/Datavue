@@ -26,11 +26,6 @@ class AuthController extends Controller
         ]);
     }
 
-    /**
-     * Регистрация компании: создаётся сама компания и её первый пользователь,
-     * который становится владельцем и получает роль company_admin —
-     * то есть полные права на всё внутри своей компании.
-     */
     public function register(Request $request)
     {
         $data = $request->validate([
@@ -54,7 +49,6 @@ class AuthController extends Controller
                 'is_active' => true,
             ]);
 
-            // Владелец компании — защищён от удаления и понижения в правах.
             $company->owner_id = $user->id;
             $company->save();
 
@@ -87,7 +81,6 @@ class AuthController extends Controller
             ], 401);
         }
 
-        // Отключённый сотрудник не должен входить, хотя его учётка сохранена.
         if (!$user->is_active) {
             return response()->json([
                 'message' => 'Учётная запись отключена. Обратитесь к администратору компании.',
@@ -102,10 +95,6 @@ class AuthController extends Controller
         ]);
     }
 
-    /**
-     * Единый формат пользователя для фронта: вместе с компанией, ролями и
-     * плоским списком прав — по нему интерфейс решает, что показывать.
-     */
     private function userPayload(User $user): array
     {
         $user->load('company');

@@ -52,7 +52,7 @@ class MySqlDataHandler
             return [
                 'success' => true,
                 'message' => 'База данных успешно создана и файл импортирован.',
-                // сигнализируем наверх, что это фактически remote-подключение
+
                 'connection' => [
                     'type'     => 'mysql',
                     'host'     => $this->host,

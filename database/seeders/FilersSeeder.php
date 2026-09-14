@@ -8,9 +8,7 @@ use Illuminate\Database\Seeder;
 
 class FilersSeeder extends Seeder
 {
-    /**
-     * Run the database seeds.
-     */
+
     public function run(): void
     {
         $filers = [

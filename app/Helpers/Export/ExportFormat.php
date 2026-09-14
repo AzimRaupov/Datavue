@@ -2,15 +2,6 @@
 
 namespace App\Helpers\Export;
 
-/**
- * Форматы файлов, в которые платформа умеет выгружать результат запроса.
- *
- * Формат приходит с двух сторон и обеим доверять нельзя: пользователь пишет
- * его словами («в эксель», «вордовский файл»), модель — как получится
- * («excel», «xls», «Excel (xlsx)»). Поэтому нормализация и распознавание
- * живут в одном месте, а весь остальной код работает уже с одним из четырёх
- * канонических значений.
- */
 final class ExportFormat
 {
     public const CSV = 'csv';
@@ -18,13 +9,6 @@ final class ExportFormat
     public const PDF = 'pdf';
     public const DOCX = 'docx';
 
-    /**
-     * Как пользователь и модель называют формат. Ключ — регулярное выражение,
-     * значение — канонический формат.
-     *
-     * Порядок важен: при нескольких упоминаниях выигрывает то, что встретилось
-     * в тексте раньше («сохрани в pdf, csv не надо» → pdf).
-     */
     private const PATTERNS = [
         self::PDF => '/\bpdf\b|пдф|пдф\-?файл/iu',
         self::DOCX => '/\bdocx?\b|\bword\b|ворд|вордовск/iu',
@@ -32,17 +16,11 @@ final class ExportFormat
         self::CSV => '/\bcsv\b|цсв/iu',
     ];
 
-    /**
-     * @return array<int, string>
-     */
     public static function all(): array
     {
         return [self::CSV, self::XLSX, self::PDF, self::DOCX];
     }
 
-    /**
-     * Приводит произвольную строку к каноническому формату.
-     */
     public static function normalize(?string $value, string $fallback = self::CSV): string
     {
         $value = trim((string) $value);
@@ -56,9 +34,6 @@ final class ExportFormat
         return $detected ?? $fallback;
     }
 
-    /**
-     * Ищет упоминание формата в свободном тексте. null — формат не назван.
-     */
     public static function detect(string $text): ?string
     {
         $best = null;
@@ -89,9 +64,6 @@ final class ExportFormat
         };
     }
 
-    /**
-     * Название формата для текста в чате.
-     */
     public static function label(string $format): string
     {
         return match (self::normalize($format)) {
@@ -102,9 +74,6 @@ final class ExportFormat
         };
     }
 
-    /**
-     * Потолок строк для формата: у PDF и Word он ниже, чем у таблиц.
-     */
     public static function rowLimit(string $format): int
     {
         $default = (int) config('exports.max_rows', 100000);
@@ -118,9 +87,6 @@ final class ExportFormat
         return max(1, min($limit, $default));
     }
 
-    /**
-     * Особенности формата, о которых должна знать модель при подготовке данных.
-     */
     public static function rules(string $format): string
     {
         return match (self::normalize($format)) {

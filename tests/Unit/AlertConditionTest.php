@@ -2,14 +2,6 @@
 
 use App\Helpers\Alert\AlertCondition;
 
-/**
- * Решение «сработало или нет» по результату SQL-условия алерта.
- *
- * Отдельного внимания заслуживает пустой результат: он не угадывается,
- * а явно задан автором через on_empty — это то место, где раньше был бы
- * слепой пятно молчаливого поведения по умолчанию.
- */
-
 it('сравнивает число строк с порогом всеми операторами', function (string $op, int $rows, float $threshold, bool $expected) {
     $result = AlertCondition::evaluate(
         ['kind' => 'rows', 'op' => $op, 'threshold' => $threshold],

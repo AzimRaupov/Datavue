@@ -15,20 +15,9 @@ use Illuminate\Validation\Rule;
 use RuntimeException;
 use Throwable;
 
-/**
- * CRUD алертов рабочего пространства.
- *
- * Условие проверяется структурно ДО сохранения (SQL собирается/проходит
- * ReadOnlySqlGuard, Python — AST-инспектор), но не выполняется на источнике:
- * это делает отдельный эндпоинт «Проверить» (AlertRunController::preview) —
- * сохранение не должно зависеть от того, доступна ли в этот момент база
- * клиента.
- */
 class AlertController extends Controller
 {
-    /**
-     * Алерты пространства.
-     */
+
     public function index(Request $request, $workspaceId)
     {
         $workspace = $this->findWorkspace($request, $workspaceId);
@@ -63,24 +52,16 @@ class AlertController extends Controller
             return response()->json(['message' => $error], 422);
         }
 
-        // checkCondition() дописал в $data['condition']['column'] настоящее
-        // имя колонки результата (для builder — по выбранной метрике) —
-        // ниже сохраняется уже эта, разрешённая версия.
         $alert = DB::transaction(fn () => Alert::query()->create($data + [
             'company_id' => $workspace->company_id,
             'workspace_id' => $workspace->id,
             'data_source_id' => $workspace->data_source_id,
             'created_by' => $request->user()->id,
             'state' => Alert::STATE_UNKNOWN,
-            // Первая проверка — на ближайшем тике планировщика, а не через
-            // полный интервал: иначе только что созданный алерт молчал бы
-            // час, прежде чем хоть раз на что-то посмотреть.
+
             'next_check_at' => now(),
         ]));
 
-        // fresh(): столбцы, отсутствовавшие в $data (например, is_active,
-        // когда его не передали), заполнились дефолтом на стороне СУБД —
-        // в объекте create() их ещё нет.
         return response()->json($this->card($alert->fresh()), 201);
     }
 
@@ -100,12 +81,6 @@ class AlertController extends Controller
             return response()->json(['message' => $error], 422);
         }
 
-        // checkCondition() дописал в $data['condition']['column'] настоящее
-        // имя колонки результата — ниже сохраняется уже она.
-
-        // Правка условия сбрасывает состояние: старое "firing"/"error" было
-        // про прежнее условие и вводит в заблуждение про новое, пока его
-        // ещё ни разу не проверили.
         $data['state'] = Alert::STATE_UNKNOWN;
         $data['consecutive_failures'] = 0;
         $data['next_check_at'] = now();
@@ -119,10 +94,6 @@ class AlertController extends Controller
     {
         $alert = $this->find($request, $id);
 
-        // История удаляется каскадом на уровне БД (alert_checker_histories.
-        // alert_id ON DELETE CASCADE), а вот CSV на диске сам не пропадёт —
-        // весь каталог проверок этого алерта убирается одним махом, а не
-        // построчно по каждой записи истории.
         File::deleteDirectory(
             storage_path('app/company/'.$alert->company_id.'/alerts/'.$alert->id)
         );
@@ -132,13 +103,6 @@ class AlertController extends Controller
         return response()->json(['message' => 'Алерт удалён.']);
     }
 
-    /**
-     * Включение/выключение без похода в форму редактирования.
-     *
-     * Включение сбрасывает disabled_reason и счётчик ошибок: алерт, которого
-     * коснулись руками, заслуживает чистого старта, а не немедленного
-     * повторного авто-отключения на старом счётчике.
-     */
     public function toggle(Request $request, $id)
     {
         $alert = $this->find($request, $id);
@@ -156,11 +120,6 @@ class AlertController extends Controller
         return response()->json($this->card($alert));
     }
 
-    // -----------------------------------------------------------------
-
-    /**
-     * @return array<string, mixed>
-     */
     private function validated(Request $request, int $companyId, ?Alert $existing = null): array
     {
         $mode = $request->input('mode', $existing?->mode ?? Alert::MODE_BUILDER);
@@ -200,13 +159,10 @@ class AlertController extends Controller
             $rules['condition.on_empty'] = ['required', Rule::in(\App\Helpers\Alert\AlertCondition::ON_EMPTY)];
 
             if ($mode === Alert::MODE_SQL) {
-                // В своём SQL колонку называет сам автор — платформе она
-                // известна только с его слов.
+
                 $rules['condition.column'] = 'required_if:condition.kind,value|nullable|string|max:255';
             } else {
-                // В конструкторе колонку не называют — выбирают метрику
-                // по номеру, а имя колонки в SQL решает сам composer
-                // (см. AlertQueryBuilder::resolveConditionColumn).
+
                 $rules['condition.metric_index'] = 'required_if:condition.kind,value|nullable|integer|min:0';
             }
         }
@@ -224,9 +180,6 @@ class AlertController extends Controller
             abort(422, "Получателей больше, чем разрешено ({$maxRecipients}).");
         }
 
-        // Поля режимов, которые сейчас не выбраны, обнуляются явно: иначе
-        // правка с 'sql' на 'builder' оставила бы старый текст запроса
-        // висеть в базе и путать в списке причин, по которым сработал алерт.
         $data['builder'] = $mode === Alert::MODE_BUILDER ? $data['builder'] : null;
         $data['query'] = $mode === Alert::MODE_SQL ? $data['query'] : null;
         $data['code'] = $mode === Alert::MODE_PYTHON ? $data['code'] : null;
@@ -235,11 +188,6 @@ class AlertController extends Controller
         return $data;
     }
 
-    /**
-     * SQL и Python выполняются на сервере — писать их можно только с правом
-     * 'write alert code', ровно как у ручного виджета. Конструктор метрик
-     * это право не требует: SQL за автора собирает платформа.
-     */
     private function authorizeCodeMode(Request $request, string $mode): void
     {
         if ($mode !== Alert::MODE_BUILDER && !$request->user()->can('write alert code')) {
@@ -247,20 +195,6 @@ class AlertController extends Controller
         }
     }
 
-    /**
-     * Структурная проверка условия до сохранения: SQL собирается и проходит
-     * ReadOnlySqlGuard, Python — AST-инспектор. Выполнение на источнике сюда
-     * не входит — за него отвечает отдельная кнопка «Проверить».
-     *
-     * Заодно разрешает условие «по значению» в режиме builder: автор выбирает
-     * МЕТРИКУ (её номер), а не имя колонки — имя решает сам composer, и его
-     * дописывает сюда, в $data['condition']['column'], эта же проверка.
-     * Раньше имя гадал фронт, и оно расходилось с тем, что composer в итоге
-     * подставлял алиасом (дефолт вида «Сумма total_usd», а не «total_usd»),
-     * из-за чего сохранённое условие било по несуществующей колонке.
-     *
-     * @return string|null Сообщение об ошибке, если проверка не пройдена
-     */
     private function checkCondition(array &$data, Workspace $workspace): ?string
     {
         $dataSource = $workspace->dataSource;
@@ -292,9 +226,6 @@ class AlertController extends Controller
         }
     }
 
-    /**
-     * @return array<string, mixed>
-     */
     private function card(Alert $alert): array
     {
         $recipients = $alert->recipients ?? [];
@@ -321,8 +252,7 @@ class AlertController extends Controller
             'recipients' => [
                 'users' => $recipients['users'] ?? [],
                 'emails' => $recipients['emails'] ?? [],
-                // Имена сотрудников для отображения в списке — без похода
-                // фронта за отдельным справочником пользователей.
+
                 'user_names' => empty($recipients['users']) ? [] : User::query()
                     ->whereIn('id', $recipients['users'])
                     ->pluck('name', 'id'),

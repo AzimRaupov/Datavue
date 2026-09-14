@@ -8,9 +8,7 @@ use Illuminate\Database\Seeder;
 
 class TaskStatusSeeder extends Seeder
 {
-    /**
-     * Run the database seeds.
-     */
+
     public function run(): void
     {
         $tasks_statuses = [

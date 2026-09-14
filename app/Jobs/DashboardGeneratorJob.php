@@ -24,15 +24,8 @@ class DashboardGeneratorJob implements ShouldQueue
     public $user_id;
     public $dataSourceId;
 
-    /**
-     * Пустой дашборд, который нужно заполнить, вместо создания нового.
-     * Null — обычный путь: дашборда ещё нет, генератор заведёт свой.
-     */
     public $dashboardId;
 
-    /**
-     * Create a new job instance.
-     */
     public function __construct($message_id, $chat_id, $user_id, $dataSourceId, $dashboardId = null)
     {
         $this->message_id = $message_id;
@@ -78,11 +71,6 @@ class DashboardGeneratorJob implements ShouldQueue
                 event(new MessageTasksChanged($generator->message, $task));
             }
 
-
-
-            // ---------------------------------------------------------------
-            // Шаг 1: determine_data_source_groups
-            // ---------------------------------------------------------------
             $task = AiChatTask::query()->create([
                 'chat_id' => $generator->chat->id,
                 'message_id' => $generator->message->id,
@@ -123,11 +111,6 @@ class DashboardGeneratorJob implements ShouldQueue
             $task->load('status');
             event(new MessageTasksChanged($generator->message, $task));
 
-
-
-            // ---------------------------------------------------------------
-            // Шаг 2: detect_schema_dashboard
-            // ---------------------------------------------------------------
             $task = AiChatTask::query()->create([
                 'chat_id' => $generator->chat->id,
                 'message_id' => $generator->message->id,
@@ -169,7 +152,6 @@ class DashboardGeneratorJob implements ShouldQueue
             $task->load('status');
             event(new MessageTasksChanged($generator->message, $task, $generator->dashboard->id));
 
-
             $task = AiChatTask::query()->create([
                 'chat_id' => $generator->chat->id,
                 'message_id' => $generator->message->id,
@@ -186,8 +168,7 @@ class DashboardGeneratorJob implements ShouldQueue
 
             $result = $generator->generateContentToWidgets(
                 function ($widget, array $widgetResult, int $index, int $total) use ($generator) {
-                    // $widget->status уже проставлен в generateContentWidget ('active'/'failed'),
-                    // здесь только уведомляем фронт, что конкретный виджет готов.
+
                     event(new DashboardWidgetChanged($generator->dashboard));
 
                     if (!empty($widgetResult['errors'])) {
@@ -222,8 +203,6 @@ class DashboardGeneratorJob implements ShouldQueue
                 throw new RuntimeException($result['message'] ?: 'Step generate_widgets_dashboard failed');
             }
 
-            // Отказ отдельных виджетов не проваливает весь дашборд — они уже помечены 'failed'
-            // и будут переданы на исправление в ReviewWidgetsDashboard ниже.
             if (!empty($result['failed'])) {
                 \Log::warning(sprintf(
                     'DashboardGeneratorJob: %d/%d widgets failed to generate, continuing to review step',
@@ -241,9 +220,6 @@ class DashboardGeneratorJob implements ShouldQueue
             $generator->dashboard->save();
             event(new DashboardWidgetChanged($generator->dashboard));
 
-            // ---------------------------------------------------------------
-            // Шаг 4: review_and_correction_widgets
-            // ---------------------------------------------------------------
             $review = new ReviewWidgetsDashboard($generator->dashboard->id, $this->dataSourceId);
 
             $task = AiChatTask::query()->create([
@@ -315,8 +291,7 @@ class DashboardGeneratorJob implements ShouldQueue
 
             throw $e;
         } finally {
-            // Воркер живёт долго: не сбросив контекст, следующая задача
-            // записала бы расход на предыдущую компанию.
+
             \App\Helpers\Ai\AiUsageContext::clear();
         }
     }

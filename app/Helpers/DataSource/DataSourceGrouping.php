@@ -20,36 +20,13 @@ class DataSourceGrouping
 
     public array $generatedGroups = [];
 
-    /**
-     * Кэш результата getGroups() — заполняется один раз внутри handle(),
-     * повторные вызовы getGroups() просто отдают готовый массив.
-     */
     public array $groups = [];
 
-    /**
-     * Кэш результата getTables() — заполняется один раз внутри handle(),
-     * повторные вызовы getTables() просто отдают готовый массив.
-     */
     public array $tables = [];
    public $dataSourceAi;
-    /**
-     * true после того, как handle() отработал хотя бы раз.
-     * Нужен, чтобы отличить "группировка ещё не запускалась"
-     * от "группировка запускалась, но вернула пустой результат".
-     */
+
     private bool $generated = false;
 
-    /**
-     * Куда сообщать о ходе работы.
-     *
-     * Группировка большой схемы идёт минутами, и без обратной связи мастер
-     * подключения показывает пользователю неподвижный спиннер. Колбэк
-     * получает (код этапа, подпись, номер шага, всего шагов) и вызывается
-     * на границах этапов; null — работаем молча (например, из очереди
-     * генератора дашбордов, где прогресс никому не показывается).
-     *
-     * @var null|callable(string, string, int, int): void
-     */
     private $onProgress = null;
 
     public function __construct(int $dataSourceId)
@@ -61,9 +38,6 @@ class DataSourceGrouping
         );
     }
 
-    /**
-     * @param callable(string, string, int, int): void $callback
-     */
     public function onProgress(callable $callback): static
     {
         $this->onProgress = $callback;
@@ -78,14 +52,9 @@ class DataSourceGrouping
         }
     }
 
-    /**
-     * Основной метод
-     */
     public function handle(): array
     {
-        /**
-         * Получаем схему базы данных
-         */
+
         $this->reportProgress('read_schema', 'Читаем структуру источника', 1, 3);
 
         $this->schema = $this->connectionProviderRouter->getSchema(
@@ -112,10 +81,6 @@ class DataSourceGrouping
             ]
         );
 
-        /**
-         * Делим схему на части по бюджету токенов,
-         * с учётом связей между таблицами
-         */
         $this->reportProgress('analyze_tables', 'Анализируем таблицы и связи', 2, 3);
 
         $this->generatedGroups = $this->startGrouping(
@@ -123,12 +88,6 @@ class DataSourceGrouping
             tokenBudgetPerChunk: 6000
         );
 
-        /**
-         * Считаем компактные представления (группы отдельно,
-         * таблицы отдельно) один раз сразу после генерации,
-         * чтобы getGroups()/getTables() просто отдавали
-         * готовый результат без повторной генерации.
-         */
         $this->reportProgress('build_groups', 'Собираем смысловые группы', 3, 3);
 
         $this->groups = $this->buildGroups($this->generatedGroups);
@@ -139,20 +98,6 @@ class DataSourceGrouping
         return $this->generatedGroups;
     }
 
-    /**
-     * Возвращает группы в компактном формате:
-     *
-     * [
-     *     [
-     *         "name" => "Продажи и заказы",
-     *         "description" => "...",
-     *         "tables" => ["orders", "orderdetails"],
-     *     ],
-     *     ...
-     * ]
-     *
-     * Требует, чтобы перед этим уже был вызван handle().
-     */
     public function getGroups(): array
     {
         $this->assertGenerated();
@@ -160,21 +105,6 @@ class DataSourceGrouping
         return $this->groups;
     }
 
-    /**
-     * Возвращает плоский список всех таблиц из всех групп,
-     * без самих групп:
-     *
-     * [
-     *     [
-     *         "name" => "achievement_places",
-     *         "description" => "Справочник мест/контекстов, связанных с достижениями; определяет место, где достижение может быть получено.",
-     *         "role" => "Справочник мест достижений",
-     *     ],
-     *     ...
-     * ]
-     *
-     * Требует, чтобы перед этим уже был вызван handle().
-     */
     public function getTables(): array
     {
         $this->assertGenerated();
@@ -182,31 +112,12 @@ class DataSourceGrouping
         return $this->tables;
     }
 
-    /**
-     * Сохраняет результат группировки в БД
-     * (таблицы data_sources_groups и data_sources_tables).
-     *
-     * Перед сохранением удаляет предыдущий результат группировки
-     * для этого DataSource — save() не накапливает старые группы,
-     * а полностью заменяет их актуальными.
-     *
-     * Требует, чтобы перед этим уже был вызван handle().
-     */
     public function save(): void
     {
         $this->assertGenerated();
 
         DB::transaction(function () {
 
-            /**
-             * Удаляем предыдущий результат группировки этого DataSource.
-             *
-             * Таблицы удаляем отдельным запросом (а не полагаемся на
-             * каскад через data_source_group_id), потому что в таблицы
-             * пишется ещё и data_source_id напрямую — это позволяет
-             * не терять данные, если у какой-то таблицы группа почему-то
-             * не была указана.
-             */
             DataSourceTable::where('data_source_id', $this->dataSource->id)
                 ->delete();
 
@@ -248,18 +159,6 @@ class DataSourceGrouping
         ]);
     }
 
-    /**
-     * Загружает ранее сохранённый (через save()) результат группировки
-     * из БД, без повторного обращения к AI.
-     *
-     * Заполняет generatedGroups / groups / tables так же, как это
-     * делает handle() — после load() можно сразу пользоваться
-     * getGroups()/getTables().
-     *
-     * Возвращает true, если для этого DataSource в БД что-то нашлось,
-     * иначе false (например, группировка ещё ни разу не запускалась
-     * и не сохранялась) — в этом случае нужно вызвать handle().
-     */
     public function load(): bool
     {
         $groupModels = DataSourceGroup::query()
@@ -294,10 +193,6 @@ class DataSourceGrouping
         return true;
     }
 
-    /**
-     * Строит компактное представление групп (только имена таблиц)
-     * из полной структуры $generatedGroups.
-     */
     private function buildGroups(array $generatedGroups): array
     {
         $groups = [];
@@ -317,15 +212,6 @@ class DataSourceGrouping
         return $groups;
     }
 
-    /**
-     * Строит плоский список таблиц (без групп) из полной
-     * структуры $generatedGroups.
-     *
-     * Если одна и та же таблица встретилась в нескольких группах
-     * (см. mergeGroups — такое возможно для таблиц-"мостов"),
-     * в результат она попадёт один раз, с описанием из первого
-     * вхождения.
-     */
     private function buildTables(array $generatedGroups): array
     {
         $tables = [];
@@ -353,10 +239,6 @@ class DataSourceGrouping
         return $tables;
     }
 
-    /**
-     * Бросает исключение, если группы/таблицы запрашивают
-     * до вызова handle().
-     */
     private function assertGenerated(): void
     {
         if (!$this->generated) {
@@ -366,24 +248,6 @@ class DataSourceGrouping
         }
     }
 
-    /**
-     * Разбивает схему на части.
-     *
-     * В отличие от прежней версии, размер части определяется
-     * не фиксированным количеством таблиц, а приблизительным
-     * бюджетом токенов на часть — так промпт остаётся
-     * предсказуемого размера независимо от того, 15 в базе
-     * таблиц или 500, а на маленьких базах (укладывающихся
-     * в один бюджет) чанкование вообще не потребуется —
-     * это устраняет фрагментацию логических групп по чанкам
-     * и лишние round-trip'ы к AI.
-     *
-     * Таблицы стараемся группировать по компонентам связности
-     * (через relations), чтобы связанные таблицы с высокой
-     * вероятностью попадали в один и тот же чанк — иначе модель
-     * в разных запросах может по-разному называть одну и ту же
-     * логическую группу.
-     */
     public function startGrouping(
         array $scheme,
         int $tokenBudgetPerChunk = 6000
@@ -407,8 +271,6 @@ class DataSourceGrouping
                 'tables_count' => count($group),
             ]);
 
-            // Самая долгая часть: по запросу к модели на каждую порцию схемы.
-            // Без отчёта отсюда мастер молчит всё это время.
             if (count($schemeGroups) > 1) {
                 $this->reportProgress(
                     'analyze_tables',
@@ -431,11 +293,6 @@ class DataSourceGrouping
         return $generatedGroups;
     }
 
-    /**
-     * Упорядочивает имена таблиц через обход графа связей (BFS),
-     * чтобы связанные таблицы шли рядом друг с другом и с большей
-     * вероятностью попадали в один чанк.
-     */
     private function orderTablesByConnectivity(array $scheme): array
     {
         $adjacency = [];
@@ -482,10 +339,6 @@ class DataSourceGrouping
         return $ordered;
     }
 
-    /**
-     * Режет схему на чанки, ориентируясь на примерный размер
-     * (в токенах) каждой части, а не на фиксированное число таблиц.
-     */
     private function splitByTokenBudget(
         array $scheme,
         array $orderedTableNames,
@@ -502,10 +355,6 @@ class DataSourceGrouping
 
             $tableTokens = $this->estimateTokens($tableData);
 
-            /**
-             * Если одна таблица сама по себе больше бюджета —
-             * всё равно кладём её в чанк, дальше резать некуда.
-             */
             if (
                 $currentChunk &&
                 ($currentTokens + $tableTokens) > $tokenBudgetPerChunk
@@ -526,13 +375,6 @@ class DataSourceGrouping
         return $chunks;
     }
 
-    /**
-     * Грубая оценка количества токенов для куска данных.
-     * Используем эмпирическое соотношение ~4 символа на токен
-     * для JSON-подобного текста — этого достаточно, чтобы
-     * держать чанки предсказуемого размера, точная оценка тут
-     * не требуется.
-     */
     private function estimateTokens(array $tableData): int
     {
         $json = json_encode($tableData, JSON_UNESCAPED_UNICODE);
@@ -540,17 +382,11 @@ class DataSourceGrouping
         return (int) ceil(mb_strlen($json) / 4);
     }
 
-    /**
-     * Отправляет одну часть схемы в AI
-     */
     public function generateGrouping(
         array $currentGroups,
         array $scheme
     ): array {
 
-        /**
-         * JSON схемы текущей части
-         */
         $schemeJson = json_encode(
             $scheme,
             JSON_PRETTY_PRINT |
@@ -558,14 +394,6 @@ class DataSourceGrouping
             JSON_UNESCAPED_SLASHES
         );
 
-        /**
-         * Компактные списки уже существующих групп/таблиц.
-         *
-         * Модели не нужна полная структура групп с описаниями —
-         * merge всё равно делает PHP (mergeGroups). Ей достаточно
-         * имён, чтобы не плодить дубли. Полная структура только
-         * раздувала бы промпт токенами по мере роста числа групп.
-         */
         $existingGroupNames = array_values(array_unique(array_map(
             static fn (array $group) => $group['name'] ?? '',
             $currentGroups
@@ -595,18 +423,10 @@ class DataSourceGrouping
 
         $content = $response['content'] ?? null;
 
-
-        /**
-         * Если AIService уже вернул распарсенный массив —
-         * используем его как есть.
-         */
         if (is_array($content)) {
             $result = $content;
         } else {
 
-            /**
-             * Удаляем возможный Markdown
-             */
             $content = trim((string) $content);
 
             $content = preg_replace(
@@ -621,18 +441,12 @@ class DataSourceGrouping
                 $content
             );
 
-            /**
-             * Парсим JSON
-             */
             $result = json_decode(
                 $content,
                 true
             );
         }
 
-        /**
-         * Проверяем JSON
-         */
         if (!is_array($result)) {
 
             Log::error('AI returned invalid grouping JSON', [
@@ -644,9 +458,6 @@ class DataSourceGrouping
             );
         }
 
-        /**
-         * Проверяем наличие groups
-         */
         if (!isset($result['groups']) || !is_array($result['groups'])) {
 
             Log::error('AI response does not contain valid groups', [
@@ -658,18 +469,12 @@ class DataSourceGrouping
             );
         }
 
-        /**
-         * Объединяем новые группы со старыми
-         */
         return $this->mergeGroups(
             currentGroups: $currentGroups,
             newGroups: $result['groups']
         );
     }
 
-    /**
-     * Объединяет группы от разных AI-запросов
-     */
     private function mergeGroups(
         array $currentGroups,
         array $newGroups
@@ -686,9 +491,6 @@ class DataSourceGrouping
 
             $groupIndex = null;
 
-            /**
-             * Ищем уже существующую группу
-             */
             foreach ($currentGroups as $index => $currentGroup) {
 
                 if (
@@ -701,15 +503,8 @@ class DataSourceGrouping
                 }
             }
 
-            /**
-             * Если группа уже существует
-             */
             if ($groupIndex !== null) {
 
-                /**
-                 * Добавляем описание группы,
-                 * если его ещё нет
-                 */
                 if (
                     empty($currentGroups[$groupIndex]['description'])
                     &&
@@ -719,9 +514,6 @@ class DataSourceGrouping
                         = $newGroup['description'];
                 }
 
-                /**
-                 * Добавляем таблицы без дубликатов
-                 */
                 foreach ($newGroup['tables'] as $newTable) {
 
                     if (!isset($newTable['name'])) {
@@ -752,9 +544,6 @@ class DataSourceGrouping
 
             } else {
 
-                /**
-                 * Создаём новую группу
-                 */
                 $currentGroups[] = $newGroup;
             }
         }

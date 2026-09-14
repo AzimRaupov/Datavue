@@ -27,17 +27,10 @@ class ConnectionProviderRouter
             ->pluck('id', 'name')
             ->toArray();
 
-
         $this->define();
 
     }
-    /**
-     * Подбирает провайдер под тип источника.
-     *
-     * Раньше при незнакомом типе провайдер молча оставался null, и падало это
-     * далеко от причины — где-нибудь внутри getSchema с "call on null".
-     * Теперь неподдерживаемый тип сразу называет себя.
-     */
+
     public function define(){
 
         if (!$this->dataSource) {
@@ -48,7 +41,7 @@ class ConnectionProviderRouter
         $isLocal = $this->dataSource->connection_type === 'local';
 
         $this->selectedProvider = match (true) {
-            // Файловые источники: путь к файлу вместо хоста и порта.
+
             $isLocal && $type === 'duckdb' => new DuckDbConnectionLocalProvider(
                 $this->dataSource->extracted->data_path ?? null
             ),
@@ -57,7 +50,6 @@ class ConnectionProviderRouter
                 $this->dataSource->extracted->data_path ?? $this->dataSource->path
             ),
 
-            // Файл SQLite могли подключить и как "внешний" — по пути на диске.
             $type === 'sqlite' => new SqliteConnectionLocalProvider(
                 $this->dataSource->path ?? $this->dataSource->database
             ),
@@ -96,8 +88,7 @@ class ConnectionProviderRouter
     }
     public function getSchema(array $tables = [], array $options = [])
     {
-        // Схема (особенно с count_rows) может запрашиваться много раз подряд для одних
-        // и тех же таблиц (по разу на виджет) — кэшируем в рамках жизни роутера.
+
         $cacheKey = md5(json_encode([$tables, $options]));
 
         if (array_key_exists($cacheKey, $this->schemaCache)) {

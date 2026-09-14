@@ -5,20 +5,6 @@ namespace App\Helpers\Export;
 use App\Helpers\DataSource\CodeTemplater;
 use App\Models\DataSource;
 
-/**
- * Собирает Python-скрипт выгрузки: рантайм платформы + main() от модели.
- *
- * Ключевое решение: запись файла пишем мы, а не модель. Модель отвечает только
- * за «что посчитать» — SQL и подготовку таблицы, — и заканчивает вызовом
- * save_result(). Всё остальное (openpyxl со стилями, reportlab с кириллическим
- * шрифтом, python-docx) — код платформы.
- *
- * Иначе каждый экспорт превращался бы в лотерею: модель по памяти пишет работу
- * с четырьмя разными библиотеками, промахивается мимо версии API, забывает про
- * шрифт с кириллицей в PDF — и пользователь получает файл с квадратами вместо
- * букв или падение на импорте. Здесь же путь до файла и формат вообще не в её
- * руках: она физически не может записать файл не туда.
- */
 class ExportCodeTemplater
 {
     private CodeTemplater $codeTemplater;
@@ -33,9 +19,6 @@ class ExportCodeTemplater
         $this->format = ExportFormat::normalize($this->format);
     }
 
-    /**
-     * Полный исполняемый скрипт: рантайм + main() модели + запуск.
-     */
     public function assemble(string $mainBody): string
     {
         return implode("\n\n", [
@@ -45,9 +28,6 @@ class ExportCodeTemplater
         ])."\n";
     }
 
-    /**
-     * Рантайм целиком: импорты, query(), query_df() и запись файла.
-     */
     public function runtime(): string
     {
         return implode("\n\n", [
@@ -59,13 +39,6 @@ class ExportCodeTemplater
         ]);
     }
 
-    /**
-     * Что показать модели в промпте.
-     *
-     * Не рантайм целиком: двести строк работы с openpyxl и reportlab модели
-     * не нужны, а место в контексте занимают то, которое нужнее схеме таблиц.
-     * Показываем ровно контракт — что уже есть и как этим пользоваться.
-     */
     public function runtimeSummary(): string
     {
         $template = <<<'PYTHON'
@@ -124,8 +97,6 @@ PYTHON;
         $fontsRegular = $this->pyList((array) config('exports.pdf_fonts.regular', []));
         $fontsBold = $this->pyList((array) config('exports.pdf_fonts.bold', []));
 
-        // os нужен рантайму экспорта (каталог файла, поиск шрифта), а в общих
-        // библиотеках CodeTemplater его нет — виджетам он не требуется.
         return <<<PYTHON
 import os
 import re
@@ -141,9 +112,6 @@ PDF_FONTS_BOLD = {$fontsBold}
 PYTHON;
     }
 
-    /**
-     * Тело main() от модели: снимаем markdown-обёртку и лишний текст вокруг.
-     */
     private function normalizeMainBody(string $mainBody): string
     {
         $mainBody = trim($mainBody);
@@ -156,12 +124,8 @@ PYTHON;
             $mainBody = $matches[0];
         }
 
-        // Табуляции ломают питоновские отступы вперемешку с пробелами.
         $mainBody = str_replace(["\r\n", "\r", "\t"], ["\n", "\n", '    '], $mainBody);
 
-        // Модель иногда дописывает запуск, хотя её просили этого не делать.
-        // Свой footer мы добавим сами, а два запуска main() означали бы две
-        // записи файла и два отчёта в stdout.
         $mainBody = preg_replace('/\n\s*if\s+__name__\s*==\s*[\'"]__main__[\'"]\s*:.*$/s', '', $mainBody);
 
         return rtrim($mainBody);
@@ -187,9 +151,6 @@ PYTHON;
         return "'".$escaped."'";
     }
 
-    /**
-     * @param  array<int, string>  $values
-     */
     private function pyList(array $values): string
     {
         $items = array_map(fn ($value) => $this->pyString((string) $value), $values);
@@ -197,9 +158,6 @@ PYTHON;
         return '['.implode(', ', $items).']';
     }
 
-    /**
-     * Запись файла: одна точка входа save_result() и по писателю на формат.
-     */
     private function exportRuntime(): string
     {
         return <<<'PYTHON'

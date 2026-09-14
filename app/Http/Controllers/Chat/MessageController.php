@@ -50,10 +50,6 @@ class MessageController extends Controller
             ->where('company_id', $user->company->id)
             ->firstOrFail();
 
-        // Лимит проверяем ДО создания сообщения: каждое сообщение запускает
-        // цепочку запросов к модели, то есть прямой расход. Иначе компания
-        // с исчерпанным бюджетом продолжала бы тратить, а пользователь видел
-        // бы молча падающие задачи.
         if (AiUsage::limitReached($user->company)) {
             $summary = AiUsage::summary($user->company);
 
@@ -71,20 +67,9 @@ class MessageController extends Controller
             'chat_id' => $chat->id,
             'message' => $request->message,
         ]);
-        // "response_in_chat" должен быть доступен ВСЕГДА — иначе ИИ вынужден
-        // выбирать между генерацией/перегенерацией дашборда даже для обычного
-        // приветствия или вопроса, т.к. этой опции просто нет в списке.
-        // "generate_dashboard" тоже доступен всегда — пользователь может
-        // попросить новый дашборд по другой теме, даже если для этого чата уже
-        // есть один. "re_generate_dashboard" осмысленен, только если дашборд
-        // (хотя бы один) уже существует — иначе регенерировать нечего.
-        // "export_data" тоже доступен всегда: выгрузить данные в файл можно
-        // и до того, как построен хотя бы один дашборд.
+
         $taskNames = ['response_in_chat', 'generate_dashboard', 'export_data'];
 
-        // Перестраивать есть что, если в этой работе уже есть дашборд. Работа —
-        // это рабочее пространство: рядом с построенными агентом там стоят
-        // и собранные руками, и их он тоже умеет править.
         $hasDashboard = Dashboard::query()
             ->where(function ($query) use ($chat) {
                 $query->where('chat_id', $chat->id);
@@ -103,7 +88,6 @@ class MessageController extends Controller
             ->whereIn('name', $taskNames)
             ->select('name', 'description')
             ->get();
-
 
         dispatch(new RouterTaskJob($message->id,$chat->id,$task_list->toArray(),$request->dashboard_id,$user->id));
         return response()->json($message, 201);

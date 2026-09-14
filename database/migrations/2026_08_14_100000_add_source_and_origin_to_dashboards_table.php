@@ -4,15 +4,6 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-/**
- * Дашборд, собранный руками, а не пайплайном ИИ.
- *
- * Ключевая проблема: источник данных виджета до сих пор искался через чат
- * (dashboard -> chat -> resolveDataSource). У ручного дашборда чата нет, и
- * считать виджету было бы не по чему. Поэтому источник теперь можно указать
- * на самом дашборде; у старых дашбордов поле пустое и работает прежний путь
- * через чат — генерация от этого не меняется.
- */
 return new class extends Migration
 {
     public function up(): void

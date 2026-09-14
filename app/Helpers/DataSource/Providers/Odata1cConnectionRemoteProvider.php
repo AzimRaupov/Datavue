@@ -8,7 +8,7 @@ use SimpleXMLElement;
 
 class Odata1cConnectionRemoteProvider
 {
-    public string $baseUrl; // напр. http://server/base/odata/standard.odata/
+    public string $baseUrl;
     public string $username;
     public ?string $password;
 
@@ -70,7 +70,7 @@ class Odata1cConnectionRemoteProvider
             return [];
         }
 
-        $entityTypeFull = (string) $entitySet[0]['EntityType']; // напр. StandardODATA.Catalog_Номенклатура
+        $entityTypeFull = (string) $entitySet[0]['EntityType'];
         $entityTypeName = collect(explode('.', $entityTypeFull))->last();
 
         $entityType = $xml->xpath("//edm:EntityType[@Name='{$entityTypeName}']");
@@ -97,12 +97,6 @@ class Odata1cConnectionRemoteProvider
         return $columns;
     }
 
-    /**
-     * Для 1С $query — это НЕ SQL, а OData resource path с параметрами, например:
-     * "Catalog_Номенклатура?$select=Ссылка,Наименование&$filter=Артикул ne ''&$top=100"
-     * $bindings не используются напрямую (OData не поддерживает позиционные параметры,
-     * подстановка значений должна быть сделана заранее в $filter).
-     */
     public function query(string $query, array $bindings = [])
     {
         $separator = str_contains($query, '?') ? '&' : '?';

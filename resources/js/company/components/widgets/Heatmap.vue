@@ -60,18 +60,41 @@ function normalizeSeries(series) {
     })
 }
 
-/** Ступени по относительной шкале 0..100 — она одна и та же для всех строк. */
-const buildRanges = () => {
-    // Раскладка диапазона (getShadeColor → shadeColor) разбирает цвет вручную
-    // регуляркой на hex/rgb — «var(--chart-color-3)» она не парсит и на любом
-    // значении молча откатывается к запасному серому (#999999 в hexToRgba).
-    // Резолвим переменные в реальный rgb() заранее, как и для colors ниже.
-    const colors = resolveThemeColors([
-        "var(--chart-color-3)",
-        "var(--chart-color-4)",
-        "var(--chart-color-2)",
-        "var(--chart-color-8)",
-    ])
+/**
+ * Цвета ступеней по умолчанию: от низкого значения к высокому, как в любой
+ * тепловой шкале — зелёный, жёлтый, оранжевый, красный. Автор может заменить
+ * любую ступень своей в шторке настройки (позиция совпадает с ячейками
+ * палитры «Цвета рядов»); нетронутые ступени остаются на этой шкале, а не
+ * на общей категорийной палитре виджетов — синий-оранжевый-зелёный-жёлтый
+ * не читается как «выше = горячее».
+ */
+const DEFAULT_RANGE_COLORS = [
+    "var(--chart-color-3)",
+    "var(--chart-color-4)",
+    "var(--chart-color-2)",
+    "var(--chart-color-8)",
+]
+
+function rangeColors() {
+    const chosen = props.options?.colors
+    const custom = Array.isArray(chosen) ? chosen : []
+
+    return DEFAULT_RANGE_COLORS.map((fallback, index) => {
+        const color = custom[index]
+
+        return typeof color === "string" && color.trim() !== "" ? color.trim() : fallback
+    })
+}
+
+/**
+ * Ступени по относительной шкале 0..100 — она одна и та же для всех строк.
+ *
+ * Раньше эти четыре цвета игнорировали палитру виджета совсем: автор менял
+ * цвета в шторке настройки, видел «Оформление сохранено», а ступени
+ * оставались прежними — обещание, которое остальные виджеты выполняют,
+ * а этот вид heatmap не выполнял.
+ */
+const buildRanges = (colors) => {
     const step = 100 / colors.length
 
     return colors.map((color, index) => {
@@ -99,7 +122,13 @@ const renderChart = async () => {
 
     const discrete = props.options.discrete === true
     const series = normalizeSeries(props.series)
-    const ranges = discrete ? buildRanges() : undefined
+    // Раскладка диапазона (getShadeColor → shadeColor) разбирает цвет вручную
+    // регуляркой на hex/rgb — «var(--chart-color-3)» она не парсит и на любом
+    // значении молча откатывается к запасному серому (#999999 в hexToRgba).
+    // Резолвим переменные в реальный rgb() заранее, и для ступеней, и для
+    // непрерывного градиента ниже.
+    const colors = resolveThemeColors(colorsFor(props.options))
+    const ranges = discrete ? buildRanges(resolveThemeColors(rangeColors())) : undefined
 
     chart = new ApexCharts(chartRef.value, {
         chart: {
@@ -124,7 +153,7 @@ const renderChart = async () => {
             y: { formatter: (_value, opts) => realValueOf(opts?.w, opts?.seriesIndex, opts?.dataPointIndex) },
         },
         stroke: { width: 1 },
-        colors: resolveThemeColors(colorsFor(props.options)),
+        colors,
         xaxis: {
             type: "category",
             labels: { rotate: -45, trim: true },

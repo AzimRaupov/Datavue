@@ -10,18 +10,7 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class ExportController extends Controller
 {
-    /**
-     * Скачивание файла по публичной ссылке из чата.
-     *
-     * Маршрут намеренно без авторизации: ссылку отправляют коллеге, открывают
-     * с телефона, кладут в задачу — требовать сессию значило бы, что ни один
-     * из этих сценариев не работает. Защита здесь другая:
-     *
-     *   - адрес содержит 48 случайных символов и не выводится нигде, кроме
-     *     самого чата, откуда его и запросили;
-     *   - у ссылки есть срок жизни (exports.ttl_days);
-     *   - путь к файлу наружу не отдаётся и в адресе не участвует.
-     */
+
     public function download(string $token): BinaryFileResponse
     {
         $export = ChatExport::query()->where('token', $token)->first();
@@ -35,9 +24,6 @@ class ExportController extends Controller
         ]);
     }
 
-    /**
-     * Выгрузки чата — для истории и повторного скачивания из интерфейса.
-     */
     public function index(Request $request)
     {
         $request->validate([

@@ -13,18 +13,6 @@ use Illuminate\Http\UploadedFile as HttpUploadedFile;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
-/**
- * Обновление данных уже подключённого источника.
- *
- * Раньше файловые источники и Google-таблицы были снимком навсегда: чтобы
- * подтянуть свежие данные, приходилось заводить новый источник — и терять
- * вместе со старым все построенные на нём дашборды и чаты.
- *
- * Ключевое решение: разобранный файл ПЕРЕЗАПИСЫВАЕТСЯ ПО ТОМУ ЖЕ ПУТИ.
- * Сгенерированный Python-код виджетов обращается к базе по пути из
- * data_sources.path, поэтому при неизменном пути все дашборды продолжают
- * работать без единой правки — меняются только цифры.
- */
 class DataSourceRefresher
 {
     public function __construct(
@@ -33,23 +21,12 @@ class DataSourceRefresher
     ) {
     }
 
-    /**
-     * Нужен ли файл для обновления.
-     *
-     * Загруженный файл заменяется новой версией; Google-таблица и внешняя база
-     * обновляются сами — по сохранённой ссылке и по живому подключению.
-     */
     public function requiresFile(): bool
     {
         return $this->dataSource->connection_type === 'local'
             && $this->dataSource->origin_format !== 'google_sheets';
     }
 
-    /**
-     * @param HttpUploadedFile|null $file Новый файл — только для загруженных файлов.
-     *
-     * @return array{success: bool, message: string, schema_changed?: bool, added_tables?: array, removed_tables?: array}
-     */
     public function handle(?HttpUploadedFile $file = null): array
     {
         try {
@@ -65,9 +42,6 @@ class DataSourceRefresher
                 return $result;
             }
 
-            // Состав таблиц мог измениться — и у файла, и у внешней базы.
-            // Группировка от этого не ломается, но перестаёт быть точной:
-            // новые таблицы агенту не видны, удалённые он всё ещё предлагает.
             $changes = $this->detectSchemaChanges();
 
             $this->dataSource->forceFill([
@@ -96,22 +70,12 @@ class DataSourceRefresher
         }
     }
 
-    /**
-     * Внешняя база: сами данные там всегда свежие, обновлять нечего.
-     *
-     * Устаревает другое — СНИМОК СХЕМЫ. Список таблиц и их разбивка по группам
-     * сохранены в момент подключения, и если в базе с тех пор появились новые
-     * таблицы, агент про них попросту не знает. Поэтому «обновить» здесь
-     * означает: проверить подключение и перечитать состав схемы.
-     */
     private function refreshRemote(): array
     {
         $router = new ConnectionProviderRouter($this->dataSource->id);
 
         $check = $router->check();
 
-        // Провайдеры возвращают либо массив с success, либо простой флаг —
-        // приводим к одному виду.
         $ok = is_array($check) ? ($check['success'] ?? false) : (bool) $check;
 
         if (!$ok) {
@@ -129,12 +93,6 @@ class DataSourceRefresher
         ];
     }
 
-    /**
-     * Сравнивает текущий состав таблиц с тем, что был сохранён при последней
-     * группировке.
-     *
-     * @return array{changed: bool, added: array<int, string>, removed: array<int, string>}
-     */
     private function detectSchemaChanges(): array
     {
         $known = DataSourceTable::query()
@@ -143,7 +101,6 @@ class DataSourceRefresher
             ->map(fn ($n) => (string) $n)
             ->all();
 
-        // Группировки ещё не было — сравнивать не с чем.
         if (empty($known)) {
             return ['changed' => false, 'added' => [], 'removed' => []];
         }
@@ -171,9 +128,6 @@ class DataSourceRefresher
         ];
     }
 
-    /**
-     * Google-таблица: ссылка уже сохранена при подключении, новый ввод не нужен.
-     */
     private function refreshGoogleSheet(): array
     {
         $url = $this->dataSource->options['source_url'] ?? null;
@@ -198,13 +152,6 @@ class DataSourceRefresher
         ];
     }
 
-    /**
-     * Файл: пользователь присылает новую версию того же набора данных.
-     *
-     * Расширение обязано совпадать с исходным — csv вместо xlsx поменяет и
-     * способ разбора, и, скорее всего, состав колонок, а на старых колонках
-     * уже построены виджеты.
-     */
     private function refreshFile(?HttpUploadedFile $file): array
     {
         if (!$file) {
@@ -248,7 +195,7 @@ class DataSourceRefresher
         $result = $handler->handle();
 
         if (!($result['success'] ?? false)) {
-            // Разбор не удался — исходник не оставляем на диске.
+
             @unlink($storedFullPath);
 
             return [
@@ -257,8 +204,6 @@ class DataSourceRefresher
             ];
         }
 
-        // Имя источника не трогаем: его мог задать пользователь. Обновляем
-        // только связь с последним загруженным файлом.
         $this->dataSource->extracted?->update(['file_id' => $upload->id]);
 
         return [

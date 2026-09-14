@@ -31,8 +31,6 @@ class DbConnectionRemoteProvider
         $this->driver = $driver;
     }
 
-
-
     public function check(): array
     {
         try {

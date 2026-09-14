@@ -7,13 +7,6 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
 use Throwable;
 
-/**
- * Удаляет протухшие выгрузки вместе с файлами.
- *
- * Без этого каталог компании растёт бесконечно: каждая просьба «выгрузи в
- * excel» оставляет файл навсегда, хотя ссылка на него перестаёт работать
- * через exports.ttl_days.
- */
 class PruneChatExports extends Command
 {
     protected $signature = 'exports:prune {--dry-run : Только показать, что будет удалено}';
@@ -44,8 +37,7 @@ class PruneChatExports extends Command
             }
 
             try {
-                // Каталог создаётся под каждую выгрузку отдельно — удаляем его
-                // целиком вместе с файлом и сохранённым скриптом.
+
                 $directory = dirname($export->path);
 
                 if (is_dir($directory) && str_contains($directory, '/exports/')) {

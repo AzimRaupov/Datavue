@@ -16,7 +16,6 @@ class DataSourceAi
         $schemeJson,
     ): array {
 
-
         $prompt = <<<PROMPT
 Ты — эксперт по анализу структуры реляционных баз данных.
 
@@ -188,11 +187,7 @@ payments:
 если они не встречаются в текущей части схемы).
 PROMPT;
 
-        /**
-         * Отправляем запрос
-         */
         $response = (new AIService(responseFormat: 'json', tokens: 8000))->ask($prompt);
-
 
         return $response;
     }

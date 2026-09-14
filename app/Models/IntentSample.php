@@ -7,13 +7,6 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
-/**
- * Обучающий пример для классификатора намерений.
- *
- * Появляется там, где локальная модель не была уверена и решение приняла
- * языковая. Такие фразы лежат на границе между классами — именно они и
- * двигают качество, тогда как уверенные примеры модель уже знает.
- */
 class IntentSample extends Model
 {
     protected $fillable = [
@@ -39,12 +32,6 @@ class IntentSample extends Model
         ];
     }
 
-    /**
-     * Записывает пример, не роняя обработку сообщения при неудаче.
-     *
-     * Сбор обучающих данных — побочная задача: если она не удалась, пользователь
-     * всё равно должен получить ответ.
-     */
     public static function remember(
         string $text,
         ?string $label,
@@ -60,10 +47,6 @@ class IntentSample extends Model
             return null;
         }
 
-        // Вторая линия защиты: сюда не должны попадать бессмыслица и реплики,
-        // смысл которых зависит от предыдущего сообщения. Первая линия —
-        // в RouterTask, но метод публичный, и цена ошибки высока: испорченный
-        // пример живёт в обучении вечно.
         if (!(new IntentClassifier())->isLearnable($text)) {
             Log::info('IntentSample: фраза не годится в обучение', ['text' => $text]);
 
@@ -71,8 +54,7 @@ class IntentSample extends Model
         }
 
         try {
-            // Ключ по паре: одна и та же реплика при разных предложениях
-            // агента — разные примеры, и затирать один другим нельзя.
+
             return self::query()->updateOrCreate(
                 ['text_hash' => hash('sha256', mb_strtolower($text.'|'.$context, 'UTF-8'))],
                 [
@@ -82,14 +64,12 @@ class IntentSample extends Model
                     'predicted' => $prediction['label'] ?? null,
                     'confidence' => $prediction['confidence'] ?? null,
                     'source' => $source,
-                    // Пока это лишь мнение маршрутизатора. Подтвердит его
-                    // исполнитель — см. confirm()/reject().
+
                     'status' => 'pending',
                     'reject_reason' => null,
                     'chat_id' => $chatId,
                     'message_id' => $messageId,
-                    // Повторно встреченная фраза снова участвует в обучении:
-                    // её метка могла измениться, если модель ошибалась раньше.
+
                     'used_in_training' => false,
                 ]
             );
@@ -100,10 +80,6 @@ class IntentSample extends Model
         }
     }
 
-    /**
-     * Исход подтвердил решение маршрутизатора: дашборд перестроен, файл создан,
-     * агент ответил. Только такие примеры идут в обучение.
-     */
     public static function confirm(?int $messageId): void
     {
         if (!$messageId) {
@@ -116,13 +92,6 @@ class IntentSample extends Model
             ->update(['status' => 'confirmed']);
     }
 
-    /**
-     * Исход опроверг решение маршрутизатора.
-     *
-     * Пример не удаляется, а помечается: по отклонённым видно, где именно
-     * ошибается учитель, и это отдельная полезная метрика. В обучение они
-     * не попадают.
-     */
     public static function reject(?int $messageId, string $reason): void
     {
         if (!$messageId) {
@@ -142,17 +111,11 @@ class IntentSample extends Model
         }
     }
 
-    /**
-     * Пригодные для обучения: подтверждённые делом.
-     */
     public function scopeUsable($query)
     {
         return $query->where('status', 'confirmed');
     }
 
-    /**
-     * Примеры, где локальная модель ошиблась бы — самые полезные для разбора.
-     */
     public function scopeMispredicted($query)
     {
         return $query->whereNotNull('predicted')->whereColumn('predicted', '!=', 'label');

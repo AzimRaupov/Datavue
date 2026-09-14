@@ -6,13 +6,6 @@ use App\Helpers\Ai\Providers\ProviderAiFactory;
 use App\Helpers\Ai\Providers\SqlProviderAi;
 use App\Helpers\Export\ExportFormat;
 
-/**
- * Обращения к модели, из которых собирается выгрузка результата в файл.
- *
- * Три шага: понять, что и в каком формате просят; написать main(); починить
- * main(), если запуск упал. Тексты промптов зависят от диалекта источника
- * и живут в SqlProviderAi — здесь только вызовы и разбор ответа.
- */
 class ExportAi
 {
     private SqlProviderAi $providerAi;
@@ -22,17 +15,6 @@ class ExportAi
         $this->providerAi = ProviderAiFactory::for($dataSource);
     }
 
-    /**
-     * Что именно выгружать и в каком виде.
-     *
-     * Отдельный дешёвый шаг перед генерацией кода: из фразы «посчитай топ-10
-     * клиентов и сохрани в эксель» нужно вытащить и задачу для SQL, и формат,
-     * и заголовок документа, и имя файла. Формат мы потом ещё раз проверяем
-     * по тексту пользователя — модель регулярно «улучшает» его на свой вкус.
-     *
-     * @param  array{message: string, history: string, context: string}  $data
-     * @return array{content: array, total_tokens: int}
-     */
     public function defineSpec(array $data): array
     {
         $formats = implode(', ', ExportFormat::all());
@@ -103,11 +85,6 @@ TEXT;
         return (new AIService(responseFormat: 'json', tokens: 2000))->ask($prompt, $system);
     }
 
-    /**
-     * Код main(), который готовит данные и вызывает save_result().
-     *
-     * @return array{code: string, total_tokens: int}
-     */
     public function generateCode(array $data): array
     {
         $prompts = $this->providerAi->resultExport($data);
@@ -121,11 +98,6 @@ TEXT;
         ];
     }
 
-    /**
-     * Исправленный main() по ошибке запуска.
-     *
-     * @return array{code: string, message: string, total_tokens: int}
-     */
     public function fixCode(array $data): array
     {
         $prompts = $this->providerAi->reViewErrorsExport($data);
@@ -142,9 +114,6 @@ TEXT;
         ];
     }
 
-    /**
-     * Достаёт из ответа модели саму функцию main().
-     */
     private function extractMain(string $code): string
     {
         $code = trim($code);

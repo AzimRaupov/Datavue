@@ -10,17 +10,7 @@ use Illuminate\Http\Request;
 
 class DataSourceConnectionController extends Controller
 {
-    /**
-     * Выполняет проверочный запрос к источнику данных компании.
-     *
-     * Раньше здесь было два тяжёлых изъяна:
-     *  - DataSource::find($id) без проверки компании — можно было обратиться
-     *    к базе чужой компании, просто подставив её id;
-     *  - произвольный SQL из тела запроса уходил в базу как есть, то есть
-     *    любой пользователь мог выполнить DROP/UPDATE в подключённой БД клиента.
-     * Теперь источник ищется только внутри своей компании, а запрос проходит
-     * через ReadOnlyQueryRunner (только SELECT/WITH, один запрос, лимит строк).
-     */
+
     public function query(Request $request, $id)
     {
         $request->validate([

@@ -12,29 +12,6 @@ use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Throwable;
 
-/**
- * Дообучение классификатора намерений на решениях языковой модели.
- *
- * Замыкает цикл: локальная модель делегирует спорные фразы GPT, его ответ
- * сохраняется обучающим примером, накопленные примеры возвращаются в обучение.
- * Это активное обучение с отбором по неуверенности — учим ровно на том, чего
- * модель не знает, а не на том, что она и так предсказывает верно.
- *
- * Порядок шагов и почему он именно такой:
- *
- *   1. Замок. Два одновременных переобучения перезаписали бы файлы друг друга.
- *   2. Отбор: только примеры, подтверждённые исходом (IntentSample::confirm).
- *   3. Граница выборки по id. Обучение идёт минуты, за это время появятся новые
- *      примеры; пометить их использованными значило бы потерять — в обучение
- *      они не попали, а к следующему разу уже считались бы старыми.
- *   4. Обучение в кандидата, а не поверх рабочей модели.
- *   5. Сверка с базовой линией — зафиксированной, а не с текущей моделью:
- *      иначе просадка копится по чуть-чуть и проходит проверку каждый раз.
- *   6. Замена файлов и пометка ровно той выборки, что участвовала в обучении.
- *
- * Сбой на любом шаге оставляет систему в прежнем рабочем состоянии: модель
- * заменяется последним действием и только после успешной проверки.
- */
 class RetrainIntentClassifier extends Command
 {
     protected $signature = 'intents:retrain
@@ -57,8 +34,6 @@ class RetrainIntentClassifier extends Command
             return self::FAILURE;
         }
 
-        // Замок на всё время работы: обучение занимает минуты, а параллельный
-        // запуск писал бы в те же файлы кандидата.
         $lock = Cache::lock(self::LOCK_KEY, 3600);
 
         if (!$lock->get()) {
@@ -92,8 +67,6 @@ class RetrainIntentClassifier extends Command
             return self::SUCCESS;
         }
 
-        // Граница выборки. Всё, что появится позже, в этот прогон не попадёт —
-        // и использованным помечено не будет.
         $lastId = (int) IntentSample::query()->usable()->max('id');
 
         $feedback = $this->directory.'/feedback.csv';
@@ -110,8 +83,6 @@ class RetrainIntentClassifier extends Command
         $candidate = $this->directory.'/model.candidate.json';
         $candidateReport = $this->directory.'/model.candidate.report.json';
 
-        // Файлы прошлой неудачной попытки: без удаления можно принять
-        // за успех чужой старый результат.
         File::delete([$candidate, $candidateReport]);
 
         $this->line('Обучение...');
@@ -126,8 +97,6 @@ class RetrainIntentClassifier extends Command
             timeoutSeconds: (int) config('intents.learning.timeout', 900)
         ))->run();
 
-        // Обучение обязано оставить оба файла: и веса, и отчёт. Один без
-        // другого означает обрыв на середине.
         if (($result['exit_code'] ?? 1) !== 0 || !is_file($candidate) || !is_file($candidateReport)) {
             $this->error('Обучение не удалось. Последние строки вывода:');
             $this->line(implode("\n", array_slice($result['output'] ?? [], -15)));
@@ -159,13 +128,6 @@ class RetrainIntentClassifier extends Command
         return self::SUCCESS;
     }
 
-    /**
-     * Сколько примеров ждёт подтверждения исходом и сколько исход отклонил.
-     *
-     * Отклонённые — это места, где ошибся сам учитель: маршрутизатор счёл
-     * сообщение командой, а исполнитель не нашёл, что делать. Полезно видеть
-     * даже тогда, когда переобучение не запускается.
-     */
     private function showQueue(): void
     {
         $counts = IntentSample::query()
@@ -181,16 +143,6 @@ class RetrainIntentClassifier extends Command
         ));
     }
 
-    /**
-     * Выгружает подтверждённые примеры в CSV того же формата, что и train.csv.
-     *
-     * Берём все, а не только новые: обучение идёт с нуля каждый раз, и
-     * исключение старых означало бы забывание уже выученного.
-     *
-     * Отсев фраз, совпадающих с отложенным набором, здесь не делается
-     * намеренно — он живёт в train.py, рядом с самим набором, чтобы правило
-     * было в одном месте.
-     */
     private function exportSamples(string $path, int $lastId): int
     {
         $handle = fopen($path, 'w');
@@ -221,19 +173,6 @@ class RetrainIntentClassifier extends Command
         return $count;
     }
 
-    /**
-     * Базовая линия качества — планка, ниже которой опускаться нельзя.
-     *
-     * Зафиксирована один раз и не двигается: сравнение с текущей моделью
-     * разрешало терять по чуть-чуть на каждом прогоне, и десять прогонов
-     * подряд честно «проходили проверку», уводя качество далеко вниз.
-     *
-     * Отдельно проверяется отпечаток отложенного набора. Его нужно пополнять
-     * живыми фразами, а точности, посчитанные на разных наборах, сравнивать
-     * нельзя — при подмене базовая линия берётся заново.
-     *
-     * @return array<string, mixed>|null
-     */
     private function baseline(): ?array
     {
         $path = $this->directory.'/model.baseline.json';
@@ -244,9 +183,6 @@ class RetrainIntentClassifier extends Command
             return $current;
         }
 
-        // Отпечаток считаем сами по файлу, а не берём из отчёта текущей модели:
-        // отчёт мог быть создан версией скрипта без этого поля, и проверка
-        // молча не срабатывала бы — что и случилось при первой её обкатке.
         $baselineHash = $baseline['test_hash'] ?? null;
         $currentHash = $this->testHash();
 
@@ -261,9 +197,6 @@ class RetrainIntentClassifier extends Command
         return $baseline;
     }
 
-    /**
-     * Отпечаток отложенного набора. Совпадает с тем, что пишет train.py.
-     */
     private function testHash(): ?string
     {
         $path = $this->directory.'/test.csv';
@@ -284,8 +217,6 @@ class RetrainIntentClassifier extends Command
             return true;
         }
 
-        // Просадка означает, что среди новых меток слишком много неверных.
-        // Оставляем прежнюю модель и кандидата — по нему видно, что пошло не так.
         $this->error(sprintf(
             'Точность ниже базовой линии на %.3f при допуске %.3f — модель НЕ заменена.',
             $drop,
@@ -301,13 +232,6 @@ class RetrainIntentClassifier extends Command
         return false;
     }
 
-    /**
-     * Замена рабочей модели кандидатом.
-     *
-     * Порядок важен: сначала веса, затем отчёт, и только потом пометка примеров.
-     * Если что-то упадёт посередине, примеры останутся непомеченными и уйдут
-     * в следующий прогон — это безопаснее, чем потерять их навсегда.
-     */
     private function promote(string $candidate, string $candidateReport, int $lastId, ?array $new): void
     {
         File::move($candidate, $this->directory.'/model.json');
@@ -324,9 +248,6 @@ class RetrainIntentClassifier extends Command
             ->where('used_in_training', false)
             ->update(['used_in_training' => true]);
 
-        // Долгоживущие процессы (воркеры очереди) держат модель в памяти.
-        // Здесь сбрасываем свою копию, у остальных её подхватит проверка
-        // времени правки файла — см. IntentClassifier::model().
         IntentClassifier::flush();
 
         $this->info(sprintf(
@@ -378,9 +299,6 @@ class RetrainIntentClassifier extends Command
         );
     }
 
-    /**
-     * @return array<string, mixed>|null
-     */
     private function report(string $path): ?array
     {
         if (!is_file($path)) {

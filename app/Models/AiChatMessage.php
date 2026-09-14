@@ -9,17 +9,12 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class AiChatMessage extends Model
 {
-    /**
-     * The attributes that are mass assignable.
-     *
-     * @var array<int, string>
-     */
+
     protected $fillable = [
         'chat_id',
         'message',
         'answer',
-        // Что агент предложил в этом ответе — сигнал для классификатора,
-        // пользователю не показывается. См. IntentClassifier::offerContext().
+
         'offer_type',
         'offer_summary',
         'tokens_used',
@@ -27,11 +22,6 @@ class AiChatMessage extends Model
         'status',
     ];
 
-    /**
-     * The attributes that should be cast.
-     *
-     * @return array<string, string>
-     */
     protected function casts(): array
     {
         return [
@@ -45,28 +35,16 @@ class AiChatMessage extends Model
         return $this->hasMany(AiChatTask::class, 'message_id');
     }
 
-    /**
-     * Файлы, сформированные в ответ на это сообщение.
-     */
     public function exports(): HasMany
     {
         return $this->hasMany(ChatExport::class, 'message_id');
     }
-    /**
-     * Get the AI chat that owns the message.
-     */
+
     public function chat(): BelongsTo
     {
         return $this->belongsTo(AiChat::class, 'chat_id');
     }
 
-    /**
-     * Get the uploaded file associated with the message.
-     */
-
-    /**
-     * Get all extracted data related to this message.
-     */
     public function extractedData(): HasOne
     {
         return $this->hasOne(DataSourceExtraction::class, 'message_id');

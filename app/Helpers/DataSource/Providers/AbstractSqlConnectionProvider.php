@@ -4,52 +4,18 @@ namespace App\Helpers\DataSource\Providers;
 
 use App\Helpers\DataSource\Concerns\ManagesRemoteConnection;
 
-/**
- * Общая часть SQL-провайдеров источников данных.
- *
- * Всё, что не зависит от диалекта, живёт здесь: сборка схемы, определение связей
- * по внешним ключам и по совпадению значений, оценка достоверности связи.
- * Раньше это существовало единственной копией внутри mysql-провайдера, и любой
- * новый диалект означал бы копирование девятисот строк.
- *
- * Наследнику остаётся диалектная часть: как подключиться, как процитировать
- * идентификатор, как спросить список таблиц, колонки и внешние ключи.
- */
 abstract class AbstractSqlConnectionProvider
 {
     use ManagesRemoteConnection;
 
-    /**
-     * Конфиг соединения Laravel: driver, host/port/database либо путь к файлу.
-     */
     abstract protected function connectionConfig(): array;
 
-    /**
-     * Имена таблиц источника.
-     *
-     * @return array<int, string>
-     */
     abstract public function showTables(): array;
 
-    /**
-     * Колонки таблицы в едином виде, независимо от диалекта:
-     * column_name, type, nullable ("YES"/"NO"), key ("PRI"/"UNI"/""), default.
-     *
-     * @return array<int, array<string, mixed>>
-     */
     abstract public function showColumns(string $tableName): array;
 
-    /**
-     * Реальные внешние ключи источника в едином виде:
-     * from_table, from_column, to_table, to_column.
-     *
-     * @return array<int, array<string, string>>
-     */
     abstract protected function getForeignKeyRelations(): array;
 
-    /**
-     * Цитирование идентификатора по правилам диалекта.
-     */
     abstract protected function quoteIdentifier(string $identifier): string;
 
     public function check(): array
@@ -79,13 +45,6 @@ abstract class AbstractSqlConnectionProvider
         return $this->remoteConnection($this->connectionConfig());
     }
 
-    /**
-     * Делает ошибку подключения понятной.
-     *
-     * Самая частая причина на новом диалекте — не установленный PDO-драйвер,
-     * и штатное "could not find driver" ни о чём не говорит тому, кто просто
-     * подключает базу через интерфейс.
-     */
     protected function explainConnectionError(\Throwable $e): string
     {
         $message = $e->getMessage();
@@ -113,12 +72,6 @@ abstract class AbstractSqlConnectionProvider
         $includeColumns = in_array('columns', $options);
         $includeRelations = isset($options['relations']);
         $includeSampleValues = in_array('sample_values', $options);
-
-        /*
-        |--------------------------------------------------------------------------
-        | Получаем все колонки таблиц
-        |--------------------------------------------------------------------------
-        */
 
         $allColumns = [];
 
@@ -160,12 +113,6 @@ abstract class AbstractSqlConnectionProvider
             $allColumns[$tableName] = $tableColumns;
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Определяем связи
-        |--------------------------------------------------------------------------
-        */
-
         $relations = [];
 
         if ($includeRelations) {
@@ -181,21 +128,9 @@ abstract class AbstractSqlConnectionProvider
             $relations = $this->detectRelations($relationSchema);
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Формируем результат
-        |--------------------------------------------------------------------------
-        */
-
         foreach ($tables as $tableName) {
 
             $tableSchema = [];
-
-            /*
-            |--------------------------------------------------------------------------
-            | count_rows
-            |--------------------------------------------------------------------------
-            */
 
             if ($includeCountRows) {
 
@@ -203,21 +138,9 @@ abstract class AbstractSqlConnectionProvider
                     $this->getTableCount($tableName);
             }
 
-            /*
-            |--------------------------------------------------------------------------
-            | columns
-            |--------------------------------------------------------------------------
-            */
-
             if ($includeColumns) {
 
                 $tableColumns = $allColumns[$tableName];
-
-                /*
-                |--------------------------------------------------------------------------
-                | Удаляем из columns поля, которые участвуют в relations
-                |--------------------------------------------------------------------------
-                */
 
                 if ($includeRelations) {
 
@@ -240,12 +163,6 @@ abstract class AbstractSqlConnectionProvider
                 $tableSchema['columns'] =
                     $tableColumns;
             }
-
-            /*
-            |--------------------------------------------------------------------------
-            | relations
-            |--------------------------------------------------------------------------
-            */
 
             if ($includeRelations) {
 
@@ -272,12 +189,6 @@ abstract class AbstractSqlConnectionProvider
                     $columnData =
                         $allColumns[$fromTable][$fromColumn];
 
-                    /*
-                    |--------------------------------------------------------------------------
-                    | Данные колонки
-                    |--------------------------------------------------------------------------
-                    */
-
                     $relationColumn = [];
 
                     foreach (
@@ -295,12 +206,6 @@ abstract class AbstractSqlConnectionProvider
                                 $columnData[$field];
                         }
                     }
-
-                    /*
-                    |--------------------------------------------------------------------------
-                    | Данные связи
-                    |--------------------------------------------------------------------------
-                    */
 
                     $relationData = [
                         'table' =>
@@ -348,10 +253,7 @@ abstract class AbstractSqlConnectionProvider
 
         return $schema;
     }
-    /**
-     * Колонка годится для примеров значений: текстовая и не первичный/уникальный ключ
-     * (там лежат идентификаторы, а не категории).
-     */
+
     private function isEnumerableType(string $type): bool
     {
         $normalized = strtolower(preg_replace('/\(.*\)/', '', $type) ?? $type);
@@ -361,17 +263,6 @@ abstract class AbstractSqlConnectionProvider
         ], true);
     }
 
-    /**
-     * Реальные значения колонки — то немногое, что превращает фильтр по значению
-     * из угадывания моделью в точный запрос (см. WidgetSpecAi/WidgetQueryAi).
-     *
-     * Ограничение выборки — сама проверка кардинальности: если различных значений
-     * больше лимита, колонка похожа на свободный текст, а не на категорию, и
-     * показывать модели обрезанный список опаснее, чем не показывать никакого —
-     * она примет неполный список за исчерпывающий.
-     *
-     * @return array<int, string>|null
-     */
     private function fetchSampleValues(string $tableName, string $columnName, int $limit = 20): ?array
     {
         $column = $this->quoteIdentifier($columnName);
@@ -405,9 +296,6 @@ abstract class AbstractSqlConnectionProvider
         return $values === [] ? null : $values;
     }
 
-    /**
-     * Получить количество записей таблицы
-     */
     private function getTableCount(string $tableName): int
     {
         $query = sprintf(
@@ -420,34 +308,13 @@ abstract class AbstractSqlConnectionProvider
         return (int) ($result[0]->count_rows ?? 0);
     }
 
-    /**
-     * Определение связей между таблицами
-     *
-     * Использует:
-     *
-     * 1. Реальный FOREIGN KEY
-     * 2. Совпадение имени колонок
-     * 3. Проверку реальных значений через JOIN
-     */
     private function detectRelations(array $schema): array
     {
         $relations = [];
 
-        /*
-        |--------------------------------------------------------------------------
-        | 1. Получаем реальные FOREIGN KEY
-        |--------------------------------------------------------------------------
-        */
-
         $foreignKeys = $this->getForeignKeyRelations();
 
         foreach ($foreignKeys as $foreignKey) {
-
-            /*
-            | information_schema отдаёт связи по всей схеме, но считать
-            | match_rate можно только для таблиц, которые реально попали
-            | в анализ — иначе запрос упадёт на несуществующей таблице.
-            */
 
             if (
                 !isset($schema[$foreignKey['from_table']]) ||
@@ -474,46 +341,20 @@ abstract class AbstractSqlConnectionProvider
             ];
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | 2. Проверяем связи по значениям
-        |--------------------------------------------------------------------------
-        */
-
         $tables = array_keys($schema);
 
         foreach ($tables as $fromTable) {
 
             foreach ($tables as $toTable) {
 
-                /*
-                | Нельзя сравнивать таблицу с самой собой
-                */
-
                 if ($fromTable === $toTable) {
                     continue;
                 }
-
-                /*
-                | Если таблица уже является справочником,
-                | обычно она является target-таблицей.
-                */
 
                 foreach (
                     $schema[$fromTable]['columns']
                     as $fromColumn => $fromColumnData
                 ) {
-
-                    /*
-                    |--------------------------------------------------------------------------
-                    | У колонки уже есть связь
-                    |--------------------------------------------------------------------------
-                    |
-                    | В схему уходит одна связь на колонку (ключ — имя колонки),
-                    | поэтому каждая следующая найденная связь просто затирала
-                    | предыдущую. Настоящий FOREIGN KEY добавляется до эвристики,
-                    | значит он и должен побеждать.
-                    */
 
                     if (
                         $this->columnHasRelation(
@@ -525,16 +366,6 @@ abstract class AbstractSqlConnectionProvider
                         continue;
                     }
 
-                    /*
-                    |--------------------------------------------------------------------------
-                    | Собственный PRIMARY KEY — не внешний ключ
-                    |--------------------------------------------------------------------------
-                    |
-                    | Значения id почти всегда совпадают с id любой другой
-                    | таблицы, и эвристика выдавала ложную связь. Реальная
-                    | связь по PK (1:1) уже пришла бы из FOREIGN KEY.
-                    */
-
                     if (($fromColumnData['key'] ?? '') === 'PRI') {
                         continue;
                     }
@@ -543,12 +374,6 @@ abstract class AbstractSqlConnectionProvider
                         $schema[$toTable]['columns']
                         as $toColumn => $toColumnData
                     ) {
-
-                        /*
-                        |--------------------------------------------------------------------------
-                        | Не сравниваем колонки с несовместимыми типами
-                        |--------------------------------------------------------------------------
-                        */
 
                         if (
                             !$this->areTypesCompatible(
@@ -559,31 +384,14 @@ abstract class AbstractSqlConnectionProvider
                             continue;
                         }
 
-                        /*
-                        |--------------------------------------------------------------------------
-                        | Уникальные колонки target предпочтительнее
-                        |--------------------------------------------------------------------------
-                        */
-
                         $isTargetColumn = in_array(
                             $toColumnData['key'],
                             ['PRI', 'UNI']
                         );
 
-                        /*
-                        | Если target не является уникальным,
-                        | связь может быть ненадёжной.
-                        */
-
                         if (!$isTargetColumn) {
                             continue;
                         }
-
-                        /*
-                        |--------------------------------------------------------------------------
-                        | Проверяем реальные значения
-                        |--------------------------------------------------------------------------
-                        */
 
                         $matchRate = $this->calculateMatchRate(
                             $fromTable,
@@ -591,12 +399,6 @@ abstract class AbstractSqlConnectionProvider
                             $toTable,
                             $toColumn
                         );
-
-                        /*
-                        |--------------------------------------------------------------------------
-                        | Минимальный процент совпадения
-                        |--------------------------------------------------------------------------
-                        */
 
                         if ($matchRate < 80) {
                             continue;
@@ -622,11 +424,6 @@ abstract class AbstractSqlConnectionProvider
                             'type' => 'data_match',
                         ];
 
-                        /*
-                        | Одна связь на колонку — дальше по этой колонке
-                        | искать нечего.
-                        */
-
                         continue 2;
                     }
                 }
@@ -636,10 +433,6 @@ abstract class AbstractSqlConnectionProvider
         return $relations;
     }
 
-    /**
-     * Проверяет процент значений,
-     * которые существуют в target-таблице
-     */
     private function calculateMatchRate(
         string $fromTable,
         string $fromColumn,
@@ -652,12 +445,6 @@ abstract class AbstractSqlConnectionProvider
 
         $toTableQuoted = $this->quoteIdentifier($toTable);
         $toColumnQuoted = $this->quoteIdentifier($toColumn);
-
-        /*
-        |--------------------------------------------------------------------------
-        | Общее количество уникальных значений source
-        |--------------------------------------------------------------------------
-        */
 
         $totalResult = $this->query(
             "
@@ -677,12 +464,6 @@ abstract class AbstractSqlConnectionProvider
         if ($total === 0) {
             return 0;
         }
-
-        /*
-        |--------------------------------------------------------------------------
-        | Количество совпавших значений
-        |--------------------------------------------------------------------------
-        */
 
         $matchedResult = $this->query(
             "
@@ -709,9 +490,6 @@ abstract class AbstractSqlConnectionProvider
         );
     }
 
-    /**
-     * Проверяет совместимость типов
-     */
     private function areTypesCompatible(
         string $fromType,
         string $toType
@@ -772,9 +550,6 @@ abstract class AbstractSqlConnectionProvider
         return $fromType === $toType;
     }
 
-    /**
-     * Проверяет, найдена ли уже связь для этой колонки
-     */
     private function columnHasRelation(
         array $relations,
         string $fromTable,

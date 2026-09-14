@@ -19,9 +19,6 @@ class RouterTaskJob implements ShouldQueue
     public $dashboardId;
     public $userId;
 
-    /**
-     * Create a new job instance.
-     */
     public function __construct($currentMessageId,$chatId,$task_list,$dashboardId,$userId)
     {
         $this->currentMessageId = $currentMessageId;
@@ -31,12 +28,8 @@ class RouterTaskJob implements ShouldQueue
         $this->userId = $userId;
     }
 
-    /**
-     * Execute the job.
-     */
     public function handle(): void
     {
-
 
         $companyId = \App\Models\AiChat::query()->whereKey($this->chatId)->value('company_id');
 

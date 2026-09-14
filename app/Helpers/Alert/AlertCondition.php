@@ -4,31 +4,12 @@ namespace App\Helpers\Alert;
 
 use RuntimeException;
 
-/**
- * Решает «сработало или нет» по результату SQL-запроса алерта (mode
- * builder|sql). Режим python условие решает сам код — сюда не заходит.
- *
- * Декларация (dashboard_widgets.condition, тот же формат хранится у алерта):
- *
- *   { "kind": "rows",  "op": ">",  "threshold": 0 }
- *   { "kind": "value", "op": "<",  "threshold": 100, "column": "balance" }
- *
- * Пустой результат — не угадывается, а явно задан автором через on_empty:
- * "ok" | "triggered" | "error". Без этого поведение по умолчанию пришлось бы
- * выбирать за автора, а «нет строк» равно легитимно значит и «всё хорошо»
- * (запросов с ошибками не было), и «плохо» (не было ни одной продажи).
- */
 class AlertCondition
 {
     public const OPERATORS = ['=', '!=', '>', '>=', '<', '<='];
 
     public const ON_EMPTY = ['ok', 'triggered', 'error'];
 
-    /**
-     * @return array{triggered: bool, value: mixed, message: ?string}
-     *
-     * @throws RuntimeException если результат нельзя сравнить с порогом
-     */
     public static function evaluate(array $condition, int $rowCount, ?array $firstRow): array
     {
         $kind = $condition['kind'] ?? 'rows';

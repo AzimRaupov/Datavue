@@ -16,13 +16,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
-/**
- * Ручная сборка дашборда: добавить виджет, переставить, написать ему код.
- *
- * Всё, что здесь делается, раньше умел только пайплайн ИИ, причём разом и
- * целиком. Поэтому операции нарочно мелкие: пользователь ставит один виджет,
- * пишет ему код, смотрит результат — и только потом берётся за следующий.
- */
 class DashboardWidgetController extends Controller
 {
     use PresentsWidgetContent;
@@ -41,8 +34,6 @@ class DashboardWidgetController extends Controller
         $widget = Widget::query()->with('types')->findOrFail($data['widget_id']);
         $type = $this->resolveType($widget, $data['widget_type_id'] ?? null);
 
-        // position — в конец списка. Порядок виджетов на дашборде задаётся
-        // только им, поэтому дыры и совпадения тут недопустимы.
         $position = (int) DashboardWidget::query()
             ->where('dashboard_id', $dashboard->id)
             ->max('position');
@@ -52,7 +43,7 @@ class DashboardWidgetController extends Controller
             'widget_id' => $widget->id,
             'widget_type_id' => $type?->id,
             'title' => $data['title'],
-            // Колонка NOT NULL, а инструкции для модели у ручного виджета нет.
+
             'instruction' => $data['instruction'] ?? '',
             'tables' => [],
             'position' => $position + 1,
@@ -78,11 +69,6 @@ class DashboardWidgetController extends Controller
             'widget_type_id' => 'sometimes|nullable|integer|exists:widget_types,id',
             'instruction' => 'sometimes|nullable|string',
 
-            // Оформление правится здесь, а не через сохранение запроса:
-            // сменить цвет ряда — это не повод заново гонять запрос в базу
-            // и перепроверять форму результата. Список цветов ограничен
-            // палитрой ряда, всё остальное оформление приходит вместе
-            // с запросом (см. saveQuery).
             'presentation' => 'sometimes|nullable|array',
             'presentation.colors' => 'nullable|array|max:12',
             'presentation.colors.*' => 'nullable|string|max:32',
@@ -91,9 +77,6 @@ class DashboardWidgetController extends Controller
         if (array_key_exists('widget_type_id', $data) && $data['widget_type_id']) {
             $type = WidgetType::query()->findOrFail($data['widget_type_id']);
 
-            // Тип меняется только внутри семейства: данные виджета посчитаны
-            // под форму конкретного семейства, и таблица не нарисуется
-            // данными для круга.
             if ($type->widget_id !== $widget->widget_id) {
                 throw ValidationException::withMessages([
                     'widget_type_id' => 'Тип отрисовки не подходит этому виджету.',
@@ -121,10 +104,6 @@ class DashboardWidgetController extends Controller
 
         $widget->save();
 
-        // Вариант отрисовки может требовать других колонок: у счётчика
-        // с полосой выполнения появляется процент, у пузырьковой — размер
-        // точки. Запрос, собранный под прежний вид, после смены просто
-        // перестал бы рисоваться, поэтому пересобираем его здесь.
         if (!empty($typeChanged)) {
             $dataSource = $dashboard->resolveDataSource();
 
@@ -155,13 +134,6 @@ class DashboardWidgetController extends Controller
         return response()->json(['message' => 'Виджет удалён.']);
     }
 
-    /**
-     * Пакетная перестановка виджетов.
-     *
-     * Пакетная — потому что перестановка меняет позиции сразу нескольким
-     * виджетам: по одному запросу на каждый список успевал бы побывать
-     * в противоречивом состоянии.
-     */
     public function reorder(Request $request, $dashboardId)
     {
         $dashboard = $this->findDashboard($request, $dashboardId);
@@ -172,8 +144,6 @@ class DashboardWidgetController extends Controller
             'widgets.*.position' => 'required|integer|min:0',
         ]);
 
-        // Берём только виджеты этого дашборда: чужой id в списке не должен
-        // привести к правке чужого виджета.
         $widgets = DashboardWidget::query()
             ->where('dashboard_id', $dashboard->id)
             ->whereIn('id', collect($data['widgets'])->pluck('id'))
@@ -201,13 +171,6 @@ class DashboardWidgetController extends Controller
         return response()->json(['success' => true, 'updated' => $updated]);
     }
 
-    /**
-     * Прогон без сохранения — кнопка «Выполнить».
-     *
-     * Один эндпоинт на оба режима: пришли настройки конструктора — собираем
-     * запрос из них, пришёл текст запроса — берём его как есть. Дальше путь
-     * общий, поэтому проверки не могут разойтись между режимами.
-     */
     public function runQuery(Request $request, $dashboardId, $widgetId, ManualWidgetAuthor $author)
     {
         $dashboard = $this->findDashboard($request, $dashboardId);
@@ -223,13 +186,6 @@ class DashboardWidgetController extends Controller
         return response()->json($result, $result['ok'] ? 200 : 422);
     }
 
-    /**
-     * Собирает запрос из настроек, но не выполняет его.
-     *
-     * Нужен, чтобы показывать SQL прямо во время настройки: выбрал метрику —
-     * увидел, во что она превратилась. Выполнять для этого запрос нельзя,
-     * иначе каждое нажатие в форме било бы по базе клиента.
-     */
     public function composeQuery(Request $request, $dashboardId, $widgetId)
     {
         $dashboard = $this->findDashboard($request, $dashboardId);
@@ -259,9 +215,6 @@ class DashboardWidgetController extends Controller
         ], $composed['ok'] ? 200 : 422);
     }
 
-    /**
-     * Сохранение содержимого виджета — настроек конструктора или запроса.
-     */
     public function saveQuery(Request $request, $dashboardId, $widgetId, ManualWidgetAuthor $author)
     {
         $dashboard = $this->findDashboard($request, $dashboardId);
@@ -286,34 +239,18 @@ class DashboardWidgetController extends Controller
         );
     }
 
-    /**
-     * Оформление приходит текстом из формы — разбираем и проверяем здесь,
-     * чтобы в сервис попал уже массив, а автор увидел понятную ошибку,
-     * а не падение на разборе JSON.
-     *
-     * @return array{query: string, presentation: array}
-     */
     private function validateQuery(Request $request): array
     {
-        // Структура настроек описана целиком, и это не формальность:
-        // validate() возвращает ТОЛЬКО перечисленные поля, поэтому неописанная
-        // вложенность просто исчезла бы по дороге к сборщику запроса.
-        // Заодно ограничения на длину списков не дают прислать сотню метрик.
+
         $data = $request->validate([
-            // Одно из двух: настройки конструктора или текст запроса.
+
             'builder' => 'nullable|array',
             'builder.table' => 'required_with:builder|string|max:255',
 
-            // Источником может быть не таблица, а запрос: сборщик работает
-            // поверх него так же, как поверх таблицы.
             'builder.subquery' => 'nullable|array',
             'builder.subquery.query' => 'nullable|string|max:20000',
             'builder.subquery.columns' => 'nullable|array|max:200',
 
-            // Связи между таблицами. Их обязательно перечислять поимённо:
-            // всё, чего нет в правилах, validate() отбрасывает, и до сборщика
-            // запроса связи не доезжали вовсе — виджет молча считался
-            // по одной таблице.
             'builder.joins' => 'nullable|array|max:5',
             'builder.joins.*.table' => 'required|string|max:255',
             'builder.joins.*.type' => 'nullable|string|max:16',
@@ -325,11 +262,10 @@ class DashboardWidgetController extends Controller
             'builder.metrics' => 'nullable|array|max:20',
             'builder.metrics.*.agg' => 'required|string|max:32',
             'builder.metrics.*.column' => 'nullable|string|max:255',
-            // Таблица метрики: без неё счётчик «Клиентов» считался бы
-            // по таблице заказов.
+
             'builder.metrics.*.table' => 'nullable|string|max:255',
             'builder.metrics.*.label' => 'nullable|string|max:255',
-            // Цель нужна счётчику с полосой выполнения: от неё считается процент.
+
             'builder.metrics.*.target' => 'nullable|numeric',
 
             'builder.dimensions' => 'nullable|array|max:5',
@@ -373,9 +309,6 @@ class DashboardWidgetController extends Controller
         ];
     }
 
-    /**
-     * Прогон кода без сохранения — кнопка «Выполнить» в редакторе.
-     */
     public function runDraft(Request $request, $dashboardId, $widgetId, ManualWidgetAuthor $author)
     {
         $dashboard = $this->findDashboard($request, $dashboardId);
@@ -390,9 +323,6 @@ class DashboardWidgetController extends Controller
         return response()->json($result, $result['ok'] ? 200 : 422);
     }
 
-    /**
-     * Сохранение кода виджета.
-     */
     public function saveCode(Request $request, $dashboardId, $widgetId, ManualWidgetAuthor $author)
     {
         $dashboard = $this->findDashboard($request, $dashboardId);
@@ -412,15 +342,11 @@ class DashboardWidgetController extends Controller
 
         return response()->json(
             $result + ['widget' => $this->present($widget->fresh(['widget.types', 'widgetType']))],
-            // Код с ошибкой всё равно сохранён — это не отказ, а предупреждение,
-            // поэтому 200 с ok=false, а не 422.
+
             $result['saved'] ? 200 : 422
         );
     }
 
-    /**
-     * Возврат к предыдущей версии кода.
-     */
     public function restoreCode(Request $request, $dashboardId, $widgetId, ManualWidgetAuthor $author)
     {
         $dashboard = $this->findDashboard($request, $dashboardId);
@@ -438,12 +364,6 @@ class DashboardWidgetController extends Controller
         );
     }
 
-    /**
-     * Виджет для конструктора: с кодом и последней ошибкой.
-     *
-     * Обычный показ дашборда этих полей не отдаёт намеренно — код виджета не
-     * нужен тем, кто дашборд просто смотрит.
-     */
     private function present(DashboardWidget $widget): array
     {
         return [
@@ -457,11 +377,9 @@ class DashboardWidgetController extends Controller
             'status' => $widget->status,
             'origin' => $widget->origin,
             'content_mode' => $widget->content_mode,
-            // Запрос и колонки, которых ждёт семейство: из этого редактор
-            // собирает и форму, и подсказку автору.
+
             'query' => $this->queryOf($widget),
-            // Настройки конструктора: по ним виджет открывается слотами,
-            // а не текстом запроса, собранного из них.
+
             'builder' => $widget->query_spec['builder'] ?? null,
             'presentation' => $widget->query_spec['presentation'] ?? null,
             'required_columns' => $this->requiredColumnsOf($widget),
@@ -492,12 +410,6 @@ class DashboardWidgetController extends Controller
         ];
     }
 
-
-
-
-    /**
-     * Тип по умолчанию, если он не выбран или назван чужой.
-     */
     private function resolveType(Widget $widget, ?int $typeId): ?WidgetType
     {
         if ($typeId) {
@@ -515,10 +427,6 @@ class DashboardWidgetController extends Controller
         return $widget->defaultType();
     }
 
-    /**
-     * Статус дашборда следует за содержимым: пустой, пока нет виджетов.
-     * Значения берутся из dashboard_statuses — новых не заводим.
-     */
     private function syncDashboardStatus(Dashboard $dashboard): void
     {
         $hasWidgets = DashboardWidget::query()

@@ -9,18 +9,14 @@ class StoreRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        // Доступ проверяется middleware 'permission:manage data sources'.
+
         return true;
     }
 
-    /**
-     * @return array<string, ValidationRule|array<mixed>|string>
-     */
     public function rules(): array
     {
         $rules = [
-            // google_sheet — отдельный вид подключения: не файл с диска
-            // пользователя и не прямое соединение с базой.
+
             'connection_type' => 'required|in:local,remote,google_sheet',
             'name' => 'nullable|string|max:255',
             'version' => 'nullable|string|max:20',
@@ -43,12 +39,6 @@ class StoreRequest extends FormRequest
             ];
         }
 
-        /*
-        | Готовые базы SQLite (.db/.sqlite/.sqlite3) проверяем по расширению:
-        | у них нет устойчивого MIME-типа, и правило mimes их отбраковывало.
-        | Содержимое подтверждается отдельно — SqliteDataHandler читает
-        | сигнатуру в начале файла и отказывается работать с подделкой.
-        */
         $rules += [
             'data_file' => [
                 'required',
@@ -59,8 +49,6 @@ class StoreRequest extends FormRequest
 
         $extension = strtolower((string) $this->file('data_file')?->getClientOriginalExtension());
 
-        // Для дампа .sql тип источника выбирает пользователь: по файлу не понять,
-        // в какую СУБД его импортировать.
         if ($extension === 'sql') {
             $rules += [
                 'type_id' => 'required|integer|exists:data_source_types,id',

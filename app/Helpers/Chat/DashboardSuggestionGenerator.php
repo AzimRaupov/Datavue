@@ -12,32 +12,12 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
-/**
- * Готовит варианты дашбордов для источника данных.
- *
- * Порядок работы:
- *   1. Уже есть сохранённые варианты — отдаём их, ничего не считаем.
- *      Варианты привязаны к источнику, поэтому второй чат на той же базе
- *      получает их бесплатно.
- *   2. Нет группировки таблиц — запускаем её (это тот же DataSourceGrouping,
- *      который потом использует генератор дашбордов, так что работа не
- *      пропадает: первый дашборд построится быстрее).
- *   3. Просим модель предложить темы и сохраняем результат.
- *
- * Ошибка на любом шаге НЕ должна ронять создание чата: пустой список
- * вариантов — приемлемая деградация, чат остаётся рабочим.
- */
 class DashboardSuggestionGenerator
 {
     public function __construct(private DataSource $dataSource)
     {
     }
 
-    /**
-     * @param bool $force Пересобрать варианты, даже если они уже сохранены.
-     *
-     * @return Collection<int, DashboardSuggestion>
-     */
     public function handle(bool $force = false): Collection
     {
         if (!$force) {
@@ -48,12 +28,8 @@ class DashboardSuggestionGenerator
             }
         }
 
-        // Первый чат на источнике тянет за собой группировку всей схемы плюс
-        // запрос к модели — стандартных 30 секунд PHP на это не хватает.
         set_time_limit(300);
 
-        // Подбор вариантов и возможная группировка идут за счёт компании —
-        // записываем расход на неё.
         AiUsageContext::set($this->dataSource->company_id, null, null, 'suggestions');
 
         try {
@@ -93,10 +69,6 @@ class DashboardSuggestionGenerator
         }
     }
 
-    /**
-     * Группы таблиц источника: берём готовые, а если их нет — считаем и
-     * сохраняем, чтобы генератор дашбордов потом не считал заново.
-     */
     private function resolveGroups(): array
     {
         $grouping = new DataSourceGrouping($this->dataSource->id);
@@ -109,11 +81,6 @@ class DashboardSuggestionGenerator
         return $grouping->getGroups();
     }
 
-    /**
-     * Только те типы виджетов, что реально готовы к использованию, — тот же
-     * фильтр, что у генераторов. Иначе модель предложит дашборд из виджетов,
-     * которые платформа построить не сможет.
-     */
     private function widgetTypes(): array
     {
         return Widget::query()
@@ -126,7 +93,6 @@ class DashboardSuggestionGenerator
             ->all();
     }
 
-    /** @return Collection<int, DashboardSuggestion> */
     private function stored(): Collection
     {
         return DashboardSuggestion::query()
@@ -136,11 +102,6 @@ class DashboardSuggestionGenerator
             ->get();
     }
 
-    /**
-     * @param array<int, array{title: string, prompt: string, description: string}> $suggestions
-     *
-     * @return Collection<int, DashboardSuggestion>
-     */
     private function save(array $suggestions): Collection
     {
         DB::transaction(function () use ($suggestions) {

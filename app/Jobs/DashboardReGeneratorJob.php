@@ -22,18 +22,8 @@ class DashboardReGeneratorJob implements ShouldQueue
     public $messageId;
     public $timeout = 600;
 
-    /**
-     * Последние сообщения чата (message/answer/offer_type/offer_summary), собранные
-     * RouterTask ещё до классификации. Нужны determineChanges(), чтобы разрешить
-     * короткое подтверждение («давай») против предложения, которое агент сделал
-     * предыдущим ходом, — без истории оно долетает до промпта голым текстом,
-     * никак не связанным с планом, который пользователь только что одобрил.
-     */
     public $history;
 
-    /**
-     * Create a new job instance.
-     */
     public function __construct($chatId, $dashboardId, $messageId, $text, $history = null)
     {
         $this->chatId = $chatId;
@@ -43,9 +33,6 @@ class DashboardReGeneratorJob implements ShouldQueue
         $this->history = $history;
     }
 
-    /**
-     * Execute the job.
-     */
     public function handle(): void
     {
         \App\Helpers\Ai\AiUsageContext::set(
@@ -63,11 +50,6 @@ class DashboardReGeneratorJob implements ShouldQueue
 
             $d->determineChanges($this->text, $this->history);
 
-            // Пустой список операций означает, что модель не поняла запрос.
-            // Раньше работа шла дальше: создавался новый дашборд — точная копия
-            // старого, — все задачи отмечались выполненными, и пользователь
-            // видел «готово» при неизменном экране. Честный отказ полезнее
-            // молчаливого дубля, к тому же он не плодит копии дашбордов.
             if (empty($d->operations)) {
                 \Log::warning('DashboardReGeneratorJob: no operations, dashboard left unchanged', [
                     'dashboard_id' => $this->dashboardId,
@@ -75,9 +57,6 @@ class DashboardReGeneratorJob implements ShouldQueue
                     'instruction' => $this->text,
                 ]);
 
-                // Маршрутизатор счёл это командой изменить дашборд, а менять
-                // оказалось нечего. Учить локальную модель такому примеру
-                // нельзя — она переняла бы чужую ошибку.
                 \App\Models\IntentSample::reject($this->messageId, 'изменений для дашборда не найдено');
 
                 $d->message->answer = 'Я не понял, что именно нужно изменить на дашборде, и поэтому ничего не трогал. '
@@ -94,9 +73,6 @@ class DashboardReGeneratorJob implements ShouldQueue
 
             $d->applyChanges();
 
-            // Явно вызываем шаги, которые раньше были скрыты внутри applyChanges() —
-            // так ошибка на любом из них попадает в общий catch ниже с понятным логом,
-            // а не проваливается в никуда.
             $d->generateInstruction();
             $d->generatingWidgets();
             $d->reGeneratingWidgets();
@@ -141,14 +117,10 @@ class DashboardReGeneratorJob implements ShouldQueue
             $d->message->status = 'answered';
             $d->message->save();
 
-            // Дашборд действительно перестроен — маршрут подтверждён.
             \App\Models\IntentSample::confirm($this->messageId);
 
             event(new MessageTasksChanged($d->message, $task, $d->newDashboard->id));
 
-            // Финальный статус проставляется НОВОМУ дашборду (тому, который только что
-            // прошёл ревью), а не старому $d->dashboard — раньше здесь ошибочно обновлялся
-            // старый дашборд, а новый так и оставался в 'reviewing'/'empty'.
             $d->newDashboard->status = 'completed';
             $d->newDashboard->save();
             event(new DashboardWidgetChanged($d->newDashboard));
@@ -176,7 +148,7 @@ class DashboardReGeneratorJob implements ShouldQueue
             throw $e;
         }
         } finally {
-            // Воркер долгоживущий — контекст обязан сбрасываться.
+
             \App\Helpers\Ai\AiUsageContext::clear();
         }
     }

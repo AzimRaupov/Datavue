@@ -57,20 +57,13 @@ class DashboardReGenerator
     private const OP_DELETE        = 'delete';
     public $selectedGroupsTables;
 
-    // списки созданных/обновлённых виджетов
-    // listAddWidgets: элементы - объекты DashboardWidget (новые, source = add)
-    // listUpdateWidgets: элементы - массивы ['widget' => DashboardWidget, 'dashboard_widget_id' => int, 'old_instruction' => string|null] (source = update_struct)
     public array $listAddWidgets = [];
     public array $listUpdateWidgets = [];
 
-    // готовые к отправке в ИИ массивы
     public array $addWidgetsPayload = [];
     public array $updateWidgetsPayload = [];
     public $storage;
 
-    // списки DashboardWidget, подготовленные в generateInstruction()
-    // и потребляемые generatingWidgets() / reGeneratingWidgets().
-    // Заполняются в $this->, методы больше не принимают их как аргументы.
     public array $generateNewWidgets = [];
     public array $reGenerateWidgets = [];
 
@@ -82,7 +75,7 @@ class DashboardReGenerator
         $this->dashboard = Dashboard::findOrFail($dashboardId);
         $this->chat = AiChat::with('extractedData')->findOrFail($chatId);
         $this->message = AiChatMessage::find($messageId);
-        // См. DashboardGenerator: источник ищется через чат, а не наоборот.
+
         $this->dataSource = $this->chat?->resolveDataSource();
 
         $this->dashboardWidgets = DashboardWidget::query()
@@ -92,8 +85,6 @@ class DashboardReGenerator
             ->orderBy('id')
             ->get();
 
-        // Только виджеты, реально готовые к использованию (подключённые на фронте) —
-        // см. Widget::is_ai_selectable (например 'map' пока исключён).
         $this->widgets = Widget::query()
             ->where('is_ai_selectable', true)
             ->with(['types', 'selectableTypes'])
@@ -118,12 +109,6 @@ class DashboardReGenerator
 
     }
 
-
-    /**
-     * @param \Illuminate\Support\Collection|iterable|null $history Последние сообщения
-     *   чата (message/answer/offer_type/offer_summary), собранные RouterTask ещё до
-     *   классификации, в порядке от новых к старым.
-     */
     public function determineChanges(string $instruction, $history = null): void
     {
         $task = AiChatTask::query()->create([
@@ -155,8 +140,7 @@ class DashboardReGenerator
         );
 
         $groups = json_encode($this->groups->select('id', 'name'), JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-        // Здесь решается, ЧТО менять, поэтому каталог идёт без форм данных —
-        // они нужны только при написании инструкций и генерации кода.
+
         $widgets = $this->widgetCatalogJson();
 
         $data = [
@@ -182,10 +166,6 @@ class DashboardReGenerator
 
         $this->operations = $operations;
 
-        // Единственная запись о том, ЧТО именно решено поменять. Без неё разбор
-        // жалобы «задачи выполнились, а дашборд прежний» упирается в пустоту:
-        // по логам не отличить «модель ничего не вернула» от «операции не
-        // применились».
         Log::info('DashboardReGenerator: operations decided', [
             'dashboard_id' => $this->dashboard->id ?? null,
             'message_id' => $this->message->id ?? null,
@@ -221,7 +201,7 @@ class DashboardReGenerator
 
         $this->updateWidgetsPayload = collect($this->listUpdateWidgets)
             ->map(function (array $entry) {
-                /** @var DashboardWidget $widget */
+
                 $widget = $entry['widget'];
                 return [
                     'id'=>$entry['id'],
@@ -236,12 +216,6 @@ class DashboardReGenerator
             ->all();
     }
 
-    /**
-     * Только определяет инструкции/таблицы для виджетов по ответу ИИ
-     * и раскладывает их по $this->generateNewWidgets / $this->reGenerateWidgets.
-     * Сама генерация кода (generatingWidgets()/reGeneratingWidgets()) сюда больше
-     * не вызывается — вызывающий код должен вызвать их отдельно после этого метода.
-     */
     public function generateInstruction()
     {
 
@@ -262,9 +236,7 @@ class DashboardReGenerator
         $schema = $this->connectionProviderRouter->getSchema($tables, SchemaOptions::basic());
 
         $this->prepareAiPayload();
-        // Здесь пишутся инструкции виджетов, поэтому форма данных нужна:
-        // от неё зависит, что инструкция обязана описать (например третью
-        // метрику для пузырьков).
+
         $widgets = (new WidgetCatalog($this->widgets))->detailedJson();
         $schemaStr = json_encode($schema, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
         $listAddWidgets = json_encode($this->addWidgetsPayload, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
@@ -287,8 +259,6 @@ class DashboardReGenerator
             $content = [];
         }
 
-        // сбрасываем перед новым наполнением, чтобы не накапливать данные
-        // от предыдущих вызовов generateInstruction() в рамках одного объекта
         $this->generateNewWidgets = [];
         $this->reGenerateWidgets = [];
 
@@ -325,7 +295,6 @@ class DashboardReGenerator
         $task->load('status');
         event(new \App\Events\MessageTasksChanged($this->message, $task, null));
     }
-
 
     public function applyChanges(): Dashboard
     {
@@ -387,22 +356,16 @@ class DashboardReGenerator
                 'title' => $w->title,
                 'instruction' => $w->instruction,
                 'widget_name' => $w->widget?->name,
-                // Вариант отрисовки обязателен и здесь: без него persistWidget
-                // подставлял виджету вариант семейства по умолчанию, и любая
-                // регенерация молча превращала кольцо в круг, а горизонтальные
-                // столбцы — в вертикальные у виджетов, которых никто не просил
-                // менять.
+
                 'widget_type' => $w->widgetType?->name,
                 'tables' => $w->tables ?? [],
-                // Содержимое переносится в новый дашборд как есть: виджет,
-                // которого правка не касалась, обязан считать по-прежнему.
+
                 'query_spec' => $w->query_spec,
                 'content_mode' => $w->content_mode,
                 'position' => $w->position,
                 'status' => $w->status ?? 'active',
             ])
             ->all();
-
 
         $inserts = [];
         foreach ($this->operations as $operation) {
@@ -430,7 +393,6 @@ class DashboardReGenerator
             }
         }
 
-
         usort($inserts, function ($a, $b) {
             $posA = $a['position'] ?? PHP_INT_MAX;
             $posB = $b['position'] ?? PHP_INT_MAX;
@@ -446,12 +408,10 @@ class DashboardReGenerator
                 $position = count($final);
             }
 
-            // не даём вылезти за границы массива
             $position = min($position, count($final));
 
             array_splice($final, $position, 0, [$item]);
         }
-
 
         foreach ($final as $index => &$item) {
             $item['position'] = $index;
@@ -465,8 +425,7 @@ class DashboardReGenerator
                 'chat_id' => $this->chat->id,
                 'name' => $this->dashboard->name,
                 'company_id' => $this->chat->company_id,
-                // Следующая версия остаётся в том же пространстве, что и та,
-                // из которой выросла: это одна и та же работа.
+
                 'workspace_id' => $this->dashboard->workspace_id ?? $this->chat->workspace_id,
                 'data_source_id' => $this->dashboard->data_source_id,
                 'status' => 'empty'
@@ -482,13 +441,8 @@ class DashboardReGenerator
         $task->load('status');
         event(new \App\Events\MessageTasksChanged($this->message, $task, $this->newDashboard->id));
 
-        // Генерация инструкций/кода виджетов (AI-вызовы, запись файлов) намеренно вынесена
-        // из этого метода наружу — см. DashboardReGeneratorJob::handle(), который вызывает
-        // generateInstruction()/generatingWidgets()/reGeneratingWidgets() явно и оборачивает
-        // их в общий try/catch с корректной обработкой ошибок.
         return $this->newDashboard;
     }
-
 
     public function reGeneratingWidgets(): void
     {
@@ -506,9 +460,6 @@ class DashboardReGenerator
 
         event(new \App\Events\MessageTasksChanged($this->message, $task, null));
 
-        // Правка виджета — это новая инструкция, а не патч старого содержимого.
-        // Поэтому спецификация собирается заново тем же путём, что и при первой
-        // генерации: модель отвечает, что считать, платформа собирает запрос.
         foreach ($this->reGenerateWidgets as $dashboard_widget) {
             $this->buildWidgetContent($dashboard_widget);
 
@@ -521,10 +472,6 @@ class DashboardReGenerator
         event(new \App\Events\MessageTasksChanged($this->message, $task));
     }
 
-    /**
-     * Генерирует код для новых виджетов.
-     * Список виджетов берётся из $this->generateNewWidgets (заполняется в generateInstruction()).
-     */
     public function generatingWidgets()
     {
         if (empty($this->generateNewWidgets)) {
@@ -555,13 +502,6 @@ class DashboardReGenerator
         event(new \App\Events\MessageTasksChanged($this->message, $task));
     }
 
-    /**
-     * Собирает содержимое виджета — спецификацию запроса.
-     *
-     * Один метод и на новые виджеты, и на переписанные: разницы между ними
-     * нет. Раньше это были две почти одинаковые ветки, каждая со своей
-     * сборкой Python-скрипта и своим набором полей для модели.
-     */
     private function buildWidgetContent(DashboardWidget $dashboardWidget): void
     {
         try {
@@ -607,17 +547,6 @@ class DashboardReGenerator
         }
     }
 
-    /**
-     * Таблицы, по которым собирается содержимое виджета.
-     *
-     * Модель не всегда возвращает список таблиц для виджета. Пустой список
-     * означал бы пустую схему — и тогда выбрать таблицу было бы не из чего:
-     * виджет падал бы не потому, что задача сложная, а потому что мы ничего
-     * о данных не рассказали. Поэтому откатываемся на таблицы выбранных
-     * групп, а в крайнем случае — на весь источник.
-     *
-     * @return array<int, string>
-     */
     private function tablesFor(DashboardWidget $dashboardWidget): array
     {
         $tables = array_values(array_filter((array) ($dashboardWidget->tables ?? [])));
@@ -662,17 +591,10 @@ class DashboardReGenerator
         $currentFamily = $widgetDashboard->widget?->name;
         $newFamily = $operation['widget_name'] ?? $currentFamily;
 
-        // Прежний вариант отрисовки имеет смысл только внутри своего семейства:
-        // при смене bar → pie тип "column" уже ничего не значит, и подставлять
-        // его нельзя — семейство само выберет вариант по умолчанию.
         $carriedType = $newFamily === $currentFamily
             ? $widgetDashboard->widgetType?->name
             : null;
 
-        // Содержимое переносится только внутри своего семейства. При смене
-        // bar → pie старый запрос возвращает series/category/value, а круговой
-        // нужны label/value: перенести его — значит показать виджет со
-        // сломанной формой до того, как он пересоберётся.
         $carriedSpec = $newFamily === $currentFamily ? $widgetDashboard->query_spec : null;
 
         return [
@@ -685,9 +607,9 @@ class DashboardReGenerator
             'content_mode' => $carriedSpec ? $widgetDashboard->content_mode : null,
             'position' => $operation['position'] ?? $widgetDashboard->position ?? 0,
             'status' => 'draft',
-            // id исходного (старого) dashboard_widget, который редактировался
+
             'dashboard_widget_id' => $widgetDashboard->id,
-            // старая инструкция до правки (для payload в ИИ)
+
             'old_instruction' => $widgetDashboard->instruction,
             'old_widget_name'=>$widgetDashboard->widget?->name
         ];
@@ -717,32 +639,11 @@ class DashboardReGenerator
         ];
     }
 
-    /**
-     * Каталог виджетов для промптов регенерации.
-     *
-     * Тот же компактный вид, что и при генерации: форма данных json-примером,
-     * без прозаических описаний схемы. Полный каталог занимал бы больше половины
-     * промпта и вытеснял описание текущих виджетов, которые как раз и правим.
-     */
     private function widgetCatalogJson(): string
     {
         return (new WidgetCatalog($this->widgets))->compactJson();
     }
 
-    /**
-     * История переписки для defineChanges() — тем же составом полей, что уже
-     * читают ChatAgentAi/DefineTaskAi (message/answer/offer_type/offer_summary).
-     *
-     * Без неё короткое подтверждение («давай», «давай но не трогай карточки»)
-     * долетает до модели голым текстом текущего сообщения: она видит список
-     * виджетов и «давай», но не видит, ЧТО именно агент предложил ходом раньше,
-     * и честно возвращает пустой operations — план из предыдущего ответа
-     * теряется, даже если сам агент только что подробно его расписал.
-     *
-     * RouterTask отдаёт сообщения от новых к старым — разворачиваем в
-     * хронологический порядок, чтобы модель читала переписку так же, как
-     * читал бы её человек: от первого сообщения к последнему перед текущим.
-     */
     private function historyJson($history): string
     {
         $messages = $history instanceof \Illuminate\Support\Collection
@@ -764,11 +665,6 @@ class DashboardReGenerator
         );
     }
 
-    /**
-     * Сопоставляет выбранный ИИ вариант отрисовки с каталогом семейства.
-     * Неизвестный или не указанный тип — не повод ломать виджет, берём вариант
-     * семейства по умолчанию.
-     */
     private function resolveWidgetType(?Widget $widget, ?string $typeName): ?WidgetType
     {
         if (!$widget) {
@@ -798,9 +694,7 @@ class DashboardReGenerator
         $widget = Widget::query()->where('name', $item['widget_name'])->first();
 
         if (!$widget) {
-            // ИИ мог вернуть несуществующее имя виджета (галлюцинация) — логируем, чтобы
-            // это не потерялось молча: dashboard_widget будет создан с widget_id=null и
-            // сразу помечен failed вместо того, чтобы выглядеть валидным виджетом без типа.
+
             Log::warning('DashboardReGenerator: unknown widget_name from AI, widget_id will be null', [
                 'widget_name' => $item['widget_name'] ?? null,
                 'dashboard_id' => $dashboard->id,
@@ -808,19 +702,16 @@ class DashboardReGenerator
             $item['status'] = 'failed';
         }
 
-
         $result = DashboardWidget::query()->create([
             'dashboard_id' => $dashboard->id,
             'widget_id' => $widget?->id,
             'widget_type_id' => $this->resolveWidgetType($widget, $item['widget_type'] ?? null)?->id,
             'title' => $item['title'],
             'instruction' => $item['instruction'],
-            // Без json_encode: кодированием занимается модель. Ручной вызов
-            // здесь давал двойное кодирование, и tables читались строкой.
+
             'tables' => $item['tables'] ?? [],
             'query_spec' => $item['query_spec'] ?? null,
-            // Режим ставится вместе с содержимым. Виджет, которому его ещё
-            // не собрали, не должен называть себя запросом.
+
             'content_mode' => $item['query_spec']
                 ? ($item['content_mode'] ?? DashboardWidget::MODE_SQL)
                 : DashboardWidget::MODE_PYTHON,
@@ -828,12 +719,10 @@ class DashboardReGenerator
             'status' => $item['status'] ?? 'draft',
         ]);
 
-        // подгружаем связь widget, чтобы widget->name был доступен без доп. запроса позже
         if ($widget) {
             $result->setRelation('widget', $widget);
         }
 
-        // $result уже содержит id (проставляется после create())
         if ($item['source'] === 'add') {
             $this->listAddWidgets[] = $result;
         } elseif ($item['source'] === 'update_struct') {
@@ -866,7 +755,7 @@ class DashboardReGenerator
             'widget_name' => $widgetName,
             'widget_type' => $operation['widget_type'] ?? null,
             'tables' => $operation['tables'] ?? [],
-            // Содержимое соберётся отдельным шагом — generatingWidgets().
+
             'query_spec' => null,
             'position' => $operation['position'] ?? null,
             'status' => 'draft',

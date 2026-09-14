@@ -5,45 +5,11 @@ namespace App\Helpers\Ai\Dashboard;
 use App\Helpers\Ai\AIService;
 use App\Helpers\Widget\WidgetQueryComposer;
 
-/**
- * Спрашивает у модели НЕ запрос, а решение: что считать и в каком разрезе.
- *
- * Ответ — та же декларация, которую человек собирает слотами в конструкторе:
- *
- *   { "table": "orders",
- *     "metrics": [ {"agg": "sum", "column": "amount", "label": "Выручка"} ],
- *     "dimensions": [ {"column": "country"} ],
- *     "filters": [], "limit": 10 }
- *
- * SQL из неё собирает WidgetQueryComposer — тот самый, что обслуживает
- * конструктор. Отсюда три следствия, ради которых это и сделано:
- *
- *   Промпт короче в разы. Не нужны ни правила диалекта, ни шаблон рантайма,
- *   ни контракт имён выходных колонок, ни примеры на каждую форму: модель
- *   не пишет SQL и ошибиться в нём не может.
- *
- *   Ошибки становятся невозможными целыми классами. Опечатка в колонке,
- *   забытый GROUP BY, чужой диалект, перепутанные псевдонимы — всё это
- *   отсекается проверкой декларации по схеме, ещё до обращения к базе.
- *
- *   Правила ровно одни. Конструктор и генерация собирают запрос одним кодом,
- *   поэтому «у человека работает, а у модели нет» здесь неоткуда взяться.
- *
- * Чего декларацией не выразить — джойны, оконные функции, подзапросы —
- * модель помечает флагом needs_sql, и такие виджеты уходят на путь,
- * где запрос пишется текстом.
- */
 class WidgetSpecAi
 {
-    /**
-     * Потолок ответа. Декларация — это десяток строк JSON; просить больше
-     * незачем, а лимит заодно не даёт модели уйти в рассуждения.
-     */
+
     private const MAX_TOKENS = 900;
 
-    /**
-     * @return array{ok: bool, builder: ?array, needs_sql: bool, message: ?string, api_error: ?string, total_tokens: int}
-     */
     public function plan(
         string $instruction,
         string $family,
@@ -56,14 +22,6 @@ class WidgetSpecAi
         );
     }
 
-    /**
-     * Починка: модель получает свою же декларацию и текст ошибки.
-     *
-     * Отдельный метод, а не повтор запроса, потому что иначе модель
-     * закономерно повторяет прежний ответ — она не знает, что он не подошёл.
-     *
-     * @return array{ok: bool, builder: ?array, needs_sql: bool, message: ?string, api_error: ?string, total_tokens: int}
-     */
     public function repair(
         string $instruction,
         string $family,
@@ -85,10 +43,6 @@ class WidgetSpecAi
         return $this->ask($prompt);
     }
 
-    /**
-     * Промпт целиком. Он намеренно короткий: всё, что платформа знает сама
-     * (диалект, имена выходных колонок, форма результата), модели не даётся.
-     */
     private function prompt(
         string $instruction,
         string $family,
@@ -161,13 +115,6 @@ class WidgetSpecAi
 TEXT;
     }
 
-    /**
-     * Схема в компактном виде.
-     *
-     * JSON со связями, числом строк и уверенностью занимал больше половины
-     * промпта, а для выбора «какую колонку сложить и по какой разбить» из
-     * него нужны только имя и тип.
-     */
     private function schemaBlock(array $schema): string
     {
         $lines = [];
@@ -212,9 +159,6 @@ TEXT;
         return $min > 0 ? "от {$min} до {$max}" : "до {$max}, можно без {$what}";
     }
 
-    /**
-     * @return array{ok: bool, builder: ?array, needs_sql: bool, message: ?string, api_error: ?string, total_tokens: int}
-     */
     private function ask(string $prompt): array
     {
         $system = 'Ты аналитик данных. Ты не пишешь SQL — ты выбираешь таблицу, '
@@ -239,7 +183,6 @@ TEXT;
             ];
         }
 
-        // Модель сама признала, что настройками не обойтись.
         if (!empty($content['needs_sql'])) {
             return [
                 'ok' => false,
@@ -278,9 +221,6 @@ TEXT;
         ];
     }
 
-    /**
-     * @return array<int, array>
-     */
     private function listOf(mixed $value): array
     {
         if (!is_array($value)) {
