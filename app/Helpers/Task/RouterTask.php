@@ -137,10 +137,12 @@ class RouterTask
             $previous->answer ?? null
         );
 
-        $classifier = new IntentClassifier();
-        $prediction = $classifier->predict($text, $context);
+        $localRoutingEnabled = config('intents.mode', 'local') !== 'api';
 
-        if ($classifier->isUnintelligible($text, $prediction)) {
+        $classifier = new IntentClassifier();
+        $prediction = $localRoutingEnabled ? $classifier->predict($text, $context) : null;
+
+        if ($localRoutingEnabled && $classifier->isUnintelligible($text, $prediction)) {
             $this->clarification = $this->clarificationMessage();
 
             Log::info('RouterTask: сообщение не распознано, просим уточнить', [

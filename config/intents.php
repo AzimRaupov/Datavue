@@ -4,6 +4,12 @@ return [
 
     'enabled' => (bool) env('INTENT_CLASSIFIER_ENABLED', true),
 
+    // Рубильник определения задачи: "local" — сначала пробуем локальную ML-модель
+    // (ml/intents/model.json), к GPT идём только если она не уверена (как сейчас).
+    // "api" — локальную модель для маршрутизации не используем вовсе, задачу
+    // для каждого сообщения определяет GPT (DefineTaskAi).
+    'mode' => env('TASK_ROUTING_MODE', 'local'),
+
     'model_path' => base_path('ml/intents/model.json'),
 
     'threshold' => (float) env('INTENT_THRESHOLD', 0.70),
