@@ -79,7 +79,7 @@ TEXT;
    Это самое важное поле — именно по нему будет строиться дашборд.
 6. "title" — коротко, до 40 символов, для кнопки.
 7. "description" — одна фраза о том, что покажет дашборд.
-8. Всё пиши по-русски.
+8. Сообщение пользователя пока неизвестно (чат ещё пуст) — пиши на языке: {$this->promptLanguageName()}.
 
 ========================
 ФОРМАТ ОТВЕТА
@@ -112,6 +112,15 @@ TEXT;
             'total_tokens' => $response['total_tokens'] ?? 0,
             'suggestions' => $this->normalize($response['content'] ?? []),
         ];
+    }
+
+    private function promptLanguageName(): string
+    {
+        return match (app()->getLocale()) {
+            'en' => 'английском',
+            'tg' => 'таджикском',
+            default => 'русском',
+        };
     }
 
     private function normalize(mixed $content): array

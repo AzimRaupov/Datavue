@@ -30,6 +30,9 @@ class AIService
         $open_ai = new OpenAi($this->apiKey);
 
         $systemPrompt ??= 'Ты — Senior DataSource Analyst и эксперт.';
+        $systemPrompt .= ' Весь текст для пользователя (заголовки, подписи, сообщения) пиши на языке'
+            .' его запроса, а не только по-русски — определяй язык по тексту запроса.';
+
         $response = $open_ai->chat([
             'model'             => $this->model,
             'messages'          => [

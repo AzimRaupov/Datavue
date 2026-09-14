@@ -42,9 +42,14 @@ class ChatContext
 
         $workspaceId = $chat?->workspace_id;
 
+        // Дашбордом считается только тот, что пользователь явно открыл (dashboardId
+        // пришёл с фронтенда из URL). Если чат открыт просто в пространстве, без
+        // конкретного дашборда, — считаем, что дашборда нет, даже если в пространстве
+        // уже есть другие: иначе "создай дашборд" по ошибке маршрутизируется как
+        // обновление чужого дашборда, который пользователь не открывал.
         $this->dashboard = $dashboardId
             ? Dashboard::query()->find($dashboardId)
-            : $this->dashboardsOf($chatId, $workspaceId)->latest('id')->first();
+            : null;
 
         $this->dashboardWidgets = $this->dashboard
             ? DashboardWidget::query()

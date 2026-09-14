@@ -245,13 +245,14 @@ TEXT;
     private function taskFromLabel(string $label, $previous = null): array
     {
         $text = $this->instructionFor($label, $previous);
+        $lang = $this->detectPhraseLanguage((string) $this->currentMessage->message);
 
         if ($label === IntentClassifier::EXPORT) {
             return [
                 'task_name' => 'export_data',
-                'task_title' => 'Выгрузка данных',
+                'task_title' => $this->phrase('export_title', $lang),
                 'task_instruction' => $text,
-                'message' => 'Готовлю файл с выгрузкой',
+                'message' => $this->phrase('export_message', $lang),
             ];
         }
 
@@ -260,9 +261,9 @@ TEXT;
 
             return [
                 'task_name' => $hasDashboard ? 're_generate_dashboard' : 'generate_dashboard',
-                'task_title' => $hasDashboard ? 'Обновление дашборда' : 'Создание дашборда',
+                'task_title' => $this->phrase($hasDashboard ? 'dashboard_update_title' : 'dashboard_create_title', $lang),
                 'task_instruction' => $text,
-                'message' => $hasDashboard ? 'Запускаю обновление дашборда' : 'Запускаю создание дашборда',
+                'message' => $this->phrase($hasDashboard ? 'dashboard_update_message' : 'dashboard_create_message', $lang),
             ];
         }
 
@@ -273,6 +274,61 @@ TEXT;
 
             'message' => '',
         ];
+    }
+
+    /**
+     * Локальный роутер не обращается к GPT, поэтому подтверждающие фразы
+     * (task_title/message) для него — это статичный текст. Чтобы он не был
+     * всегда русским, определяем язык сообщения по простым лексическим
+     * признакам (кириллица + таджикская морфология против русской).
+     */
+    private function detectPhraseLanguage(string $text): string
+    {
+        if (!preg_match('/\p{Cyrillic}/u', $text)) {
+            return 'en';
+        }
+
+        $tajikMarkers = '/[ғқҳҷӣӯ]|(?:^|\PL)(бо|ба|аз|ин|мебошад|метавонад|барои)(?=\PL|$)/iu';
+
+        return preg_match($tajikMarkers, $text) === 1 ? 'tg' : 'ru';
+    }
+
+    private function phrase(string $key, string $lang): string
+    {
+        $phrases = [
+            'export_title' => [
+                'ru' => 'Выгрузка данных',
+                'tg' => 'Содироти маълумот',
+                'en' => 'Data export',
+            ],
+            'export_message' => [
+                'ru' => 'Готовлю файл с выгрузкой',
+                'tg' => 'Файли содиротро омода мекунам',
+                'en' => 'Preparing the export file',
+            ],
+            'dashboard_update_title' => [
+                'ru' => 'Обновление дашборда',
+                'tg' => 'Навсозии дашборд',
+                'en' => 'Updating dashboard',
+            ],
+            'dashboard_create_title' => [
+                'ru' => 'Создание дашборда',
+                'tg' => 'Сохтани дашборд',
+                'en' => 'Creating dashboard',
+            ],
+            'dashboard_update_message' => [
+                'ru' => 'Запускаю обновление дашборда',
+                'tg' => 'Навсозии дашбордро оғоз мекунам',
+                'en' => 'Starting the dashboard update',
+            ],
+            'dashboard_create_message' => [
+                'ru' => 'Запускаю создание дашборда',
+                'tg' => 'Сохтани дашбордро оғоз мекунам',
+                'en' => 'Starting dashboard creation',
+            ],
+        ];
+
+        return $phrases[$key][$lang] ?? $phrases[$key]['ru'];
     }
 
     public function redirectToTask()
