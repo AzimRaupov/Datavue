@@ -2,13 +2,6 @@
 
 namespace App\Helpers\Ai\Providers;
 
-/**
- * Генерация python-кода виджета для DuckDB — файловые источники
- * (CSV, Excel, SQL-дамп, Google Таблицы разбираются именно в него).
- *
- * Текст промптов общий для всех SQL-источников и живёт в SqlProviderAi —
- * здесь остаются только отличия диалекта.
- */
 class DuckDbProviderAi extends SqlProviderAi
 {
     protected function dialectName(): string

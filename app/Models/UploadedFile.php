@@ -8,11 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class UploadedFile extends Model
 {
-    /**
-     * The attributes that are mass assignable.
-     *
-     * @var array<int, string>
-     */
+
     protected $fillable = [
         'company_id',
         'message_id',
@@ -26,11 +22,6 @@ class UploadedFile extends Model
         'processed_at',
     ];
 
-    /**
-     * The attributes that should be cast.
-     *
-     * @return array<string, string>
-     */
     protected function casts(): array
     {
         return [
@@ -39,25 +30,16 @@ class UploadedFile extends Model
         ];
     }
 
-    /**
-     * Get the company that owns the uploaded file.
-     */
     public function company(): BelongsTo
     {
         return $this->belongsTo(Company::class);
     }
 
-    /**
-     * Get all AI chat messages that reference this file.
-     */
     public function chatMessages(): HasMany
     {
         return $this->hasMany(AiChatMessage::class, 'file_id');
     }
 
-    /**
-     * Get all extracted data from this file.
-     */
     public function extractedData(): HasMany
     {
         return $this->hasMany(DataSourceExtraction::class, 'file_id');

@@ -11,18 +11,6 @@ use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
-/**
- * Группировка таблиц источника в фоне.
- *
- * Раньше мастер подключения запускал группировку прямо в HTTP-запросе:
- * на большой схеме это несколько минут с реальным риском упереться
- * в таймаут веб-сервера, и всё это время пользователь видел спиннер
- * без единого признака жизни.
- *
- * Теперь работа уходит в очередь, а её ход попадает и в базу
- * (data_sources.grouping_*), и в сокет — так прогресс виден и тому, кто
- * смотрит на страницу прямо сейчас, и тому, кто вернулся позже.
- */
 class DataSourceGroupingJob implements ShouldQueue
 {
     use Queueable;
@@ -45,8 +33,6 @@ class DataSourceGroupingJob implements ShouldQueue
 
         $this->publish($dataSource, 'in_progress', 'start', 'Подключаемся к источнику', 0, 3);
 
-        // Разбор схемы — один из самых дорогих шагов: запрос к модели на каждую
-        // порцию таблиц. Без учёта он тратил бюджет компании бесследно.
         AiUsageContext::set($dataSource->company_id, null, null, 'grouping');
 
         try {
@@ -96,10 +82,6 @@ class DataSourceGroupingJob implements ShouldQueue
         }
     }
 
-    /**
-     * Пишет состояние в базу и рассылает его в сокет одним действием —
-     * чтобы эти два источника правды не могли разойтись.
-     */
     private function publish(
         DataSource $dataSource,
         string $status,

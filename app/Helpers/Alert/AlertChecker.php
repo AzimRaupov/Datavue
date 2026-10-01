@@ -9,22 +9,6 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Throwable;
 
-/**
- * Единая точка входа для проверки алерта — и по расписанию, и по кнопке
- * «Проверить сейчас».
- *
- * Порядок неизменен для обоих путей:
- *   1. выполнить условие (SQL или Python);
- *   2. записать результат в историю — ВСЕГДА, включая ошибку;
- *   3. сохранить результат в CSV — КАЖДАЯ проверка, а не только сработавшая;
- *   4. решить, нужно ли письмо (машина состояний AlertNotifier) и, если
- *      письмо уходит, приложить к нему тот же CSV.
- *
- * Ручная проверка ($notify=false) отличается только последним шагом: она
- * пишется в историю как manual и никогда не рассылает писем — иначе
- * «посмотреть, что вернёт запрос» стало бы поводом разбудить почту компании.
- * CSV при этом всё равно сохраняется — скачать его можно из истории.
- */
 class AlertChecker
 {
     public function __construct(
@@ -61,10 +45,6 @@ class AlertChecker
         $alert->last_checked_at = $checkingAt;
         $alert->save();
 
-        // CSV — для КАЖДОЙ проверки, у которой вообще есть что экспортировать
-        // (ошибка условия рядов не даёт: запрос до данных не добрался).
-        // Отдельно от $notify: ручная «Проверить сейчас» писем не шлёт, но
-        // файл в истории должен появиться так же, как и у плановой проверки.
         if ($outcome['status'] !== AlertCheckerHistory::STATUS_ERROR) {
             $this->attachCsv($check, $alert, $outcome['export_rows'] ?? []);
         }
@@ -89,9 +69,6 @@ class AlertChecker
         return $check;
     }
 
-    /**
-     * @return array{status: string, value: mixed, matched_rows: ?int, payload: ?array, message: ?string, error: ?string, export_rows: array}
-     */
     private function evaluate(Alert $alert): array
     {
         $dataSource = $alert->dataSource;
@@ -166,13 +143,6 @@ class AlertChecker
         ];
     }
 
-    /**
-     * Пишет CSV на диск и дописывает путь/токен/число строк в историю.
-     *
-     * Ошибка записи файла не должна ронять саму проверку: результат уже
-     * посчитан и сохранён в payload, файл — это удобство поверх него,
-     * а не то, от чего зависит состояние алерта.
-     */
     private function attachCsv(AlertCheckerHistory $check, Alert $alert, array $rows): void
     {
         try {

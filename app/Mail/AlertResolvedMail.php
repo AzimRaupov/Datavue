@@ -8,11 +8,6 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Queue\SerializesModels;
 
-/**
- * Условие перестало выполняться: алерт вернулся из «сработал» в норму.
- * Отправляется только если у алерта включено notify_on_resolve — без
- * письма о завершении инцидента человек не знает, когда перестать следить.
- */
 class AlertResolvedMail extends Mailable
 {
     use Queueable, SerializesModels;

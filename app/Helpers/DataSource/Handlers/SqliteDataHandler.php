@@ -4,16 +4,9 @@ namespace App\Helpers\DataSource\Handlers;
 
 use RuntimeException;
 
-/**
- * Загруженный файл SQLite.
- *
- * В отличие от csv/xlsx, конвертировать нечего: файл уже является базой данных.
- * Задача обработчика — убедиться, что это действительно SQLite, и положить файл
- * туда же, где лежат остальные извлечённые данные чата.
- */
 class SqliteDataHandler
 {
-    /** Первые байты любого файла SQLite 3. */
+
     private const SIGNATURE = "SQLite format 3\0";
 
     public function __construct(
@@ -48,8 +41,6 @@ class SqliteDataHandler
             ];
         }
 
-        // Копируем, а не перемещаем: исходная загрузка остаётся на месте
-        // и учтена в uploaded_files.
         if (!copy($this->sourcePath, $this->targetPath)) {
             return [
                 'success' => false,

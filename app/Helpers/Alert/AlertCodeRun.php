@@ -8,15 +8,6 @@ use App\Models\Alert;
 use App\Models\DataSource;
 use RuntimeException;
 
-/**
- * Выполняет Python-условие алерта (mode python).
- *
- * Тот же путь, что у ручных виджетов (WidgetCodeRun): импорты и функция
- * query() с реальными кредами источника собирает CodeTemplater, тело main()
- * пишет автор, синтаксис проверяется до запуска, процесс идёт под лимитами
- * PythonRunner::restrictedLimits() — это код человека, а не сгенерированный
- * пайплайном, доверия к нему ровно столько же, сколько ручному виджету.
- */
 class AlertCodeRun
 {
     public function __construct(
@@ -24,9 +15,6 @@ class AlertCodeRun
     ) {
     }
 
-    /**
-     * @return array{ok: bool, triggered?: bool, value?: mixed, message?: ?string, rows?: array, error?: string}
-     */
     public function run(Alert $alert, DataSource $dataSource, int $timeoutSeconds): array
     {
         $code = trim((string) $alert->code);

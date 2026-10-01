@@ -12,28 +12,9 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Throwable;
 
-/**
- * Машина состояний уведомлений алерта.
- *
- * Три правила, ради которых это отдельный класс, а не «отправить письмо
- * при triggered=true»:
- *
- *   1. Письмо уходит на ПЕРЕХОД в «сработал», не на каждую проверку, где
- *      условие всё ещё выполняется, — иначе «остаток ниже нормы» превращается
- *      в письмо каждый час.
- *   2. Пока условие держится, повтор — не чаще repeat_after_minutes.
- *   3. Возврат в норму — отдельное письмо (если включено notify_on_resolve):
- *      без него нельзя понять, когда переставать волноваться.
- *
- * Ошибка проверки — не то же самое, что срабатывание: за неё отвечает
- * отдельная ветка с собственным троттлингом и авто-отключением после
- * config('alerts.disable_after_failures') ошибок подряд.
- */
 class AlertNotifier
 {
-    /**
-     * @return array{notified: bool, notified_at: ?\Illuminate\Support\Carbon, recipients: array, notify_error: ?string}
-     */
+
     public function handleOk(Alert $alert, AlertCheckerHistory $check): array
     {
         $wasFiring = $alert->state === Alert::STATE_FIRING;
@@ -49,9 +30,6 @@ class AlertNotifier
         return $this->none();
     }
 
-    /**
-     * @return array{notified: bool, notified_at: ?\Illuminate\Support\Carbon, recipients: array, notify_error: ?string}
-     */
     public function handleTriggered(Alert $alert, AlertCheckerHistory $check): array
     {
         $wasFiring = $alert->state === Alert::STATE_FIRING;
@@ -72,9 +50,6 @@ class AlertNotifier
         return $this->send($alert, $check, new AlertTriggeredMail($alert, $check));
     }
 
-    /**
-     * @return array{notified: bool, notified_at: ?\Illuminate\Support\Carbon, recipients: array, notify_error: ?string, disabled: bool}
-     */
     public function handleError(Alert $alert, AlertCheckerHistory $check): array
     {
         $alert->state = Alert::STATE_ERROR;
@@ -121,9 +96,6 @@ class AlertNotifier
         return $alert->last_notified_at->diffInMinutes(now()) >= $alert->repeat_after_minutes;
     }
 
-    /**
-     * @return array{notified: bool, notified_at: ?\Illuminate\Support\Carbon, recipients: array, notify_error: ?string}
-     */
     private function send(Alert $alert, AlertCheckerHistory $check, mixed $mailable): array
     {
         $recipients = $this->resolveRecipients($alert);
@@ -137,10 +109,6 @@ class AlertNotifier
             ];
         }
 
-        // CSV этой же проверки — файлом в письмо, а не только ссылкой:
-        // получатель мог просить именно файл, а не поход по адресу. У ошибки
-        // проверки файла не бывает (запрос до данных не добрался) — тогда
-        // csv_path пуст, и письмо уходит без вложения.
         if ($check->csv_path && is_file($check->csv_path)) {
             $mailable->attach($check->csv_path, [
                 'as' => 'alert-'.$alert->id.'-'.$check->id.'.csv',
@@ -161,8 +129,7 @@ class AlertNotifier
                 'notify_error' => null,
             ];
         } catch (Throwable $e) {
-            // Письмо не ушло — это видно в истории проверки, а не только
-            // в логе: автор алерта иначе решил бы, что его просто не задели.
+
             Log::warning('Alert: письмо не отправлено', [
                 'alert_id' => $alert->id,
                 'error' => $e->getMessage(),
@@ -177,14 +144,6 @@ class AlertNotifier
         }
     }
 
-    /**
-     * Адреса сотрудников компании (по id из recipients.users) плюс
-     * произвольные адреса (recipients.emails), без дублей.
-     *
-     * Идентификаторы сотрудников проверяются по company_id алерта — иначе
-     * подменённый id из тела запроса на сохранении утащил бы письмо
-     * сотруднику чужой компании.
-     */
     private function resolveRecipients(Alert $alert): array
     {
         $recipients = $alert->recipients ?? [];

@@ -10,18 +10,6 @@ use App\Models\DataSource;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
-/**
- * Последний шаг генерации: прогнать готовые виджеты и починить сломанные.
- *
- * Проверка идёт тем же путём, каким виджет считается у пользователя, —
- * выполняется его спецификация и результат сверяется с формой семейства.
- * Иначе шаг проверял бы не то, что увидит человек.
- *
- * Починка отдаёт модели её собственную спецификацию вместе с текстом ошибки
- * от базы. Это принципиально: без ошибки модель повторяет прежний ответ,
- * а с ней исправляет с первой-второй попытки — база называет причину точно
- * («Unknown column 'orderdate' in 'field list'»).
- */
 class ReviewWidgetsDashboard
 {
     private const MAX_FIX_ATTEMPTS = 2;
@@ -54,12 +42,6 @@ class ReviewWidgetsDashboard
         }
     }
 
-    /**
-     * Возвращает статус ВЫПОЛНЕНИЯ шага, а не результат проверки виджетов:
-     * отдельный сломанный виджет не проваливает генерацию всего дашборда.
-     *
-     * @return array{errors: bool, message?: string}
-     */
     public function handle(): array
     {
         try {
@@ -75,11 +57,6 @@ class ReviewWidgetsDashboard
         }
     }
 
-    /**
-     * Прогоняет все виджеты дашборда.
-     *
-     * @return array{result: array<int, array>, isError: bool}
-     */
     public function review($dataSource, $dashboard_widgets)
     {
         $isError = false;
@@ -98,9 +75,6 @@ class ReviewWidgetsDashboard
         return ['result' => $result, 'isError' => $isError];
     }
 
-    /**
-     * Чинит виджеты, не прошедшие проверку.
-     */
     public function startReGenerate($resultsRun): void
     {
         foreach ($resultsRun as $result) {
@@ -108,8 +82,6 @@ class ReviewWidgetsDashboard
                 continue;
             }
 
-            // Содержимого нет вовсе — чинить нечего: это провал генерации,
-            // а не поправимая ошибка в запросе.
             if (empty($result['has_content'])) {
                 DashboardWidget::query()
                     ->where('id', $result['widget_id'])
@@ -122,10 +94,6 @@ class ReviewWidgetsDashboard
         }
     }
 
-    /**
-     * Правит спецификацию и тут же перепроверяет результат: без повторного
-     * прогона статус виджета не отражал бы, помогла правка или нет.
-     */
     private function fixWidget(int $widgetId, array $runResult, int $attempt = 1): void
     {
         $widget = DashboardWidget::query()->with('widget.types', 'widgetType')->find($widgetId);
@@ -183,19 +151,13 @@ class ReviewWidgetsDashboard
         $widget->save();
     }
 
-    /**
-     * Выполняет виджет и сверяет результат с формой его семейства.
-     *
-     * @return array{widget_id: ?int, widget_type: ?string, output: mixed, is_valid: bool, errors: array, has_content: bool}
-     */
     private function runAndValidateWidget(DashboardWidget $widget): array
     {
         $family = $widget->widget->name ?? null;
         $view = $widget->effectiveType()?->name;
 
         if (!$widget->usesQuerySpec()) {
-            // Виджеты, написанные до перехода на запросы, этот шаг не трогает:
-            // их содержимое — Python, а чинить его больше нечем и незачем.
+
             return $this->entry($widget, $family, null, [
                 $widget->hasContent()
                     ? 'Виджет использует прежний способ расчёта — проверка пропущена.'
@@ -222,8 +184,6 @@ class ReviewWidgetsDashboard
             ], hasContent: true);
         }
 
-        // Проверка идёт по нескольким строкам: смотрим на структуру результата,
-        // а не на объём данных — для этого хватает выборки.
         $errors = $family
             ? $this->outputValidator->validate($family, $run['data'], $view)
             : ['Не удалось определить семейство виджета.'];
@@ -231,14 +191,6 @@ class ReviewWidgetsDashboard
         return $this->entry($widget, $family, $run['data'], $errors, hasContent: true);
     }
 
-    /**
-     * Схема таблиц виджета для повторной генерации.
-     *
-     * detailed(), а не basic(): чинить виджет с фильтром по выдуманному значению
-     * («Заявка», «Оплата»...) можно, только если модель на этом шаге видит
-     * реальные значения колонки (sample_values) — иначе она либо повторит ту
-     * же ошибку, либо угадает другое несуществующее значение.
-     */
     private function schemeFor(DashboardWidget $widget): array
     {
         $tables = $widget->tables ?? [];
@@ -259,9 +211,6 @@ class ReviewWidgetsDashboard
         }
     }
 
-    /**
-     * @param array<int, string> $errors
-     */
     private function entry(
         DashboardWidget $widget,
         ?string $family,
@@ -274,8 +223,7 @@ class ReviewWidgetsDashboard
             'widget_id' => $widget->id,
             'widget_type' => $family,
             'output' => $output,
-            // Пропущенный виджет не считается сломанным: чинить его нечем,
-            // и помечать провалом рабочий виджет было бы неверно.
+
             'is_valid' => $skip || empty($errors),
             'errors' => $skip ? [] : $errors,
             'has_content' => $hasContent,

@@ -4,16 +4,7 @@ namespace App\Helpers\Widget;
 
 class WidgetOutputValidator
 {
-    /**
-     * Проверяет вывод python-скрипта против формы данных виджета.
-     *
-     * $family — имя семейства (widget.name), $type — выбранный вариант отрисовки
-     * (widget_type.name). Тип важен там, где он переопределяет форму данных:
-     * bubble требует третье число на точку, polar-area — плоский список,
-     * with-progress — поле percent.
-     *
-     * Возвращает массив ошибок; пустой массив = вывод валиден.
-     */
+
     public function validate(string $family, mixed $data, ?string $type = null): array
     {
         if (!is_array($data)) {
@@ -40,10 +31,6 @@ class WidgetOutputValidator
         };
     }
 
-    /**
-     * bar / line / radar: series: [{ name: string, data: [number,...] }]
-     * плюс ось категорий, длина которой совпадает с длиной каждого data.
-     */
     private function validateSeriesWithAxis(array $data, string $axisKey): array
     {
         $errors = [];
@@ -77,9 +64,6 @@ class WidgetOutputValidator
         return $errors;
     }
 
-    /**
-     * Один ряд вида { name, data: [number,...] }.
-     */
     private function validateSerie(mixed $serie, int|string $i, ?int $axisCount, string $axisKey): array
     {
         $errors = [];
@@ -110,10 +94,6 @@ class WidgetOutputValidator
         return $errors;
     }
 
-    /**
-     * combo: ряды с полем kind ("column" | "line"), обоих видов минимум по одному —
-     * иначе это обычный bar или line, а не совмещённый график.
-     */
     private function validateCombo(array $data): array
     {
         $errors = $this->validateSeriesWithAxis($data, 'categories');
@@ -146,9 +126,6 @@ class WidgetOutputValidator
         return $errors;
     }
 
-    /**
-     * pie / radial / funnel / polar-area: series: [number,...] + подписи той же длины.
-     */
     private function validateFlatSeries(array $data, string $labelsKey): array
     {
         $errors = [];
@@ -186,10 +163,6 @@ class WidgetOutputValidator
         return $errors;
     }
 
-    /**
-     * scatter / bubble: series: [{ name, data: [[x, y] | [x, y, z], ...] }].
-     * $arity — сколько чисел в точке: 2 для точек, 3 для пузырьков.
-     */
     private function validatePoints(array $data, int $arity): array
     {
         $errors = [];
@@ -234,10 +207,6 @@ class WidgetOutputValidator
         return $errors;
     }
 
-    /**
-     * heatmap: series: [{ name, data: [{ x: string, y: number }, ...] }].
-     * Набор x обязан совпадать во всех рядах, иначе колонки матрицы разъедутся.
-     */
     private function validateMatrix(array $data): array
     {
         $errors = [];
@@ -297,9 +266,6 @@ class WidgetOutputValidator
         return $errors;
     }
 
-    /**
-     * treemap: series: [{ data: [{ x: string, y: number }, ...] }] — ровно один элемент.
-     */
     private function validateTreemap(array $data): array
     {
         $errors = [];
@@ -337,11 +303,6 @@ class WidgetOutputValidator
         return $errors;
     }
 
-    /**
-     * mini-counters: counters: [{ name, value, percent?, prefix?, suffix? }].
-     * percent обязателен только для типа with-progress — без него полосе
-     * выполнения нечего показывать.
-     */
     private function validateMiniCounters(array $data, bool $requirePercent = false): array
     {
         $errors = [];
@@ -387,9 +348,6 @@ class WidgetOutputValidator
         return $errors;
     }
 
-    /**
-     * map: series: [{ code: string (ISO alpha-2), value: number }].
-     */
     private function validateMap(array $data): array
     {
         $errors = [];
@@ -416,10 +374,6 @@ class WidgetOutputValidator
         return $errors;
     }
 
-    /**
-     * table: headers: [string,...], rows: [[string|int|float,...],...],
-     * длина каждой строки совпадает с количеством заголовков.
-     */
     private function validateTable(array $data): array
     {
         $errors = [];

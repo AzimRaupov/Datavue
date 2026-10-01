@@ -3,13 +3,6 @@
 use App\Helpers\Widget\ManualWidgetAuthor;
 use App\Models\DashboardWidget;
 
-/**
- * Регресс: у счётчиков query_spec хранит несколько именных запросов —
- * по одному на карточку. Редактор SQL показывает только первый
- * (WidgetSpecValidator::primaryQueryOf()), и если сохранение вслепую
- * пересобирает спецификацию из текста этого поля, «открыл редактор и сразу
- * нажал сохранить» стирает все запросы, кроме первого.
- */
 function nextQuerySpec(DashboardWidget $widget, string $family, string $sql, array $presentation = []): array
 {
     $method = new ReflectionMethod(ManualWidgetAuthor::class, 'nextQuerySpec');
@@ -29,7 +22,6 @@ it('не трогает остальные запросы счётчика, ес
         'shape' => 'counters',
     ];
 
-    // То же самое, что редактор показал бы в поле SQL — первый запрос.
     $shown = "SELECT 'Клиентов' AS name, COUNT(*) AS value FROM customers";
 
     $spec = nextQuerySpec($widget, 'mini-counters', $shown);

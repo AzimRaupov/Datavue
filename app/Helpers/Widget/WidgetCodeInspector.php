@@ -5,30 +5,13 @@ namespace App\Helpers\Widget;
 use App\Helpers\PythonRunner;
 use Illuminate\Support\Facades\Log;
 
-/**
- * Проверяет код виджета, написанный человеком, ДО того как он попадёт в базу
- * и будет выполнен.
- *
- * Проверка двухступенчатая: дешёвые правила на стороне PHP (длина, наличие
- * main) и разбор AST отдельным python-скриптом. Регулярками такое не решается:
- * запрещённый импорт можно записать десятком способов, и текстовый поиск
- * ловит лишь самый наивный.
- *
- * Принцип отказа — «не смогли проверить, значит не сохраняем»: если python
- * недоступен или скрипт-инспектор вернул мусор, код отклоняется. Пропустить
- * непроверенный код на сервер хуже, чем отказать автору.
- */
 class WidgetCodeInspector
 {
-    /** Потолок размера кода: защита базы и формы от мусора. */
+
     public const MAX_LENGTH = 20000;
 
-    /** Инспектор — разбор дерева, ему хватает секунд. */
     private const TIMEOUT = 15;
 
-    /**
-     * @return array{ok: bool, errors: array<int, string>}
-     */
     public function inspect(?string $code): array
     {
         $code = (string) $code;
@@ -42,11 +25,6 @@ class WidgetCodeInspector
         return $this->inspectAst($code);
     }
 
-    /**
-     * Проверки, ради которых незачем поднимать python.
-     *
-     * @return array<int, string>
-     */
     private function quickChecks(string $code): array
     {
         $errors = [];
@@ -71,9 +49,6 @@ class WidgetCodeInspector
         return $errors;
     }
 
-    /**
-     * @return array{ok: bool, errors: array<int, string>}
-     */
     private function inspectAst(string $code): array
     {
         $script = resource_path('python/widget_code_inspector.py');

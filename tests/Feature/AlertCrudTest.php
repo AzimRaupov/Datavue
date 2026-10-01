@@ -12,16 +12,6 @@ use Illuminate\Support\Facades\Hash;
 
 uses(RefreshDatabase::class);
 
-/**
- * CRUD алертов: изоляция по компании и разделение прав между 'manage alerts'
- * (конструктор метрик) и 'write alert code' (SQL/Python выполняются на
- * сервере — как и у ручных виджетов, это отдельное право).
- *
- * Условие в этих тестах — режим sql: структурная проверка при сохранении
- * (ReadOnlySqlGuard) не обращается к базе клиента, поэтому тесты не требуют
- * настоящего подключения к источнику.
- */
-
 beforeEach(function () {
     $this->seed(RolePermissionSeeder::class);
     DataSourceType::query()->firstOrCreate(['name' => 'mysql']);
@@ -198,9 +188,6 @@ it('требует право write alert code для sql, но не для buil
         ->postJson("/api/company/workspaces/{$workspace->id}/alerts", alertPayload())
         ->assertForbidden();
 
-    // Режим builder не требует права на код: запрос собирает платформа.
-    // Источник в этом тесте ненастоящий, поэтому дальше запрос упрётся
-    // в недоступную базу (422) — важно только то, что это не 403.
     $this->actingAs($limited)
         ->postJson("/api/company/workspaces/{$workspace->id}/alerts", alertPayload([
             'mode' => Alert::MODE_BUILDER,

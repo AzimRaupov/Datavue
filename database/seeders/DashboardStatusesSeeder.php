@@ -9,9 +9,7 @@ use Illuminate\Database\Seeder;
 
 class DashboardStatusesSeeder extends Seeder
 {
-    /**
-     * Run the database seeds.
-     */
+
     public function run(): void
     {
         $statuses = [

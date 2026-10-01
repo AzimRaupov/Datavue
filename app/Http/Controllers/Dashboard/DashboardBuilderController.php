@@ -14,20 +14,10 @@ use App\Models\WidgetType;
 use Illuminate\Http\Request;
 use Throwable;
 
-/**
- * Данные, которые нужны рабочему месту сборки дашборда, но не нужны его
- * просмотру: код виджетов, схема источника, пробный запрос.
- *
- * Отдельный контроллер, потому что и права другие: смотреть дашборд может
- * viewer, а собирать — только тот, кому разрешено его менять.
- */
 class DashboardBuilderController extends Controller
 {
     use PresentsWidgetContent;
 
-    /**
-     * Дашборд целиком для конструктора.
-     */
     public function edit(Request $request, $id)
     {
         $dashboard = $this->findForCompany($request, $id);
@@ -97,12 +87,6 @@ class DashboardBuilderController extends Controller
         ]);
     }
 
-    /**
-     * Таблицы и колонки источника — подсказка автору кода.
-     *
-     * Кэш на пять минут: showColumns ходит в базу клиента по каждой таблице,
-     * а панель со схемой открывается на каждом виджете.
-     */
     public function schema(Request $request, $id)
     {
         $dashboard = $this->findForCompany($request, $id);
@@ -120,9 +104,6 @@ class DashboardBuilderController extends Controller
             ], 422);
         }
 
-        // Граф связей отдаётся сразу: без него конструктор предлагал бы
-        // связать таблицы, которые связывать нечем, и заставлял бы
-        // вспоминать, какой ключ куда смотрит.
         try {
             $relations = SourceSchema::relations(
                 $dataSource,
@@ -136,9 +117,7 @@ class DashboardBuilderController extends Controller
             'data_source' => ['id' => $dataSource->id, 'name' => $dataSource->name],
             'tables' => $tables,
             'relations' => $relations,
-            // Словарь конструктора: функции, округления дат и условия приходят
-            // с сервера, чтобы панель не держала их копию, которая разъедется
-            // с тем, что реально умеет сборщик запроса.
+
             'aggregates' => WidgetQueryComposer::AGGREGATES,
             'join_types' => WidgetQueryComposer::JOIN_TYPES,
             'grains' => WidgetQueryComposer::GRAINS,
@@ -147,13 +126,6 @@ class DashboardBuilderController extends Controller
         ]);
     }
 
-    /**
-     * Связи между выбранными таблицами — подсказка для конструктора.
-     *
-     * Спрашивается по требованию: когда автор добавляет вторую таблицу,
-     * платформа предлагает готовое условие соединения вместо того, чтобы
-     * заставлять вспоминать, какой ключ куда смотрит.
-     */
     public function relations(Request $request, $id)
     {
         $dashboard = $this->findForCompany($request, $id);
@@ -172,20 +144,13 @@ class DashboardBuilderController extends Controller
         try {
             $relations = SourceSchema::relations($dataSource, $request->input('tables'));
         } catch (Throwable $e) {
-            // Подсказка не обязательна: связь всегда можно выбрать руками.
+
             return response()->json(['relations' => []]);
         }
 
         return response()->json(['relations' => $relations]);
     }
 
-    /**
-     * Пробный SELECT по источнику дашборда — подобрать запрос до того, как
-     * он попадёт в код виджета.
-     *
-     * Тот же ReadOnlyQueryRunner, что и у чат-агента: один SELECT, без «;»,
-     * с потолком строк. Ничего изменить этим запросом нельзя.
-     */
     public function query(Request $request, $id)
     {
         $dashboard = $this->findForCompany($request, $id);
@@ -214,9 +179,6 @@ class DashboardBuilderController extends Controller
             'truncated' => $result['truncated'],
         ]);
     }
-
-
-
 
     private function findForCompany(Request $request, $id): Dashboard
     {

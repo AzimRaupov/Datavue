@@ -5,21 +5,10 @@ namespace App\Helpers\DataSource;
 use App\Models\DataSource;
 use Illuminate\Support\Facades\Cache;
 
-/**
- * Схема источника: таблицы и их колонки с типами.
- *
- * Нужна в двух местах сразу — панели конструктора, где из колонок собирают
- * запрос, и сборщику SQL, который по этой же схеме проверяет, что колонка
- * существует. Общий кэш обязателен: showColumns() ходит в базу клиента по
- * каждой таблице, а конструктор дёргает схему на каждом открытии виджета.
- */
 class SourceSchema
 {
     private const TTL_MINUTES = 5;
 
-    /**
-     * @return array<int, array{name: string, columns: array<int, array{name: string, type: ?string, kind: string}>}>
-     */
     public static function tables(DataSource $dataSource): array
     {
         return Cache::remember(
@@ -45,9 +34,7 @@ class SourceSchema
                         $columns[] = [
                             'name' => $name,
                             'type' => $type,
-                            // Вид колонки решает, что с ней можно делать:
-                            // по числу считают сумму, по дате группируют
-                            // по месяцам, по строке — только считают строки.
+
                             'kind' => self::kindOf($type),
                         ];
                     }
@@ -60,11 +47,6 @@ class SourceSchema
         );
     }
 
-    /**
-     * Плоская карта «таблица => колонка => вид» для быстрых проверок.
-     *
-     * @return array<string, array<string, string>>
-     */
     public static function map(DataSource $dataSource): array
     {
         $map = [];
@@ -78,17 +60,6 @@ class SourceSchema
         return $map;
     }
 
-    /**
-     * Связи между таблицами — чтобы конструктор сам предлагал, по каким
-     * колонкам их соединять.
-     *
-     * Спрашивается отдельно и только по нужным таблицам: провайдер проверяет
-     * связи по самим данным, и делать это для всего источника разом дорого.
-     *
-     * @param array<int, string> $tables
-     *
-     * @return array<int, array{from_table: string, from_column: string, to_table: string, to_column: string, confidence: ?string}>
-     */
     public static function relations(DataSource $dataSource, array $tables): array
     {
         $tables = array_values(array_unique(array_filter($tables)));
@@ -141,13 +112,6 @@ class SourceSchema
         return "datasource:{$dataSourceId}:schema";
     }
 
-    /**
-     * Вид колонки по типу из базы.
-     *
-     * Типы у провайдеров пишутся по-разному (int(11), bigint, INTEGER,
-     * numeric(10,2), timestamp without time zone), поэтому смотрим на
-     * подстроку, а не на точное совпадение.
-     */
     public static function kindOf(?string $type): string
     {
         $type = strtolower(trim((string) $type));

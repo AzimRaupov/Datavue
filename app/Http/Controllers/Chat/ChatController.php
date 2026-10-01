@@ -15,15 +15,6 @@ use App\Models\Workspace;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
-/**
- * Чаты с ИИ-агентом.
- *
- * Чат заводится НА уже подключённом источнике данных: компания сначала
- * добавляет источник (см. DataSourceController), а потом создаёт под него
- * столько чатов, сколько нужно. Раньше эти два действия были склеены — чат
- * создавался только вместе с новым источником, и одну и ту же базу приходилось
- * подключать заново под каждый вопрос.
- */
 class ChatController extends Controller
 {
     public function index(Request $request)
@@ -43,7 +34,6 @@ class ChatController extends Controller
             ->withCount('dashboards')
             ->latest('id');
 
-        // Список чатов конкретного источника — на его странице.
         if ($request->filled('data_source_id')) {
             $query->where('data_source_id', $request->integer('data_source_id'));
         }
@@ -65,9 +55,6 @@ class ChatController extends Controller
             ])
             ->firstOrFail();
 
-        // Варианты дашбордов лежат на источнике, но чат — единственное место,
-        // где они показываются, поэтому отдаём их вместе с чатом. При
-        // перезагрузке страницы предложения не теряются.
         $suggestions = DashboardSuggestion::query()
             ->where('data_source_id', $chat->data_source_id)
             ->orderBy('position')
@@ -79,12 +66,6 @@ class ChatController extends Controller
         );
     }
 
-    /**
-     * Новый чат на существующем источнике.
-     *
-     * Источник больше не создаётся здесь: приходит его id, и остаётся только
-     * проверить, что он принадлежит той же компании.
-     */
     public function store(StoreRequest $request)
     {
         $user = $request->user();
@@ -93,8 +74,6 @@ class ChatController extends Controller
             ->ofCompany($user->company_id)
             ->find($request->input('data_source_id'));
 
-        // Отдельная проверка, а не exists-правило: сообщение об источнике чужой
-        // компании не должно отличаться от сообщения о несуществующем.
         if (!$dataSource) {
             return response()->json([
                 'success' => false,
@@ -104,9 +83,6 @@ class ChatController extends Controller
 
         $title = $request->input('title') ?: 'Новый чат — ' . $dataSource->name;
 
-        // Разговор живёт в рабочем пространстве — там же окажутся и дашборды,
-        // которые из него вырастут. Заводится оно здесь, потому что чат можно
-        // начать и с источника, минуя список пространств.
         $workspace = Workspace::query()->create([
             'company_id' => $user->company_id,
             'created_by' => $user->id,
@@ -122,16 +98,6 @@ class ChatController extends Controller
             'title'          => $title,
         ]);
 
-        // Варианты дашбордов готовятся ЗДЕСЬ, а не в фоне: фронт держит
-        // кнопку в состоянии загрузки и открывает чат уже с готовыми
-        // предложениями. Первый вызов на источнике заодно строит группировку
-        // таблиц, поэтому может занять до минуты; для второго чата на том же
-        // источнике всё берётся из базы и отвечает мгновенно.
-        //
-        // Сбой генерации намеренно не роняет запрос — чат создан, просто
-        // откроется без предложений (см. DashboardSuggestionGenerator).
-        // При исчерпанном лимите чат всё равно создаём — просто без вариантов:
-        // блокировать создание чата из-за необязательной подсказки неправильно.
         $suggestions = AiUsage::limitReached($user->company)
             ? collect()
             : (new DashboardSuggestionGenerator($dataSource))->handle();
@@ -145,9 +111,6 @@ class ChatController extends Controller
         ], 201);
     }
 
-    /**
-     * Переименование чата.
-     */
     public function update(Request $request, $id)
     {
         $chat = $this->findForCompany($request, $id);
@@ -162,13 +125,6 @@ class ChatController extends Controller
         return response()->json($chat);
     }
 
-    /**
-     * Удаление чата вместе с его дашбордами и перепиской.
-     *
-     * Источник данных при этом НЕ трогается: он принадлежит компании, а не
-     * чату, и на нём могут работать другие чаты. Раньше здесь стояло
-     * DataSource::where('chat_id', ...)->delete() — вместе с чатом уносило и базу.
-     */
     public function destroy(Request $request, $id)
     {
         $chat = $this->findForCompany($request, $id);

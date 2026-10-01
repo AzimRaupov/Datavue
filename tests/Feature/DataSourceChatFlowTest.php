@@ -21,26 +21,18 @@ use Illuminate\Support\Facades\Hash;
 
 uses(RefreshDatabase::class);
 
-/**
- * Новый порядок работы: компания подключает источник данных, а потом заводит
- * на нём сколько угодно чатов. Тесты закрывают именно связку «источник → чат»
- * и изоляцию между компаниями.
- */
-
 beforeEach(function () {
     $this->seed(RolePermissionSeeder::class);
-    // WidgetSeeder заводит только семейства; варианты отрисовки (widget_types)
-    // создают отдельные сидеры семейств — без них менять тип нечем.
+
     $this->seed(PieChartSeeder::class);
     $this->seed(BarChartSeeder::class);
-    // dashboards.status — внешний ключ на dashboard_statuses.name.
+
     $this->seed(DashboardStatusesSeeder::class);
 
     DataSourceType::query()->firstOrCreate(['name' => 'mysql']);
     DataSourceType::query()->firstOrCreate(['name' => 'duckdb']);
 });
 
-/** Компания с владельцем-администратором и произвольной ролью для сотрудника. */
 function makeCompany(string $name = 'Acme', string $role = 'company_admin'): array
 {
     $company = Company::query()->create(['name' => $name]);
@@ -97,7 +89,7 @@ it('заводит несколько чатов на одном источни�
     expect($first['data_source_id'])->toBe($source->id)
         ->and($second['data_source_id'])->toBe($source->id)
         ->and($first['title'])->toBe('Выручка по месяцам')
-        // Без названия чат всё равно получает осмысленный заголовок.
+
         ->and($second['title'])->toContain($source->name);
 
     expect($source->chats()->count())->toBe(2);
@@ -128,7 +120,6 @@ it('оставляет источник живым после удаления �
         ->deleteJson("/api/company/chats/{$chatId}")
         ->assertOk();
 
-    // Именно это ломалось раньше: удаление чата уносило с собой базу.
     expect(DataSource::query()->find($source->id))->not->toBeNull()
         ->and(AiChat::query()->find($chatId))->toBeNull();
 });
@@ -166,8 +157,6 @@ it('не даёт завести чат на источнике чужой ко�
     [$company, $user] = makeCompany('Acme');
     $source = makeSource($company, $user);
 
-    // Источник существует, но принадлежит другой компании — 404, а не 403:
-    // чужие источники не должны раскрываться даже фактом существования.
     $this->actingAs($stranger)
         ->postJson('/api/company/chats', ['data_source_id' => $source->id])
         ->assertNotFound();
@@ -202,7 +191,6 @@ it('показывает источники наблюдателю, но не д
         ->deleteJson("/api/company/data_source/{$source->id}")
         ->assertForbidden();
 
-    // Роль viewer не создаёт и чаты.
     $this->actingAs($viewer)
         ->postJson('/api/company/chats', ['data_source_id' => $source->id])
         ->assertForbidden();
@@ -234,17 +222,11 @@ it('находит источник виджета через дашборд и 
         'status' => 'active',
     ]);
 
-    // Регрессия: источник искался как DataSource::where('chat_id', ...), эта
-    // связь больше не заполняется — firstOrFail() валился на каждом виджете,
-    // и дашборд оставался пустым при успешной генерации.
-    // Кода у виджета нет, поэтому ждём ответ 'pending', а НЕ 404/422.
     $this->actingAs($user)
         ->postJson("/api/company/get-widget-content/{$widget->id}", ['chat_id' => $chat->id])
         ->assertOk()
         ->assertJson(['pending' => true]);
 
-    // chat_id из запроса больше не влияет на выбор источника: даже мусорное
-    // значение не мешает найти источник через сам виджет.
     $this->actingAs($user)
         ->postJson("/api/company/get-widget-content/{$widget->id}", ['chat_id' => 999999])
         ->assertOk()
@@ -261,12 +243,8 @@ it('отзывает токен при выходе из аккаунта', func
 
     $this->withHeaders($auth)->postJson('/api/logout')->assertOk();
 
-    // Регрессия: маршрута /logout не существовало вовсе, токен жил вечно.
     expect($user->tokens()->count())->toBe(0);
 
-    // Гвард кэширует пользователя в рамках одного экземпляра приложения,
-    // а в тестах все запросы идут через него же — без сброса третий запрос
-    // вернул бы того же пользователя, не заглядывая в токен.
     $this->app['auth']->forgetGuards();
 
     $this->withHeaders($auth)->postJson('/api/get-user')->assertUnauthorized();
@@ -280,19 +258,16 @@ it('считает расход токенов и отклоняет запро�
         ->postJson('/api/company/chats', ['data_source_id' => $source->id])
         ->json('chat.id');
 
-    // Расход пишется из AIService по контексту — проверяем саму связку.
     AiUsageContext::set($company->id, $chatId, null, 'test_operation');
     AiUsage::record(700, 'test-model');
     AiUsageContext::clear();
 
-    // Без контекста запись не должна появиться: иначе расход уедет чужой компании.
     AiUsage::record(999, 'test-model');
 
     $usage = $this->actingAs($user)->getJson('/api/company/usage')->assertOk()->json();
     expect($usage['used'])->toBe(700)
         ->and($usage['limit'])->toBeNull();
 
-    // Ставим лимит ниже израсходованного.
     $this->actingAs($user)
         ->putJson('/api/company/usage', ['ai_token_limit' => 500])
         ->assertOk();
@@ -301,7 +276,6 @@ it('считает расход токенов и отклоняет запро�
         ->postJson('/api/company/messages', ['chat_id' => $chatId, 'message' => 'привет'])
         ->assertStatus(429);
 
-    // Пустой лимит снимает ограничение.
     $this->actingAs($user)
         ->putJson('/api/company/usage', ['ai_token_limit' => null])
         ->assertOk();
@@ -312,11 +286,9 @@ it('считает расход токенов и отклоняет запро�
 it('требует файл только для загруженного файла', function () {
     [$company, $user] = makeCompany();
 
-    // Внешняя база: файл не нужен, обновляется снимок схемы.
     $remote = makeSource($company, $user);
     expect((new DataSourceRefresher($remote, $user))->requiresFile())->toBeFalse();
 
-    // Google-таблица: тоже без файла, тянется по сохранённой ссылке.
     $sheet = makeSource($company, $user, 'Таблица');
     $sheet->forceFill([
         'connection_type' => 'local',
@@ -324,7 +296,6 @@ it('требует файл только для загруженного фай�
     ])->save();
     expect((new DataSourceRefresher($sheet->fresh(), $user))->requiresFile())->toBeFalse();
 
-    // Загруженный CSV: нужна новая версия файла.
     $file = makeSource($company, $user, 'Выгрузка');
     $file->forceFill([
         'connection_type' => 'local',
@@ -337,13 +308,9 @@ it('для внешней базы обновляет снимок схемы, �
     [$company, $user] = makeCompany();
     $source = makeSource($company, $user);
 
-    // Подключение к выдуманному хосту не поднимется — и это правильный
-    // ответ: обновление внешней базы начинается с проверки связи.
     $response = $this->actingAs($user)
         ->postJson("/api/company/data_source/{$source->id}/refresh");
 
-    // Раньше здесь безусловно возвращалось 422 «обновлять нечего»;
-    // теперь запрос доходит до реальной проверки подключения.
     expect($response->status())->toBeIn([200, 422]);
     expect($response->json('message'))->not->toContain('всегда актуальны');
 });
@@ -365,7 +332,6 @@ it('меняет тип отрисовки виджета только внут�
         'status' => 'completed',
     ]);
 
-    // Семейство с несколькими вариантами отрисовки.
     $family = Widget::query()->has('types', '>=', 2)->first();
     $types = $family->types()->get();
 
@@ -379,7 +345,6 @@ it('меняет тип отрисовки виджета только внут�
         'status' => 'active',
     ]);
 
-    // Смена на соседний вариант того же семейства проходит.
     $this->actingAs($user)
         ->patchJson("/api/company/dashboards/{$dashboard->id}/widgets", [
             'widgets' => [['id' => $widget->id, 'widget_type_id' => $types[1]->id]],
@@ -389,8 +354,6 @@ it('меняет тип отрисовки виджета только внут�
 
     expect($widget->fresh()->widget_type_id)->toBe($types[1]->id);
 
-    // Тип чужого семейства отбивается: данные виджета посчитаны под его форму,
-    // и, например, круг не нарисуется данными таблицы.
     $foreign = WidgetType::query()->where('widget_id', '!=', $family->id)->first();
 
     $this->actingAs($user)

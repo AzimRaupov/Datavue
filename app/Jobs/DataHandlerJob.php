@@ -36,9 +36,7 @@ class DataHandlerJob implements ShouldQueue
 
     public $outputPath;
     public $dbFilePath;
-    /**
-     * Create a new job instance.
-     */
+
     public function __construct($chat_id,$upload_file_id,$user_id)
     {
 
@@ -64,9 +62,6 @@ class DataHandlerJob implements ShouldQueue
 
     }
 
-    /**
-     * Execute the job.
-     */
     public function handle(): void
     {
         try {
@@ -109,8 +104,6 @@ class DataHandlerJob implements ShouldQueue
             $this->chat_task->status_id = $this->tasks_status['completed'];
             $this->chat_task->save();
 
-//            dispatch(new DashboardGeneratorJob($this->message_id, $this->chat->id,$this->user->id,$this->dashboard_id));
-
         } catch (\Throwable $e) {
 
             $this->chat_task->status_id = $this->tasks_status['failed'];
@@ -123,7 +116,6 @@ class DataHandlerJob implements ShouldQueue
     private function createDuckdbDatabase($dbFilePath,$sqlFilePath)
     {
         $path = "/home/azim/projects/Datavue/app/Helpers/DataSource/sql_to_duck.py";
-
 
         $runner = new PythonRunner(
             $path,

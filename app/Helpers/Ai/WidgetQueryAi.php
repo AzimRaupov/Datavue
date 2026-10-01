@@ -6,34 +6,16 @@ use App\Helpers\Ai\Providers\ProviderAiFactory;
 use App\Helpers\Ai\Providers\SqlProviderAi;
 use App\Helpers\Widget\WidgetShapeMapper;
 
-/**
- * Просит у модели SQL-спецификацию виджета вместо Python-программы.
- *
- * Что изменилось по сути: раньше модель писала программу, которая и считала,
- * и собирала вложенный JSON под схему виджета. Разбор 87 таких скриптов
- * показал, что считал всегда SQL, а Python лишь перекладывал строки —
- * причём вложенность модель изобретала заново на каждом виджете и там же
- * чаще всего ошибалась.
- *
- * Теперь модель отвечает ровно за одно: написать запрос, возвращающий
- * ПЛОСКИЕ строки с фиксированными именами колонок. Вложенность собирает
- * WidgetShapeMapper — один раз и под тестами.
- */
 class WidgetQueryAi
 {
     private SqlProviderAi $providerAi;
 
     public function __construct($dataSource)
     {
-        // Через фабрику, а не своим match'ем: копия списка типов здесь уже
-        // однажды разошлась с фабрикой, и новый тип источника пришлось бы
-        // не забыть дописать в двух местах.
+
         $this->providerAi = ProviderAiFactory::for($dataSource);
     }
 
-    /**
-     * @return array{total_tokens: int, spec: ?array, filters: array, message: ?string}
-     */
     public function generate(
         string $instruction,
         string $family,
@@ -49,16 +31,6 @@ class WidgetQueryAi
         );
     }
 
-    /**
-     * Починка после ошибки.
-     *
-     * Текст ошибки отдаём дословно: база называет причину точно
-     * («Unknown column 'orderdate' in 'field list'»), и по такому сообщению
-     * модель исправляет запрос с первой попытки. Python-трейсбек этого
-     * не давал — там приходилось угадывать, что пошло не так.
-     *
-     * @return array{total_tokens: int, spec: ?array, filters: array, message: ?string}
-     */
     public function repair(
         string $instruction,
         string $family,
@@ -118,6 +90,9 @@ TEXT;
    значений нет нужного — не пиши условие с придуманным значением (оно не
    совпадёт ни с одной строкой, и результат окажется пустым); вместо этого
    верни колонку как есть (GROUP BY/SELECT) без фильтра по значению.
+8. Никогда не пиши %s, ? и подобные заглушки под значения — вставляй сами
+   значения прямо в текст запроса. Единственные разрешённые плейсхолдеры —
+   :date_from, :date_to, :day, и только если они описаны в разделе ФИЛЬТРЫ.
 TEXT;
     }
 
@@ -184,12 +159,6 @@ TEXT;
 TEXT;
     }
 
-    /**
-     * Договор по форме: какие колонки обязан вернуть запрос.
-     *
-     * Это самая важная часть промпта. Имена колонок фиксированы, потому что
-     * по ним работает и проверка до сохранения, и раскладка при отрисовке.
-     */
     private function shapeContract(string $shape, string $family, ?string $type): string
     {
         return match ($shape) {
@@ -217,14 +186,6 @@ TEXT;
         };
     }
 
-    /**
-     * Блок фильтров в промпте.
-     *
-     * Кандидаты отобраны заранее и механически: обязательные сюда не попадают
-     * вовсе, датовые — только если в схеме реально есть дата. Поэтому блок
-     * короткий, а при отсутствии кандидатов исчезает целиком и не стоит
-     * ни одного лишнего токена.
-     */
     private function filtersBlock(array $candidates): string
     {
         if ($candidates === []) {
@@ -259,13 +220,6 @@ TEXT;
 TEXT;
     }
 
-    /**
-     * Готовый пример ответа под форму.
-     *
-     * Показать образец дешевле и надёжнее, чем описывать словами: у прежнего
-     * Python-пути перед глазами модели был полный каркас скрипта, и это сильно
-     * помогало. При переходе на SQL образец пропал — возвращаем его.
-     */
     private function shapeExample(string $shape, ?string $type): string
     {
         return match ($shape) {
@@ -305,9 +259,6 @@ JSON
 }
 JSON,
 
-            // Счётчики — главный выигрыш от нескольких запросов: раньше их
-            // приходилось сшивать через UNION ALL, подгоняя типы колонок,
-            // и именно там модель чаще всего ошибалась.
             WidgetShapeMapper::SHAPE_COUNTERS => <<<'JSON'
 {
   "queries": {
@@ -405,14 +356,6 @@ JSON,
             : $base;
     }
 
-    /**
-     * Приводит ответ модели к списку «имя => SQL».
-     *
-     * Модель может прислать и строку, и объект с любым числом запросов —
-     * несколько простых запросов теперь предпочтительнее одного сложного.
-     *
-     * @return array<string, string>
-     */
     private function normalizeQueries(mixed $queries): array
     {
         if (is_string($queries) && trim($queries) !== '') {
@@ -434,9 +377,6 @@ JSON,
         return $result;
     }
 
-    /**
-     * @return array{total_tokens: int, spec: ?array, filters: array, message: ?string}
-     */
     private function ask(string $prompt, string $system): array
     {
         $response = (new AIService(responseFormat: 'json', tokens: 2500))->ask($prompt, $system);
@@ -448,8 +388,7 @@ JSON,
         if (!is_array($content) || $queries === []) {
             return [
                 'total_tokens' => $response['total_tokens'] ?? 0,
-                // Отличаем сбой связи от плохого ответа модели: чинить
-                // в первом случае нечего, надо просто повторить.
+
                 'api_error' => $response['api_error'] ?? null,
                 'spec' => null,
                 'filters' => [],

@@ -3,13 +3,6 @@
 use App\Helpers\Widget\WidgetSpecValidator;
 use App\Helpers\Widget\WidgetShapeMapper;
 
-/**
- * Контракт колонок — договор между аналитиком и платформой: он же показывается
- * в редакторе подсказкой и он же проверяется при сохранении. Если эти два
- * списка разойдутся, автор будет писать запрос под одну подсказку, а получать
- * отказ по другой.
- */
-
 it('требует ось и значение у семейств со сравнением', function () {
     foreach (['bar', 'line', 'radar', 'combo', 'heatmap'] as $family) {
         expect(WidgetSpecValidator::requiredColumns($family))
@@ -29,7 +22,7 @@ it('требует имя и значение у счётчиков', function (
 });
 
 it('добавляет колонку под вариант отрисовки', function () {
-    // Пузырьку нужен третий размер, счётчику с прогрессом — процент.
+
     expect(WidgetSpecValidator::requiredColumns('scatter', 'bubble'))
         ->toBe(['series', 'x', 'y', 'z'])
         ->and(WidgetSpecValidator::requiredColumns('mini-counters', 'with-progress'))
@@ -37,8 +30,7 @@ it('добавляет колонку под вариант отрисовки',
 });
 
 it('не требует ничего от таблицы', function () {
-    // У таблицы заголовки берутся из псевдонимов запроса — фиксированного
-    // набора колонок у неё нет.
+
     expect(WidgetSpecValidator::requiredColumns('table'))->toBe([]);
 });
 
@@ -47,7 +39,7 @@ it('подставляет форму по семейству, а не по же
 
     expect($spec['shape'])->toBe(WidgetShapeMapper::SHAPE_SERIES_MATRIX)
         ->and($spec['queries']['main'])->toBe('SELECT 1 AS value')
-        // Пустое оформление в спецификацию не попадает.
+
         ->and($spec)->not->toHaveKey('presentation');
 });
 
@@ -62,8 +54,7 @@ it('не знает формы для незарегистрированного
 })->throws(RuntimeException::class);
 
 it('меняет цвета, не трогая остальное оформление', function () {
-    // series_kinds выбрала модель при генерации, и человек в шторке о нём
-    // не знает — правка цвета не должна его стирать.
+
     $spec = [
         'queries' => ['main' => 'SELECT 1'],
         'shape' => 'series_matrix',
@@ -73,8 +64,7 @@ it('меняет цвета, не трогая остальное оформле
     $result = WidgetSpecValidator::withColors($spec, ['#ff0000', '', '#00ff00', '', '']);
 
     expect($result['presentation']['series_kinds'])->toBe(['Выручка' => 'column'])
-        // Пустой хвост отброшен, пустая ячейка в середине сохранена:
-        // позиция цвета — это номер ряда.
+
         ->and($result['presentation']['colors'])->toBe(['#ff0000', '', '#00ff00'])
         ->and($result['queries'])->toBe(['main' => 'SELECT 1']);
 });
@@ -106,9 +96,7 @@ it('не трогает спецификацию, когда цвета не п�
 });
 
 it('показывает первый именной запрос спецификации', function () {
-    // У счётчиков запросов бывает несколько — редактор видит только первый
-    // (см. ManualWidgetAuthor::nextQuerySpec()), поэтому 'main' всегда
-    // приоритетнее, а без него берётся первый по порядку.
+
     expect(WidgetSpecValidator::primaryQueryOf(['queries' => ['main' => 'SELECT 1', 'extra' => 'SELECT 2']]))
         ->toBe('SELECT 1')
         ->and(WidgetSpecValidator::primaryQueryOf(['queries' => ['clients' => 'SELECT 1', 'orders' => 'SELECT 2']]))

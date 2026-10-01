@@ -23,9 +23,6 @@ class CodeTemplater
         $this->token = $token;
     }
 
-    /**
-     * Экранирует строку для безопасной подстановки в одинарные кавычки Python.
-     */
     private function pyString(?string $value): string
     {
         $value = (string) $value;
@@ -34,16 +31,9 @@ class CodeTemplater
         return "'" . $escaped . "'";
     }
 
-    /**
-     * Генерирует импорты и вспомогательные функции Python-библиотек.
-     * json_default нужен, чтобы json.dumps умел сериализовать Decimal/date/datetime,
-     * а также numpy-скаляры, которые часто прилетают из pandas (.sum(), .mean() и т.д.).
-     */
     public function getLibraries(): string
     {
-        // Драйвер импортируем только нужный: раньше подключались сразу
-        // mysql.connector и duckdb, и скрипт падал на импорте, если в venv
-        // не стоял тот драйвер, который этому источнику вообще не нужен.
+
         $driverImport = $this->driverImport();
 
         return <<<PYTHON
@@ -67,16 +57,6 @@ def json_default(value):
 PYTHON;
     }
 
-    /**
-     * Генерирует функцию выполнения SQL-запроса на основе реального источника данных
-     * (реальные хост/порт/база/юзер/пароль для mysql, реальный путь для duckdb).
-     * Никаких плейсхолдеров и тестовых данных здесь больше нет.
-     */
-    /**
-     * Python-модуль драйвера для типа источника.
-     *
-     * sqlite3 входит в стандартную библиотеку, ставить его не нужно.
-     */
     private function driverImport(): string
     {
         return match ($this->dataSource->type->name) {
@@ -107,9 +87,6 @@ PYTHON;
         return str_replace(["\r\n", "\r"], "\n", $template) . "\n";
     }
 
-    /**
-     * PostgreSQL: плейсхолдеры в psycopg2 — %s, а не ?.
-     */
     private function getPostgresQueryTemplate(): string
     {
         $host = $this->pyString($this->dataSource->host);
@@ -138,10 +115,6 @@ def query(sql_query, params=None):
 PYTHON;
     }
 
-    /**
-     * SQLite: база — файл, открываем только на чтение (mode=ro),
-     * чтобы скрипт виджета не мог изменить исходные данные пользователя.
-     */
     private function getSqliteQueryTemplate(): string
     {
         $path = $this->dataSource->extracted->data_path
@@ -227,16 +200,6 @@ def query(sql_query, params=None):
 PYTHON;
     }
 
-    /**
-     * Функция query_df() — тот же запрос, но с именами колонок.
-     *
-     * query() отдаёт голые кортежи: имена колонок теряются вместе с курсором,
-     * и код, который пишет модель, вынужден перечислять их вручную — на длинном
-     * SELECT это регулярно расходится с реальным порядком полей. Для виджета
-     * это терпимо (там результат всё равно раскладывается по схеме), а для
-     * выгрузки в файл имя колонки — это заголовок в готовом документе, который
-     * увидит пользователь.
-     */
     public function getQueryDataFrameTemplate(): string
     {
         $typeName = $this->dataSource->type->name;
@@ -351,11 +314,6 @@ def query_df(sql_query, params=None):
 PYTHON;
     }
 
-    /**
-     * Плейсхолдер main() — используется только как пример структуры внутри
-     * generateFullScript(), который передаётся модели как контекст. Никогда
-     * не должен попадать в реально сохраняемый файл.
-     */
     private function getPlaceholderMain(): string
     {
         return <<<PYTHON
@@ -365,9 +323,6 @@ def main():
 PYTHON;
     }
 
-    /**
-     * Финальный вызов main() — общий "футер" для всех сгенерированных скриптов.
-     */
     public function getFooter(): string
     {
         return <<<PYTHON
@@ -376,11 +331,6 @@ if __name__ == "__main__":
 PYTHON;
     }
 
-    /**
-     * Полный скрипт-пример (с плейсхолдер-main). Используется ТОЛЬКО как контекст,
-     * который показывается модели в промпте ("вот что уже есть в файле").
-     * Для реального сохраняемого файла используйте assembleScript().
-     */
     public function generateFullScript(): string
     {
         return implode("\n\n", [
@@ -391,11 +341,6 @@ PYTHON;
             ]) . "\n";
     }
 
-    /**
-     * Собирает финальный рабочий Python-скрипт из шаблона (импорты + query())
-     * и тела main(), сгенерированного моделью. Именно результат этого метода
-     * нужно сохранять в файл — а не сырой ответ AI.
-     */
     public function assembleScript(string $mainBody): string
     {
         $mainBody = trim($mainBody);

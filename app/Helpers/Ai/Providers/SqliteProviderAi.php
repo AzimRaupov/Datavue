@@ -2,9 +2,6 @@
 
 namespace App\Helpers\Ai\Providers;
 
-/**
- * Генерация python-кода виджета для SQLite.
- */
 class SqliteProviderAi extends SqlProviderAi
 {
     protected function dialectName(): string

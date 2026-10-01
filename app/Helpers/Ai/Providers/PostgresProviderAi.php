@@ -2,9 +2,6 @@
 
 namespace App\Helpers\Ai\Providers;
 
-/**
- * Генерация python-кода виджета для PostgreSQL.
- */
 class PostgresProviderAi extends SqlProviderAi
 {
     protected function dialectName(): string

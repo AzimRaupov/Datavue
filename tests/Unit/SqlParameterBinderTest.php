@@ -2,15 +2,6 @@
 
 use App\Helpers\DataSource\SqlParameterBinder;
 
-/**
- * Подстановка значений фильтров.
- *
- * Отдельного внимания заслуживает путь без подготовленных выражений: DuckDB
- * выполняется через CLI, параметры туда передать нечем, и значение попадает
- * в текст запроса. Единственная защита там — строгая проверка типа, поэтому
- * она проверяется отдельно.
- */
-
 it('заменяет плейсхолдеры позиционными и выносит значения в привязки', function () {
     $binder = new SqlParameterBinder(supportsBindings: true);
 
@@ -27,8 +18,6 @@ it('заменяет плейсхолдеры позиционными и вын
 it('не принимает приведение типа PostgreSQL за плейсхолдер', function () {
     $binder = new SqlParameterBinder(supportsBindings: true);
 
-    // col::date — приведение типа, а не параметр. Без защиты регулярка
-    // съела бы «:date» и сломала запрос.
     $result = $binder->apply(
         'SELECT created_at::date AS day FROM orders WHERE created_at >= :date_from',
         ['date_from' => '2024-01-01'],
@@ -51,8 +40,6 @@ it('оставляет неизвестные плейсхолдеры нетр�
 it('отклоняет дату, не похожую на дату', function () {
     $binder = new SqlParameterBinder(supportsBindings: false);
 
-    // Это и есть защита DuckDB: значение, не прошедшее приведение,
-    // до запроса не доходит.
     expect(fn () => $binder->apply(
         'SELECT * FROM t WHERE d >= :day',
         ['day' => "2024-01-01'; DROP TABLE users; --"],
@@ -88,8 +75,6 @@ it('экранирует кавычки в строковом значении',
 it('превращает пустое значение в NULL', function () {
     $binder = new SqlParameterBinder(supportsBindings: false);
 
-    // Идиома «(:date_from IS NULL OR ...)» рассчитана именно на это:
-    // период не выбран — условие не применяется.
     $result = $binder->apply(
         'SELECT * FROM t WHERE (:date_from IS NULL OR d >= :date_from)',
         ['date_from' => ''],
@@ -102,9 +87,6 @@ it('превращает пустое значение в NULL', function () {
 it('не трогает двоеточие внутри строкового литерала', function () {
     $binder = new SqlParameterBinder(supportsBindings: true);
 
-    // «:https» здесь — часть значения, а не параметр. Раньше подстановка
-    // шла по всему тексту, и условие превращалось в «LIKE '%url?%'»
-    // с лишней привязкой: виджет отбирал совсем не то, о чём просили.
     $result = $binder->apply(
         "SELECT * FROM t WHERE url LIKE '%url:https%' AND d >= :date_from",
         ['date_from' => '2024-01-01', 'https' => null],

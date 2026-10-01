@@ -17,14 +17,6 @@ use Illuminate\Support\Facades\Hash;
 
 uses(RefreshDatabase::class);
 
-/**
- * Виджет, считающий SQL-запросом.
- *
- * Источником данных тесту служит та же база, на которой он запущен: запрос
- * должна выполнить настоящая СУБД, иначе проверка «колонки вернулись те,
- * что нужны виджету» ничего не проверяет — она вся построена на ответе базы.
- */
-
 beforeEach(function () {
     $this->seed(RolePermissionSeeder::class);
     $this->seed(BarChartSeeder::class);
@@ -38,7 +30,6 @@ beforeEach(function () {
     }
 });
 
-/** @return array{0: Company, 1: User, 2: DataSource, 3: Dashboard} */
 function makeQueryFixture(): array
 {
     $company = Company::query()->create(['name' => 'Acme']);
@@ -55,8 +46,6 @@ function makeQueryFixture(): array
     $company->save();
     $user->assignRole('company_admin');
 
-    // Источник смотрит на тестовую базу: в ней есть таблицы приложения,
-    // по которым можно посчитать что-то настоящее.
     $connection = config('database.connections.mysql');
 
     $source = DataSource::query()->create([
@@ -104,9 +93,6 @@ it('сохраняет запрос и раскладывает результа
     [, $user, , $dashboard] = makeQueryFixture();
     $widget = makeQueryWidget($dashboard, 'bar');
 
-    // Запрос намеренно не обращается к таблицам приложения: источник данных
-    // подключается отдельным соединением и не видит строк, которые тест
-    // создал внутри своей транзакции. Проверяем здесь раскладку, а не выборку.
     $sql = "SELECT 'Продажи' AS series, 'Москва' AS category, 10 AS value
             UNION ALL SELECT 'Продажи', 'Питер', 7";
 
@@ -119,7 +105,7 @@ it('сохраняет запрос и раскладывает результа
 
     expect($response['ok'])->toBeTrue()
         ->and($response['saved'])->toBeTrue()
-        // Раскладку сделал сервер: автор писал плоские строки.
+
         ->and($response['data']['categories'])->toBe(['Москва', 'Питер'])
         ->and($response['data']['series'])->toHaveCount(1)
         ->and($response['data']['series'][0]['name'])->toBe('Продажи')
@@ -138,8 +124,6 @@ it('заполняет пропуски нулями, чтобы ряды сов
     [, $user, , $dashboard] = makeQueryFixture();
     $widget = makeQueryWidget($dashboard, 'bar');
 
-    // У ряда «2025» нет строки по Питеру — длины рядов разъехались бы,
-    // и график съехал бы относительно подписей.
     $sql = "SELECT '2024' AS series, 'Москва' AS category, 10 AS value
             UNION ALL SELECT '2024', 'Питер', 7
             UNION ALL SELECT '2025', 'Москва', 12";
@@ -158,8 +142,6 @@ it('отдаёт содержимое виджета из запроса, а н�
     [, $user, , $dashboard] = makeQueryFixture();
     $widget = makeQueryWidget($dashboard, 'mini-counters');
 
-    // Здесь запрос идёт к настоящей таблице, которую видно и другому
-    // соединению: схема создана миграциями, а не транзакцией теста.
     $this->actingAs($user)
         ->putJson("/api/company/dashboards/{$dashboard->id}/widgets/{$widget->id}/query", [
             'query' => 'SELECT \'Таблиц в базе\' AS name, COUNT(*) AS value
@@ -172,7 +154,6 @@ it('отдаёт содержимое виджета из запроса, а н�
         ->assertOk()
         ->json();
 
-    // Готовая структура полем data — разбирать строку фронту не нужно.
     expect($content)->toHaveKey('data')
         ->and($content['data']['counters'][0]['name'])->toBe('Таблиц в базе')
         ->and($content['data']['counters'][0]['value'])->toBeGreaterThan(0)
@@ -185,7 +166,7 @@ it('отказывает, когда запрос вернул не те кол�
 
     $response = $this->actingAs($user)
         ->putJson("/api/company/dashboards/{$dashboard->id}/widgets/{$widget->id}/query", [
-            // Ни series, ни category, ни value — псевдонимы не заданы.
+
             'query' => "SELECT 'Москва' AS city, 10 AS total",
         ])
         ->assertStatus(422)
@@ -194,7 +175,6 @@ it('отказывает, когда запрос вернул не те кол�
     expect($response['saved'])->toBeFalse()
         ->and(implode(' ', $response['errors']))->toContain('AS');
 
-    // Спецификация не записана: сломанный виджет на дашборде не появляется.
     expect($widget->fresh()->query_spec)->toBeNull()
         ->and($widget->fresh()->status)->toBe('draft');
 });
@@ -213,7 +193,7 @@ it('отказывает на несуществующей колонке сло
     $message = implode(' ', $response['errors']);
 
     expect($message)->toContain('nope')
-        // Реквизиты подключения к базе клиента в интерфейс не уезжают.
+
         ->and($message)->not->toContain('Connection:')
         ->and($message)->not->toContain('Host:');
 });
@@ -230,7 +210,6 @@ it('не выполняет ничего, кроме чтения', function () 
             ->assertStatus(422);
     }
 
-    // Таблица на месте — запросы даже не дошли до базы.
     expect(Dashboard::query()->count())->toBe(1);
 });
 
@@ -258,8 +237,6 @@ it('сохраняет виджет, собранный конструкторо
     [, $user, , $dashboard] = makeQueryFixture();
     $widget = makeQueryWidget($dashboard, 'bar');
 
-    // Считаем по таблице migrations: её строки записаны до теста и видны
-    // другому соединению, в отличие от всего, что тест создал в транзакции.
     Cache::put("datasource:{$dashboard->data_source_id}:schema", [
         [
             'name' => 'migrations',
@@ -284,22 +261,18 @@ it('сохраняет виджет, собранный конструкторо
         ->json();
 
     expect($response['ok'])->toBeTrue()
-        // Собранный запрос возвращается автору — как «View query» в Superset.
+
         ->and($response['sql'])->toContain('COUNT(*)')
         ->and($response['data']['series'][0]['name'])->toBe('Миграций');
 
     $widget->refresh();
 
-    // В спецификации лежит и декларация, и собранный из неё запрос: первая
-    // нужна, чтобы открыть виджет слотами, второй — чтобы его выполнять.
     expect($widget->query_spec['mode'])->toBe(DashboardWidget::MODE_BUILDER)
         ->and($widget->query_spec['builder']['table'])->toBe('migrations')
         ->and($widget->query_spec['queries']['main'])->toContain('GROUP BY')
-        // Режим в колонке обязан совпадать с режимом в спецификации: разойдясь,
-        // они говорили бы о виджете разное.
+
         ->and($widget->content_mode)->toBe(DashboardWidget::MODE_BUILDER);
 
-    // И виджет отдаётся тем же путём, что у фронта.
     $content = $this->actingAs($user)
         ->postJson("/api/company/get-widget-content/{$widget->id}")
         ->assertOk()
@@ -327,7 +300,6 @@ it('не собирает запрос по колонке, которой не�
         ->assertStatus(422)
         ->json();
 
-    // Колонки нет ни в одной таблице запроса — виджет не сохраняется.
     expect($response['errors'][0])->toContain('secret_column')
         ->and($widget->fresh()->query_spec)->toBeNull();
 });
@@ -341,7 +313,6 @@ it('отдаёт редактору контракт колонок вместе
         ->assertOk()
         ->json();
 
-    // Подсказка в редакторе и проверка на сервере идут из одного источника.
     expect($response['widgets'][0]['required_columns'])->toBe(['series', 'category', 'value'])
         ->and($response['widgets'][0]['query'])->toBeNull();
 });
@@ -355,9 +326,6 @@ it('переносит спецификацию при массовом созд
         'shape' => 'series_matrix',
     ];
 
-    // Так перегенерация переносит виджеты в новый дашборд. Пока query_spec
-    // не было в fillable, массовое создание молча его отбрасывало, и виджет
-    // приезжал в новый дашборд пустым.
     $widget = DashboardWidget::query()->create([
         'dashboard_id' => $dashboard->id,
         'widget_id' => $bar->id,
@@ -416,7 +384,7 @@ it('находит сломанный виджет на проверке даш�
 
     expect($working)->not->toBeNull()
         ->and($broken['errors'][0])->toContain('nope')
-        // Реквизиты подключения не должны попадать даже в служебный отчёт.
+
         ->and($broken['errors'][0])->not->toContain('Host:');
 });
 
@@ -428,14 +396,11 @@ it('отдаёт конструктору граф связей вместе с�
         ->assertOk()
         ->json();
 
-    // Без графа конструктор предлагал бы связать несвязуемое и заставлял бы
-    // вспоминать, какой ключ куда смотрит.
     expect($response)->toHaveKey('relations')
         ->and($response)->toHaveKey('join_types')
         ->and($response['join_types'])->toHaveKeys(['left', 'inner', 'cross'])
         ->and($response['tables'])->not->toBeEmpty();
 
-    // Связи описаны парами колонок — этого хватает, чтобы собрать условие.
     foreach ($response['relations'] as $relation) {
         expect($relation)->toHaveKeys(['from_table', 'from_column', 'to_table', 'to_column']);
     }

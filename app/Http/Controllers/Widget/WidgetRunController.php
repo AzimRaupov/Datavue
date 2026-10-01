@@ -20,22 +20,11 @@ class WidgetRunController extends Controller
     ) {
         $companyId = $request->user()->company_id;
 
-        // ВАЖНО: и виджет, и источник данных обязаны принадлежать компании
-        // текущего пользователя. Раньше проверки не было вовсе — по чужому id
-        // можно было выполнить чужой Python-скрипт и получить данные другой компании.
         $widget = DashboardWidget::query()
             ->with(['dashboard', 'widget.types', 'widgetType'])
             ->whereHas('dashboard', fn ($query) => $query->where('company_id', $companyId))
             ->findOrFail($id);
 
-        // Источник берём от самого дашборда.
-        //
-        // Dashboard::resolveDataSource() сначала смотрит на dashboards.data_source_id
-        // (так устроен дашборд, собранный руками — чата у него нет), и только
-        // потом идёт прежним путём через чат. Дашборды, сгенерированные до
-        // появления конструктора, продолжают резолвиться как раньше.
-        //
-        // chat_id из тела запроса в выборе источника не участвует.
         $dataSource = $widget->dashboard?->resolveDataSource();
 
         if (!$dataSource || $dataSource->company_id !== $companyId) {
@@ -44,12 +33,6 @@ class WidgetRunController extends Controller
             ], 422);
         }
 
-        // Фронт запрашивает содержимое сразу, как только появился плейсхолдер, —
-        // то есть до того, как для виджета сгенерирован код. Это не ошибка:
-        // отвечаем пустым содержимым, иначе каждый плейсхолдер даёт исключение
-        // и строку в логе на каждой перерисовке дашборда. Ручной виджет живёт
-        // в этом состоянии дольше всех: он создаётся пустым и ждёт, пока автор
-        // напишет ему код.
         if (!$widget->hasContent()) {
             return response()->json([
                 'output' => null,
@@ -57,11 +40,6 @@ class WidgetRunController extends Controller
             ]);
         }
 
-        // Развилка между двумя способами получить содержимое виджета.
-        //
-        // Спецификация — основной путь: запрос выполняет база, а раскладку по
-        // форме виджета делает платформа. Python остался у виджетов, созданных
-        // до перехода: их никто не переписывал, и ломаться они не должны.
         if ($widget->usesQuerySpec()) {
             return $this->runQuerySpec($widget, $dataSource);
         }
@@ -83,13 +61,6 @@ class WidgetRunController extends Controller
         );
     }
 
-    /**
-     * Содержимое виджета из SQL-спецификации.
-     *
-     * Ответ отдаётся полем data — готовой структурой, а не строкой, которую
-     * фронту пришлось бы разбирать. Поле output сохранено ради совместимости:
-     * на Python-пути содержимое приходит именно так, и фронт умеет оба формата.
-     */
     private function runQuerySpec(DashboardWidget $widget, DataSource $dataSource)
     {
         $family = $widget->widget?->name;
@@ -113,8 +84,7 @@ class WidgetRunController extends Controller
         }
 
         if (!($result['ok'] ?? false)) {
-            // Реквизиты подключения к базе клиента не должны уезжать
-            // на страницу вместе с текстом ошибки.
+
             return response()->json([
                 'error' => WidgetSpecValidator::cleanDatabaseError(
                     (string) ($result['error'] ?? 'Запрос виджета не выполнен.')

@@ -10,21 +10,14 @@ use RuntimeException;
 
 class WidgetCodeRun
 {
-    /**
-     * Сколько ждём код, написанный человеком.
-     *
-     * Меньше, чем у сгенерированного (60 с): черновик прогоняют в интерфейсе
-     * и ждут ответа, а зависший цикл в чужом коде не должен занимать воркер
-     * на минуту.
-     */
+
     public const MANUAL_TIMEOUT = 30;
 
     public function run(
         DashboardWidget $widget,
         DataSource $dataSource
     ): array {
-        // Исходник правды у ручного виджета — колонка code, у сгенерированного
-        // по-прежнему файл. resolveCode() знает этот порядок.
+
         $codeMain = $widget->resolveCode();
 
         if ($codeMain === null) {
@@ -41,15 +34,6 @@ class WidgetCodeRun
         );
     }
 
-    /**
-     * Выполняет тело main() как есть, без обращения к базе.
-     *
-     * Нужно предпросмотру в конструкторе: автор жмёт «Выполнить» до того, как
-     * код сохранён, и должен увидеть либо данные, либо ошибку — а не записать
-     * в дашборд заведомо сломанный виджет.
-     *
-     * @param bool $restricted Запускать с ограничениями по памяти и процессам.
-     */
     public function runSource(
         string $codeMain,
         DataSource $dataSource,
@@ -70,21 +54,13 @@ class WidgetCodeRun
 
         $runner = new PythonRunner(
             timeoutSeconds: $timeoutSeconds,
-            // Лимиты применяются только к коду, написанному человеком:
-            // поведение генерации остаётся ровно прежним.
+
             limits: $restricted ? PythonRunner::restrictedLimits() : []
         );
 
         return $runner->runCode($fullCode);
     }
 
-    /**
-     * Собирает полный скрипт: импорты, функция query() с реальными кредами
-     * источника, тело main() и его вызов.
-     *
-     * Один и тот же сбор для ручного и сгенерированного кода — иначе автор
-     * писал бы код под один рантайм, а исполнялся бы он в другом.
-     */
     public function buildFullCode(string $codeMain, DataSource $dataSource): string
     {
         $codeTemplater = new CodeTemplater($dataSource->id);
@@ -105,21 +81,19 @@ class WidgetCodeRun
     private function normalizeCode(
         string $code
     ): string {
-        // Удаляем BOM
+
         $code = preg_replace(
             '/^\x{FEFF}/u',
             '',
             $code
         );
 
-        // Нормализуем переносы строк
         $code = str_replace(
             ["\r\n", "\r"],
             "\n",
             $code
         );
 
-        // Заменяем TAB на 4 пробела
         $code = str_replace(
             "\t",
             '    ',

@@ -2,16 +2,6 @@
 
 namespace App\Helpers\DataSource\Providers;
 
-/**
- * Источник данных PostgreSQL.
- *
- * Отличия от MySQL, которые здесь и описаны: идентификаторы цитируются двойными
- * кавычками, список таблиц и колонки берутся из information_schema, внешние ключи
- * — через связку table_constraints/key_column_usage/constraint_column_usage.
- *
- * Работает в пределах схемы (по умолчанию public): в PostgreSQL база данных
- * делится на схемы, и без фильтра в выдачу попали бы служебные таблицы.
- */
 class PostgresConnectionRemoteProvider extends AbstractSqlConnectionProvider
 {
     public string $host;
@@ -78,10 +68,7 @@ class PostgresConnectionRemoteProvider extends AbstractSqlConnectionProvider
 
     public function showColumns(string $tableName): array
     {
-        /*
-        | key приводим к виду MySQL ("PRI"/"UNI"/""): базовый класс опирается на
-        | него, когда решает, годится ли колонка как цель связи.
-        */
+
         $rows = $this->query(
             "
             SELECT
@@ -180,12 +167,6 @@ class PostgresConnectionRemoteProvider extends AbstractSqlConnectionProvider
             ->toArray();
     }
 
-    /**
-     * Собирает тип в привычном виде: character varying(255), numeric(10,2).
-     *
-     * Базовый класс сравнивает совместимость типов, отрезая скобки, поэтому
-     * форма записи важна только для читаемости схемы моделью.
-     */
     private function formatType(array $row): string
     {
         $type = $row['data_type'] ?? 'unknown';

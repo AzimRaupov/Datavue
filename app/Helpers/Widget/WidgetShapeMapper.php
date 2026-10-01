@@ -4,29 +4,6 @@ namespace App\Helpers\Widget;
 
 use RuntimeException;
 
-/**
- * Раскладывает плоские строки SQL во вложенную схему виджета.
- *
- * Это ядро перехода с Python на SQL. Раньше вложенность собирала модель —
- * руками, заново для каждого виджета. Самый показательный пример, тепловая
- * карта: три запроса и двойной цикл со сводкой, где легко забыть заполнить
- * нулями отсутствующие пары или перепутать порядок категорий между рядами.
- *
- * Теперь SQL возвращает нормализованные строки, а сборку делает этот класс —
- * один раз, детерминированно и под тестами.
- *
- * ФОРМЫ (shape) — как читать строки:
- *
- *   series_values   label, value                — плоский список
- *   series_matrix   series, category, value     — сводка по рядам и категориям
- *   points          series, x, y [, z]          — точки
- *   counters        name, value [, prefix, suffix, percent]
- *   rows            любые колонки как есть
- *
- * Форма определяет ЧТЕНИЕ строк, семейство виджета — СБОРКУ результата.
- * Поэтому одна форма обслуживает несколько семейств: series_matrix одинаково
- * читается для bar, line, radar, combo и heatmap, а собирается по-разному.
- */
 class WidgetShapeMapper
 {
     public const SHAPE_SERIES_VALUES = 'series_values';
@@ -43,12 +20,6 @@ class WidgetShapeMapper
         self::SHAPE_ROWS,
     ];
 
-    /**
-     * Какая форма нужна каждому семейству.
-     *
-     * Ключ — имя семейства (widget.name). Используется и при генерации
-     * (что просить у модели), и при проверке спецификации.
-     */
     public const FAMILY_SHAPES = [
         'mini-counters' => self::SHAPE_COUNTERS,
         'table' => self::SHAPE_ROWS,
@@ -65,11 +36,6 @@ class WidgetShapeMapper
         'scatter' => self::SHAPE_POINTS,
     ];
 
-    /**
-     * Колонки, которые обязан вернуть SQL для каждой формы.
-     * Проверяются до сохранения спецификации — ошибка в именах колонок
-     * должна всплывать сразу, а не кривым графиком через минуту.
-     */
     public const SHAPE_COLUMNS = [
         self::SHAPE_SERIES_VALUES => ['label', 'value'],
         self::SHAPE_SERIES_MATRIX => ['series', 'category', 'value'],
@@ -78,13 +44,6 @@ class WidgetShapeMapper
         self::SHAPE_ROWS => [],
     ];
 
-    /**
-     * @param array<int, object|array> $rows Строки основного запроса
-     * @param array $presentation Оформление, которого нет в данных
-     *                            (kind у рядов combo, prefix/suffix у счётчиков)
-     *
-     * @return array Готовая структура под схему виджета
-     */
     public function map(
         string $family,
         ?string $type,
@@ -104,24 +63,12 @@ class WidgetShapeMapper
         };
     }
 
-    /** Форма, которую нужно просить у модели для этого семейства. */
     public static function shapeFor(string $family): string
     {
         return self::FAMILY_SHAPES[$family]
             ?? throw new RuntimeException("Для семейства «{$family}» не задана форма данных.");
     }
 
-    // ---------------------------------------------------------------
-    // Сборка по семействам
-    // ---------------------------------------------------------------
-
-    /**
-     * Плоский список label/value.
-     *
-     * Пять семейств хотят одни и те же данные, но в разной упаковке:
-     * pie и funnel — двумя параллельными массивами, treemap — списком
-     * объектов x/y, map — списком объектов code/value.
-     */
     private function buildFromValues(string $family, ?string $type, array $rows): array
     {
         $labels = [];
@@ -151,20 +98,9 @@ class WidgetShapeMapper
         };
     }
 
-    /**
-     * Сводка: строки (ряд, категория, значение) → матрица.
-     *
-     * Ключевой момент — заполнение пропусков. Если для пары (ряд, категория)
-     * строки не пришло, туда должен встать 0: длина data обязана совпадать
-     * с длиной оси во ВСЕХ рядах, иначе график съезжает. Раньше это писала
-     * модель, и именно здесь она чаще всего ошибалась.
-     */
     private function buildFromMatrix(string $family, ?string $type, array $rows, array $presentation): array
     {
-        // Порядок сохраняем тот, в котором прислал SQL: за сортировку отвечает
-        // ORDER BY в запросе, а не этот класс. Уникальность держим на ключах
-        // ассоциативного массива:in_array по растущему списку давал O(n²) —
-        // на пяти тысячах строк это миллионы сравнений при каждой отрисовке.
+
         $seriesSeen = [];
         $categoriesSeen = [];
         $matrix = [];
@@ -179,12 +115,9 @@ class WidgetShapeMapper
             $matrix[$series][$category] = $this->numberOf($row, 'value');
         }
 
-        // strval обязателен: PHP превращает числовой ключ «2024» в int,
-        // и подписи оси уехали бы на фронт числами вместо строк.
         $seriesNames = array_map('strval', array_keys($seriesSeen));
         $categories = array_map('strval', array_keys($categoriesSeen));
 
-        // radar в варианте polar-area рисуется плоским списком, как pie.
         if ($family === 'radar' && $type === 'polar-area') {
             $first = $seriesNames[0] ?? null;
 
@@ -208,7 +141,7 @@ class WidgetShapeMapper
             );
 
             if ($family === 'heatmap') {
-                // Тепловая карта хранит подпись оси в самой точке.
+
                 $series[] = [
                     'name' => $name,
                     'data' => array_map(
@@ -223,8 +156,7 @@ class WidgetShapeMapper
             $item = ['name' => $name, 'data' => $data];
 
             if ($family === 'combo') {
-                // Чем рисовать ряд — столбцами или линией — из данных не следует.
-                // Это оформление, оно приходит в спецификации.
+
                 $item['kind'] = $kinds[$name] ?? 'column';
             }
 
@@ -235,15 +167,11 @@ class WidgetShapeMapper
             return ['series' => $series];
         }
 
-        // bar/radar/combo подписывают ось как categories, line — как labels.
         $axisKey = $family === 'line' ? 'labels' : 'categories';
 
         return ['series' => $series, $axisKey => $categories];
     }
 
-    /**
-     * Точки. Вариант bubble требует третье число — размер точки.
-     */
     private function buildPoints(array $rows, ?string $type): array
     {
         $withSize = $type === 'bubble';
@@ -270,10 +198,6 @@ class WidgetShapeMapper
         return ['series' => $series];
     }
 
-    /**
-     * Счётчики. prefix/suffix — оформление: их можно задать и в SQL
-     * (отдельными колонками), и в спецификации сразу на все счётчики.
-     */
     private function buildCounters(array $rows, ?string $type, array $presentation): array
     {
         $withProgress = $type === 'with-progress';
@@ -302,11 +226,6 @@ class WidgetShapeMapper
         return ['counters' => $counters];
     }
 
-    /**
-     * Таблица: колонки как есть. Заголовки берём из имён колонок первой
-     * строки — так они совпадают с псевдонимами в SQL, и аналитик правит
-     * подписи прямо в запросе через AS.
-     */
     private function buildRows(array $rows): array
     {
         if (empty($rows)) {
@@ -327,11 +246,6 @@ class WidgetShapeMapper
         ];
     }
 
-    // ---------------------------------------------------------------
-    // Чтение значений
-    // ---------------------------------------------------------------
-
-    /** Строки приходят объектами (DB::select) — приводим к массиву. */
     private function toArray(mixed $row): array
     {
         if (is_array($row)) {
@@ -345,16 +259,9 @@ class WidgetShapeMapper
     {
         $value = $row[$key] ?? null;
 
-        // NULL в группировке — обычное дело (клиент без страны).
-        // Показывать пустую подпись хуже, чем честное «—».
         return $value === null || $value === '' ? '—' : (string) $value;
     }
 
-    /**
-     * Числа из разных драйверов приходят по-разному: MySQL отдаёт SUM()
-     * строкой, DuckDB — числом, decimal может прийти как "1234.50".
-     * Приводим к числу здесь, иначе фронт получит строку и график не построится.
-     */
     private function numberOf(array $row, string $key): int|float
     {
         $value = $row[$key] ?? 0;

@@ -19,18 +19,6 @@ use Illuminate\Support\Facades\Mail;
 
 uses(RefreshDatabase::class);
 
-/**
- * Проверка алерта по расписанию — от alerts:dispatch до письма.
- *
- * Источником данных тесту служит та же база, на которой он запущен (см.
- * WidgetQuerySpecTest): AlertRunner выполняет настоящий SQL через настоящую
- * СУБД, а не подмену. Условия — литеральные SELECT ("SELECT 1 AS id"), а не
- * запрос к таблицам приложения: AlertRunner открывает СВОЁ соединение с базой
- * по кредам источника, отдельное от соединения, в котором RefreshDatabase
- * держит транзакцию теста, — данные, вставленные внутри этой транзакции,
- * другому соединению не видны.
- */
-
 beforeEach(function () {
     $this->seed(RolePermissionSeeder::class);
     DataSourceType::query()->firstOrCreate(['name' => 'mysql']);
@@ -42,7 +30,6 @@ beforeEach(function () {
     Mail::fake();
 });
 
-/** @return array{0: Company, 1: User, 2: Workspace} */
 function makeDispatchFixture(): array
 {
     $company = Company::query()->create(['name' => 'Acme']);
@@ -114,8 +101,7 @@ it('переходит в firing и отправляет письмо при п�
     expect($alert->state)->toBe(Alert::STATE_FIRING)
         ->and($alert->last_triggered_at)->not->toBeNull()
         ->and($alert->last_notified_at)->not->toBeNull()
-        // next_check_at продвинут вперёд — атомарный захват не даст
-        // повторно поставить этот же алерт в очередь раньше времени.
+
         ->and($alert->next_check_at->isFuture())->toBeTrue();
 
     Mail::assertSent(AlertTriggeredMail::class, 1);
@@ -220,8 +206,6 @@ it('atomic-захват не даёт повторно поставить в о�
     Artisan::call('alerts:dispatch');
     expect(AlertCheckerHistory::query()->count())->toBe(1);
 
-    // Второй вызов сразу же: next_check_at уже в будущем, повторной
-    // постановки в очередь и второго письма быть не должно.
     Artisan::call('alerts:dispatch');
     expect(AlertCheckerHistory::query()->count())->toBe(1);
 
@@ -243,15 +227,13 @@ it('"Проверить сейчас" пишет в историю как manual
     expect($check->trigger_source)->toBe(AlertCheckerHistory::SOURCE_MANUAL)
         ->and($check->notified)->toBeFalse();
 
-    // Ручная проверка не двигает next_check_at и не входит в расписание —
-    // только last_checked_at.
     expect($alert->fresh()->last_checked_at)->not->toBeNull();
 });
 
 it('сохраняет CSV каждой проверки, даже когда условие не сработало', function () {
     [$company, $user, $workspace] = makeDispatchFixture();
     $alert = makeDispatchAlert($company, $user, $workspace, [
-        // "Норма", не срабатывание, — CSV должен появиться и здесь.
+
         'query' => 'SELECT 1 AS id WHERE 1 = 0',
     ]);
 
@@ -290,8 +272,6 @@ it('прикладывает CSV к письму о срабатывании и 
     $response->assertOk();
     $response->assertHeader('content-type', 'text/csv; charset=utf-8');
 
-    // Содержимое проверяем прямо на диске: BinaryFileResponse стримит файл,
-    // а не кладёт его в тело ответа, которое можно перечитать в тесте.
     $content = file_get_contents($check->csv_path);
     expect($content)->toContain('label')->toContain('value')->toContain('a')->toContain('b');
 });

@@ -45,10 +45,6 @@ class DashboardGenerator
     public $plan;
     public $selectedTables = [];
 
-    /**
-     * Токен для авторизации сгенерированных Python-скриптов при обращении к API источника данных.
-     * При необходимости замените на реальный источник токена (например, API-токен компании/чата).
-     */
     public ?string $token = null;
 
     protected DashboardAi $dashboardGeneratorAi;
@@ -58,9 +54,6 @@ class DashboardGenerator
         $this->chat = AiChat::query()->with('user', 'extractedData')->find($chat_id);
         $this->message = AiChatMessage::query()->find($message_id);
 
-        // Источник привязан к чату полем ai_chats.data_source_id: одна и та же
-        // база обслуживает несколько чатов, поэтому обратный поиск по
-        // data_sources.chat_id больше не работает.
         $this->dataSource = $this->chat?->resolveDataSource();
 
         if (!$this->dataSource) {
@@ -74,19 +67,11 @@ class DashboardGenerator
             $this->chat->id
         );
 
-        // Только виджеты, реально готовые к использованию (подключённые на фронте) —
-        // см. Widget::is_ai_selectable (например 'map' пока исключён).
         $this->widgets = Widget::query()
             ->where('is_ai_selectable', true)
             ->with(['types', 'selectableTypes'])
             ->get();
-        // Если пользователь уже стоит на пустом дашборде (завёл его вручную
-        // кнопкой «Новый дашборд» и тут же попросил агента собрать аналитику),
-        // заполняем именно его — иначе рядом появлялся бы дубль: старый навсегда
-        // пустой и новый с виджетами. Дашборд с виджетами сюда не попадает —
-        // это гарантирует вызывающий код (RouterTask), но условие на всякий
-        // случай проверяется и здесь: испортить чужую работу опаснее, чем
-        // один раз завести лишний дашборд.
+
         $existing = $dashboardId
             ? Dashboard::query()
                 ->where('id', $dashboardId)
@@ -106,8 +91,7 @@ class DashboardGenerator
             $this->dashboard = Dashboard::query()->create([
                 'chat_id' => $chat_id,
                 'company_id' => $this->chat->company_id,
-                // Дашборд появляется В рабочем пространстве разговора: без этого
-                // он не попал бы ни в один список и открыть его было бы негде.
+
                 'workspace_id' => $this->chat->workspace_id,
                 'status' => 'empty',
             ]);
@@ -144,28 +128,14 @@ class DashboardGenerator
         return [];
     }
 
-    /**
-     * Единый формат ответа каждого шага.
-     */
     private function result(bool $errors, string $message = '', array $extra = []): array
     {
         return array_merge(['errors' => $errors, 'message' => $message], $extra);
     }
 
-    /**
-     * Первый шаг выбора виджетов: сузить каталог до нужных семейств.
-     *
-     * Отдельный дешёвый вызов вместо того, чтобы вываливать в основной промпт
-     * все 13 семейств со всеми вариантами. Ошибка на этом шаге не фатальна —
-     * WidgetCatalog всё равно добавит базовые семейства, а при пустом ответе
-     * отдаст каталог целиком.
-     *
-     * @return array<int, string>
-     */
     private function defineWidgetFamilies(WidgetCatalog $catalog, array $scheme, string $text): array
     {
-        // Для выбора семейства достаточно знать, какие есть таблицы и колонки:
-        // связи, типы и количество строк тут только раздували бы промпт.
+
         $summary = [];
 
         foreach ($scheme as $tableName => $tableSchema) {
@@ -194,7 +164,7 @@ class DashboardGenerator
 
             return $families;
         } catch (Throwable $e) {
-            // Шаг вспомогательный: если он упал, работаем по полному каталогу.
+
             Log::warning('DashboardGenerator: widget family selection failed, using full catalog', [
                 'error' => $e->getMessage(),
             ]);
@@ -203,12 +173,6 @@ class DashboardGenerator
         }
     }
 
-    /**
-     * Сопоставляет выбранный ИИ тип с каталогом семейства.
-     *
-     * Модель может тип не указать или назвать несуществующий — виджет из-за этого
-     * ломаться не должен, поэтому в обоих случаях откатываемся на тип по умолчанию.
-     */
     private function resolveWidgetType(Widget $widget, ?string $typeName): ?WidgetType
     {
         $typeName = is_string($typeName) ? trim($typeName) : '';
@@ -327,7 +291,6 @@ class DashboardGenerator
                 ->pluck('name')
                 ->toArray();
 
-            // Роли таблиц: ['users' => 'fact', 'orders' => 'dimension', ...]
             $tableRoles = $this->selectedTables
                 ->pluck('role', 'name')
                 ->toArray();
@@ -342,9 +305,6 @@ class DashboardGenerator
             }
             unset($tableSchema);
 
-            // Каталог виджетов отдаём в два приёма: сначала короткий список семейств,
-            // затем подробности только по выбранным. Иначе справочник занимает
-            // больше половины промпта и вытесняет схему таблиц пользователя.
             $catalog = new WidgetCatalog($this->widgets);
             $families = $this->defineWidgetFamilies($catalog, $scheme, $text);
             $widgets = $catalog->detailedJson($families);
@@ -353,10 +313,6 @@ class DashboardGenerator
             $response = $this->dashboardGeneratorAi->generateWidgets($schemeStr, $widgets, $text, $families);
             $generateWidgets = $response['content']['widgets'];
 
-            // position проставляем сразу при создании, в том порядке, в котором
-            // виджеты вернул ИИ. Раньше он оставался дефолтным (0) до генерации
-            // контента, и фронт, сортирующий по position, тасовал плейсхолдеры
-            // после каждого готового виджета.
             $position = 0;
 
             foreach ($generateWidgets as $list) {
@@ -385,21 +341,11 @@ class DashboardGenerator
             return $this->result(true, $e->getMessage());
         }
     }
-    /**
-     * $onWidgetDone(DashboardWidget $widget, array $widgetResult, int $index, int $total) вызывается
-     * после генерации каждого отдельного виджета — используется вызывающим кодом (Job), чтобы
-     * пушить прогресс на фронт по мере готовности виджетов.
-     *
-     * Провал отдельного виджета НЕ считается ошибкой всего шага (errors=true) — виджет просто
-     * помечается 'failed' внутри generateContentWidget() и позже может быть исправлен на этапе
-     * ReviewWidgetsDashboard. errors=true здесь означает падение самого шага целиком (например,
-     * не удалось получить список виджетов дашборда), а не отказ конкретного виджета.
-     */
+
     public function generateContentToWidgets(?callable $onWidgetDone = null): array
     {
         try {
-            // Порядок обхода фиксируем явно: без orderBy MySQL мог отдать виджеты
-            // в произвольном порядке, и индекс не совпадал с их позицией на дашборде.
+
             $widgets_dash = DashboardWidget::query()->with('widget.types', 'widgetType')
                 ->where('dashboard_id', $this->dashboard->id)
                 ->orderBy('position')
@@ -440,29 +386,6 @@ class DashboardGenerator
         }
     }
 
-    /**
-     * Содержимое виджета — спецификация запроса.
-     *
-     * Раньше здесь генерировался Python: модель писала программу, которая
-     * подключалась к базе, выполняла SQL и вручную собирала вложенный JSON.
-     * Считал при этом всё равно SQL, а Python только перекладывал строки —
-     * и приносил с собой выполнение кода на сервере, шаблон рантайма в
-     * каждом промпте и целый класс ошибок, которые всплывали лишь при
-     * первой отрисовке у пользователя.
-     *
-     * Теперь модель отвечает, ЧТО считать, а запрос собирает и проверяет
-     * платформа — тем же кодом, что стоит за ручным конструктором.
-     */
-    /**
-     * Таблицы, по которым собирается содержимое виджета.
-     *
-     * Модель не всегда возвращает список таблиц. Пустой список означал бы
-     * пустую схему — и виджет падал бы не потому, что задача сложная, а
-     * потому что о данных ему ничего не рассказали. Откатываемся на таблицы,
-     * отобранные на шаге выбора групп.
-     *
-     * @return array<int, string>
-     */
     private function tablesFor(DashboardWidget $widget): array
     {
         $tables = array_values(array_filter((array) ($widget->tables ?? [])));

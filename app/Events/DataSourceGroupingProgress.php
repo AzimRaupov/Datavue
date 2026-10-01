@@ -9,12 +9,6 @@ use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-/**
- * Ход группировки таблиц источника.
- *
- * Отправляется на границах этапов, чтобы мастер подключения показывал живой
- * прогресс, а не неподвижный спиннер на несколько минут.
- */
 class DataSourceGroupingProgress implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
@@ -35,10 +29,6 @@ class DataSourceGroupingProgress implements ShouldBroadcastNow
         return 'DataSourceGroupingProgress';
     }
 
-    /**
-     * Приватный канал: в подписях шагов едут имена таблиц клиента.
-     * Кого пускать, решает routes/channels.php.
-     */
     public function broadcastOn(): array
     {
         return [

@@ -26,11 +26,6 @@ class AuthController extends Controller
         ]);
     }
 
-    /**
-     * Регистрация компании: создаётся сама компания и её первый пользователь,
-     * который становится владельцем и получает роль company_admin —
-     * то есть полные права на всё внутри своей компании.
-     */
     public function register(Request $request)
     {
         $data = $request->validate([
@@ -38,6 +33,9 @@ class AuthController extends Controller
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email',
             'password' => 'required|min:6|confirmed',
+            'ai_consent' => 'required|accepted',
+            'terms_consent' => 'required|accepted',
+            'marketing_consent' => 'nullable|boolean',
         ]);
 
         $result = DB::transaction(function () use ($data) {
@@ -52,9 +50,11 @@ class AuthController extends Controller
                 'company_id' => $company->id,
                 'password' => Hash::make($data['password']),
                 'is_active' => true,
+                'ai_consent_at' => now(),
+                'terms_accepted_at' => now(),
+                'marketing_consent_at' => !empty($data['marketing_consent']) ? now() : null,
             ]);
 
-            // Владелец компании — защищён от удаления и понижения в правах.
             $company->owner_id = $user->id;
             $company->save();
 
@@ -87,7 +87,6 @@ class AuthController extends Controller
             ], 401);
         }
 
-        // Отключённый сотрудник не должен входить, хотя его учётка сохранена.
         if (!$user->is_active) {
             return response()->json([
                 'message' => 'Учётная запись отключена. Обратитесь к администратору компании.',
@@ -102,10 +101,6 @@ class AuthController extends Controller
         ]);
     }
 
-    /**
-     * Единый формат пользователя для фронта: вместе с компанией, ролями и
-     * плоским списком прав — по нему интерфейс решает, что показывать.
-     */
     private function userPayload(User $user): array
     {
         $user->load('company');

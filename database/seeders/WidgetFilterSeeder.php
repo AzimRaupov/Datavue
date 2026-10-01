@@ -5,20 +5,6 @@ namespace Database\Seeders;
 use App\Models\WidgetFilter;
 use Illuminate\Database\Seeder;
 
-/**
- * Каталог фильтров виджетов.
- *
- * Единственное место, где описан набор фильтров. Чтобы добавить новый,
- * достаточно дописать сюда строку и научить WidgetQueryRunner его применять —
- * ни промпты, ни фронт менять не нужно: фронт рисует панель по этому каталогу.
- *
- * applies_as — ключевое различие:
- *   wrapper — платформа оборачивает готовый запрос виджета (пагинация, поиск).
- *             Модель об этом даже не знает и ошибиться не может.
- *   query   — условие должно оказаться внутри SQL, поэтому его пишет модель
- *             через плейсхолдеры. Так фильтр по дате работает ДО агрегации,
- *             а не отсекает уже посчитанные группы.
- */
 class WidgetFilterSeeder extends Seeder
 {
     public function run(): void
@@ -30,7 +16,7 @@ class WidgetFilterSeeder extends Seeder
                 'description' => 'Листание результата вместо обрезания лишних строк.',
                 'applies_as' => 'wrapper',
                 'params' => ['page', 'per_page'],
-                // Таблице пагинация нужна всегда — это не предмет обсуждения с ИИ.
+
                 'required_for' => ['table'],
                 'requires_date_column' => false,
                 'position' => 10,
@@ -52,7 +38,7 @@ class WidgetFilterSeeder extends Seeder
                 'applies_as' => 'query',
                 'params' => ['date_from', 'date_to'],
                 'required_for' => [],
-                // Предлагается модели, только если в таблицах виджета есть дата.
+
                 'requires_date_column' => true,
                 'position' => 30,
             ],

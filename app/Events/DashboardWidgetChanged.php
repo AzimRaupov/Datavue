@@ -14,7 +14,6 @@ class DashboardWidgetChanged implements ShouldBroadcastNow
 
     public $dashboard;
 
-    // Передаем саму модель сообщения, у которого изменились таски
     public function __construct($dashboard)
     {
         $this->dashboard = $dashboard;
@@ -24,7 +23,7 @@ class DashboardWidgetChanged implements ShouldBroadcastNow
     {
         return 'DashboardWidgetChanged';
     }
-    /** Приватный канал — см. routes/channels.php. */
+
     public function broadcastOn(): array
     {
         return [
@@ -32,7 +31,6 @@ class DashboardWidgetChanged implements ShouldBroadcastNow
         ];
     }
 
-    // Передаем ID сообщения и его свежий список задач
     public function broadcastWith(): array
     {
         return [

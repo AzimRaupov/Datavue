@@ -8,10 +8,6 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
-/**
- * Собственный профиль пользователя: имя, e-mail, пароль и название компании
- * (последнее — только для тех, у кого есть право manage company).
- */
 class ProfileController extends Controller
 {
     public function update(Request $request)
@@ -27,8 +23,7 @@ class ProfileController extends Controller
         ]);
 
         if (!empty($data['password'])) {
-            // Смена пароля только с подтверждением текущего — иначе перехваченный
-            // токен позволил бы полностью угнать учётную запись.
+
             if (!Hash::check($data['current_password'] ?? '', $user->password)) {
                 throw ValidationException::withMessages([
                     'current_password' => 'Текущий пароль указан неверно.',
@@ -37,9 +32,6 @@ class ProfileController extends Controller
 
             $user->password = Hash::make($data['password']);
 
-            // Старые токены после смены пароля обесцениваются: если учётку
-            // увели, смена пароля должна выбросить чужую сессию. Текущий токен
-            // сохраняем — иначе пользователь разлогинит сам себя.
             $user->tokens()
                 ->where('id', '!=', $request->user()->currentAccessToken()?->id)
                 ->delete();

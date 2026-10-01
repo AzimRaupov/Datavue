@@ -19,12 +19,6 @@ use Illuminate\Support\Facades\Hash;
 
 uses(RefreshDatabase::class);
 
-/**
- * Ручная сборка дашборда: создание без чата, добавление виджетов и правка их
- * кода. Отдельно закрыт регресс сгенерированных дашбордов — источник данных
- * у них по-прежнему приходит из чата.
- */
-
 beforeEach(function () {
     $this->seed(RolePermissionSeeder::class);
     $this->seed(PieChartSeeder::class);
@@ -70,7 +64,6 @@ function makeBuilderSource(Company $company, User $creator): DataSource
     ]);
 }
 
-/** Дашборд, собранный руками, вместе с его источником. */
 function makeManualDashboard(Company $company, User $user, DataSource $source): Dashboard
 {
     return Dashboard::query()->create([
@@ -82,10 +75,6 @@ function makeManualDashboard(Company $company, User $user, DataSource $source): 
         'origin' => Dashboard::ORIGIN_MANUAL,
     ]);
 }
-
-// ---------------------------------------------------------------------------
-// Создание
-// ---------------------------------------------------------------------------
 
 it('создаёт дашборд без чата, но с источником данных', function () {
     [$company, $user] = makeBuilderCompany();
@@ -144,10 +133,6 @@ it('не даёт создать дашборд роли viewer', function () {
         ->assertForbidden();
 });
 
-// ---------------------------------------------------------------------------
-// Виджеты
-// ---------------------------------------------------------------------------
-
 it('добавляет виджет и переводит дашборд из пустого в готовый', function () {
     [$company, $user] = makeBuilderCompany();
     $source = makeBuilderSource($company, $user);
@@ -166,7 +151,7 @@ it('добавляет виджет и переводит дашборд из п
     expect($widget['status'])->toBe('draft')
         ->and($widget['origin'])->toBe(DashboardWidget::ORIGIN_MANUAL)
         ->and($widget['code'])->toBeNull()
-        // Тип не передавали — должен подставиться тип семейства по умолчанию.
+
         ->and($widget['widget_type_id'])->toBe($bar->defaultType()->id);
 
     expect($dashboard->fresh()->status)->toBe('completed');
@@ -250,7 +235,7 @@ it('переставляет виджеты и не трогает чужие', 
             'widgets' => [
                 ['id' => $first, 'position' => 1],
                 ['id' => $second, 'position' => 0],
-                // Чужой виджет в списке не должен сдвинуться.
+
                 ['id' => $foreignWidget->id, 'position' => 0],
             ],
         ])
@@ -308,11 +293,10 @@ it('отдаёт конструктору дашборд с кодом видж�
     expect($response['data_source']['id'])->toBe($source->id)
         ->and($response['widgets'])->toHaveCount(1)
         ->and($response['widgets'][0]['code'])->toBe($widget->code)
-        // Форма данных семейства нужна редактору как подсказка автору.
+
         ->and($response['widgets'][0]['widget']['scheme'])->not->toBeNull()
         ->and($response['widgets'][0]['has_previous_code'])->toBeFalse();
 
-    // А обычный показ дашборда код виджета не отдаёт: смотрящему он не нужен.
     $shown = $this->actingAs($user)
         ->getJson("/api/company/dashboards/{$dashboard->id}")
         ->assertOk()
@@ -326,7 +310,6 @@ it('отдаёт список дашбордов с числом виджето�
     $source = makeBuilderSource($company, $user);
     $bar = Widget::query()->where('name', 'bar')->firstOrFail();
 
-    // Собранный руками: источник указан на самом дашборде.
     $manual = makeManualDashboard($company, $user, $source);
 
     DashboardWidget::query()->create([
@@ -337,7 +320,6 @@ it('отдаёт список дашбордов с числом виджето�
         'position' => 0,
     ]);
 
-    // Выросший из чата: источник лежит на чате, а не на дашборде.
     $chat = AiChat::query()->create([
         'user_id' => $user->id,
         'company_id' => $company->id,
@@ -352,7 +334,6 @@ it('отдаёт список дашбордов с числом виджето�
         'status' => 'completed',
     ]);
 
-    // Дашборд чужой компании в список попасть не должен.
     [$otherCompany, $stranger] = makeBuilderCompany('Stranger');
     makeManualDashboard($otherCompany, $stranger, makeBuilderSource($otherCompany, $stranger));
 
@@ -368,20 +349,15 @@ it('отдаёт список дашбордов с числом виджето�
     expect($byId[$manual->id]['widgets_count'])->toBe(1)
         ->and($byId[$manual->id]['data_source']['name'])->toBe($source->name)
         ->and($byId[$manual->id]['origin'])->toBe(Dashboard::ORIGIN_MANUAL)
-        // Источник дашборда из чата подставляется, хотя на нём самом его нет.
+
         ->and($byId[$fromChat->id]['data_source_id'])->toBeNull()
         ->and($byId[$fromChat->id]['data_source']['name'])->toBe($source->name)
         ->and($byId[$fromChat->id]['chat']['title'])->toBe('Разбор продаж')
         ->and($byId[$fromChat->id]['widgets_count'])->toBe(0);
 
-    // Детали подключения в списке не место — там только имя источника.
     expect($byId[$manual->id]['data_source'])->not->toHaveKey('host')
         ->and($byId[$manual->id]['data_source'])->not->toHaveKey('username');
 });
-
-// ---------------------------------------------------------------------------
-// Право на код
-// ---------------------------------------------------------------------------
 
 it('не пускает к коду виджета без права write widget code', function () {
     [$company, $admin] = makeBuilderCompany();
@@ -395,8 +371,6 @@ it('не пускает к коду виджета без права write widge
             'widget_id' => $bar->id, 'title' => 'Выручка',
         ])->json('id');
 
-    // Сотрудник той же компании, которому оставили правку дашбордов, но не
-    // выдали право писать код.
     $editor = User::query()->create([
         'name' => 'Редактор',
         'email' => 'editor-' . uniqid() . '@example.com',
@@ -418,7 +392,6 @@ it('не пускает к коду виджета без права write widge
         ])
         ->assertForbidden();
 
-    // А переставить виджеты тот же сотрудник по-прежнему может.
     $this->actingAs($editor->fresh())
         ->putJson("/api/company/dashboards/{$dashboard->id}/reorder", [
             'widgets' => [['id' => $widgetId, 'position' => 3]],
@@ -426,11 +399,6 @@ it('не пускает к коду виджета без права write widge
         ->assertOk();
 });
 
-// ---------------------------------------------------------------------------
-// Рабочие пространства
-// ---------------------------------------------------------------------------
-
-/** Пространство вместе с его источником. */
 function makeWorkspace(Company $company, User $user, DataSource $source, string $name = 'Продажи'): Workspace
 {
     return Workspace::query()->create([
@@ -462,8 +430,6 @@ it('заводит пространство и дашборд внутри не�
         ->assertCreated()
         ->json();
 
-    // Источник наследуется от пространства: свой у соседнего дашборда означал бы,
-    // что это уже другая задача.
     expect($dashboard['workspace_id'])->toBe($workspace['id'])
         ->and($dashboard['data_source_id'])->toBe($source->id)
         ->and($dashboard['origin'])->toBe(Dashboard::ORIGIN_MANUAL);
@@ -484,7 +450,6 @@ it('показывает в пространстве только его даш�
         'origin' => Dashboard::ORIGIN_MANUAL,
     ]);
 
-    // Собран агентом — в том же пространстве, рядом с ручным.
     $chat = AiChat::query()->create([
         'user_id' => $user->id,
         'company_id' => $company->id,
@@ -501,8 +466,6 @@ it('показывает в пространстве только его даш�
         'status' => 'completed',
     ]);
 
-    // Соседнее пространство на том же источнике — это другая задача,
-    // и попадать сюда его дашборды не должны.
     $other = makeWorkspace($company, $user, $source, 'Склад');
 
     $foreign = Dashboard::query()->create([
@@ -525,8 +488,7 @@ it('показывает в пространстве только его даш�
         ->and($ids)->toContain($manual->id)
         ->and($ids)->toContain($generated->id)
         ->and($ids)->not->toContain($foreign->id)
-        // Новые сверху: перегенерация создаёт следующую версию дашборда,
-        // и открывать надо именно её.
+
         ->and($response['current_dashboard_id'])->toBe($generated->id)
         ->and($response['chat']['id'])->toBe($chat->id);
 });
@@ -552,7 +514,6 @@ it('находит пространство по дашборду и по чат
         'status' => 'completed',
     ]);
 
-    // Ссылка знает только дашборд — этого достаточно, чтобы открыть работу целиком.
     $byDashboard = $this->actingAs($user)
         ->getJson("/api/company/workspaces/by-dashboard/{$dashboard->id}")
         ->assertOk()
@@ -583,7 +544,6 @@ it('заводит пространству разговор — один на �
     expect($chat->workspace_id)->toBe($workspace->id)
         ->and($chat->data_source_id)->toBe($source->id);
 
-    // Повторное нажатие не плодит разговоры: он один на задачу.
     $again = $this->actingAs($user)
         ->postJson("/api/company/workspaces/{$workspace->id}/chat")
         ->assertOk()
@@ -620,7 +580,7 @@ it('удаляет пространство вместе с дашбордами
     expect(Workspace::query()->find($workspace->id))->toBeNull()
         ->and(Dashboard::query()->find($dashboard->id))->toBeNull()
         ->and(AiChat::query()->find($chat->id))->toBeNull()
-        // Источник принадлежит компании, а не пространству: на нём работают другие.
+
         ->and(DataSource::query()->find($source->id))->not->toBeNull();
 });
 
@@ -639,11 +599,6 @@ it('не отдаёт пространство чужой компании', fun
         ->deleteJson("/api/company/workspaces/{$workspace->id}")
         ->assertNotFound();
 });
-
-
-// ---------------------------------------------------------------------------
-// Настройки конструктора доезжают до сборщика запроса
-// ---------------------------------------------------------------------------
 
 it('доносит связи, таблицы метрик и цели до сборщика запроса', function () {
     [$company, $user] = makeBuilderCompany();
@@ -680,8 +635,6 @@ it('доносит связи, таблицы метрик и цели до сб
         ],
     ], now()->addMinutes(5));
 
-    // Сборка без выполнения: запрос к базе клиента здесь не идёт, поэтому
-    // проверить можно ровно то, что нужно, — что настройки доехали целиком.
     $response = $this->actingAs($user)
         ->postJson("/api/company/dashboards/{$dashboard->id}/widgets/{$widget->id}/query/compose", [
             'builder' => [
@@ -709,18 +662,11 @@ it('доносит связи, таблицы метрик и цели до сб
         ->assertOk()
         ->json();
 
-    // Всё, чего нет в правилах validate(), по дороге отбрасывается: раньше
-    // связи и таблицы колонок исчезали молча, и виджет считался по одной
-    // таблице вместо двух.
     expect($response['sql'])->toContain('LEFT JOIN `customers`')
         ->toContain('`orders`.`customer_id` = `customers`.`id`')
         ->toContain('`customers`.`city`')
         ->toContain('SUM(`orders`.`amount`)');
 });
-
-// ---------------------------------------------------------------------------
-// Регресс генерации
-// ---------------------------------------------------------------------------
 
 it('по-прежнему находит источник сгенерированного дашборда через чат', function () {
     [$company, $user] = makeBuilderCompany();
@@ -732,7 +678,6 @@ it('по-прежнему находит источник сгенерирова
         'data_source_id' => $source->id,
     ]);
 
-    // Ровно то, что создаёт DashboardGenerator: чат есть, data_source_id пуст.
     $dashboard = Dashboard::query()->create([
         'company_id' => $company->id,
         'chat_id' => $chat->id,

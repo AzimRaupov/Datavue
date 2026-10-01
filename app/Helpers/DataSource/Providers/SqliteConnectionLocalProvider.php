@@ -4,13 +4,6 @@ namespace App\Helpers\DataSource\Providers;
 
 use RuntimeException;
 
-/**
- * Источник данных SQLite.
- *
- * База — это файл, поэтому хоста и пользователя нет, а метаданные берутся не из
- * information_schema (её в SQLite не существует), а из sqlite_master и
- * PRAGMA-запросов.
- */
 class SqliteConnectionLocalProvider extends AbstractSqlConnectionProvider
 {
     public string $path;
@@ -32,8 +25,7 @@ class SqliteConnectionLocalProvider extends AbstractSqlConnectionProvider
             'driver' => 'sqlite',
             'database' => $this->path,
             'prefix' => '',
-            // Источник пользователя открываем только на чтение: платформа
-            // ничего в нём не меняет, а файл лежит рядом с его данными.
+
             'foreign_key_constraints' => false,
         ];
     }
@@ -76,7 +68,7 @@ class SqliteConnectionLocalProvider extends AbstractSqlConnectionProvider
 
     public function showColumns(string $tableName): array
     {
-        // PRAGMA не принимает биндинги, поэтому имя таблицы цитируем сами.
+
         $rows = $this->query(
             'PRAGMA table_info(' . $this->quoteIdentifier($tableName) . ')'
         );
@@ -88,7 +80,6 @@ class SqliteConnectionLocalProvider extends AbstractSqlConnectionProvider
                 $row = (array) $row;
                 $name = $row['name'] ?? null;
 
-                // pk > 0 означает участие в первичном ключе, notnull — запрет NULL.
                 $key = '';
 
                 if (!empty($row['pk'])) {
@@ -114,7 +105,6 @@ class SqliteConnectionLocalProvider extends AbstractSqlConnectionProvider
     {
         $relations = [];
 
-        // В SQLite внешние ключи перечисляются отдельно для каждой таблицы.
         foreach ($this->showTables() as $table) {
             $rows = $this->query(
                 'PRAGMA foreign_key_list(' . $this->quoteIdentifier($table) . ')'
@@ -125,7 +115,6 @@ class SqliteConnectionLocalProvider extends AbstractSqlConnectionProvider
 
                 $toColumn = $row['to'] ?? null;
 
-                // Ссылка без явной колонки указывает на первичный ключ цели.
                 if ($toColumn === null && !empty($row['table'])) {
                     $toColumn = $this->primaryKeyOf($row['table']);
                 }
@@ -146,11 +135,6 @@ class SqliteConnectionLocalProvider extends AbstractSqlConnectionProvider
         return $relations;
     }
 
-    /**
-     * Колонки, входящие в уникальные индексы по одной колонке.
-     *
-     * @return array<int, string>
-     */
     private function uniqueColumns(string $tableName): array
     {
         $indexes = $this->query(
@@ -170,7 +154,6 @@ class SqliteConnectionLocalProvider extends AbstractSqlConnectionProvider
                 'PRAGMA index_info(' . $this->quoteIdentifier($index['name']) . ')'
             );
 
-            // Составной уникальный индекс не делает колонку уникальной саму по себе.
             if (count($info) !== 1) {
                 continue;
             }

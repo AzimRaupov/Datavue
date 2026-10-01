@@ -2,11 +2,11 @@
     <div class="page page-center">
         <div class="container container-tight py-4">
             <div class="text-center mb-4">
-                <!-- BEGIN NAVBAR LOGO --><a href="." aria-label="Tabler" class="navbar-brand navbar-brand-autodark"
+                <!-- BEGIN NAVBAR LOGO --><router-link to="/" aria-label="Datavue" class="navbar-brand navbar-brand-autodark"
             >
                 <img :src="'/logos/logo.png'" width="135" />
 
-            </a
+            </router-link
             ><!-- END NAVBAR LOGO -->
             </div>
             <form class="card card-md" @submit.prevent="login" autocomplete="off" novalidate>
@@ -20,9 +20,9 @@
                     <div class="mb-3">
                         <label class="form-label">{{ t('auth.input_password')}}</label>
                         <div class="input-group input-group-flat">
-                            <input v-model="form.password" type="password"  class="form-control" placeholder="Password" autocomplete="off" />
+                            <input v-model="form.password" :type="showPassword ? 'text' : 'password'"  class="form-control" placeholder="Password" autocomplete="off" />
                             <span class="input-group-text">
-                  <a href="#" class="link-secondary" title="Show password" data-bs-toggle="tooltip"
+                  <button type="button" class="link-secondary p-0 border-0 bg-transparent lh-1" title="Show password" @click="showPassword = !showPassword"
                   ><!-- Download SVG icon from http://tabler.io/icons/icon/eye -->
                     <svg
                         xmlns="http://www.w3.org/2000/svg"
@@ -40,7 +40,7 @@
                     >
                       <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
                       <path d="M21 12c-2.4 4 -5.4 6 -9 6c-3.6 0 -6.6 -2 -9 -6c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6" /></svg
-                    ></a>
+                    ></button>
                 </span>
                         </div>
                     </div>
@@ -72,6 +72,7 @@ const form = reactive({
     'password': '',
 });
 
+const showPassword = ref(false);
 const generalError = ref(null);
 const loading = ref(false);
 

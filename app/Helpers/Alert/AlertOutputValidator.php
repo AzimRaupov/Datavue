@@ -2,26 +2,9 @@
 
 namespace App\Helpers\Alert;
 
-/**
- * Контракт вывода Python-алерта (mode python).
- *
- * main() сам печатает ровно один JSON-объект — тот же приём, что у ручных
- * виджетов (см. WidgetCodeRun, codeTemplates.js FOOTER):
- *
- *   { "triggered": bool, "value": number|string|null, "message": string|null,
- *     "rows": [ {...}, ... ] }
- *
- * Отсутствие "triggered", лишний мусор в stdout или невалидный JSON — это
- * ОШИБКА проверки, а не «не сработало». Смешать эти два случая значит
- * получить алерт, который выглядит здоровым, пока молча ничего не проверяет.
- */
 class AlertOutputValidator
 {
-    /**
-     * @param array<int, string> $output Строки stdout процесса
-     *
-     * @return array{ok: bool, triggered?: bool, value?: mixed, message?: ?string, rows?: array, error?: string}
-     */
+
     public function validate(array $output): array
     {
         $lines = array_values(array_filter($output, fn ($line) => trim((string) $line) !== ''));
@@ -30,9 +13,6 @@ class AlertOutputValidator
             return ['ok' => false, 'error' => 'Код алерта не вывел ничего.'];
         }
 
-        // Как и у виджетов: контракт — ровно одна строка JSON. Что угодно
-        // ещё в stdout (print для отладки, traceback) — это уже не «результат»,
-        // а сигнал, что автор не убрал отладочный вывод или скрипт упал.
         if (count($lines) > 1) {
             return [
                 'ok' => false,

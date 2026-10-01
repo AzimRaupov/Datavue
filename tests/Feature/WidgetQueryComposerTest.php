@@ -10,14 +10,6 @@ use Illuminate\Support\Facades\Cache;
 
 uses(RefreshDatabase::class);
 
-/**
- * Сборщик запроса из настроек конструктора.
- *
- * Схему источника подменяем кэшем: класс читает её через SourceSchema, а тесту
- * важно поведение сборщика, а не то, какие таблицы окажутся в базе. Схема здесь
- * — это ещё и белый список: всё, чего в ней нет, до запроса не доходит.
- */
-
 beforeEach(function () {
     DataSourceType::query()->firstOrCreate(['name' => 'mysql']);
 
@@ -68,7 +60,7 @@ it('собирает запрос со столбцами: ряд, ось, зн�
         ->and($result['sql'])->toContain('`country` AS `category`')
         ->and($result['sql'])->toContain('SUM(`amount`) AS `value`')
         ->and($result['sql'])->toContain('GROUP BY `country`')
-        // Топ по значению — то, чего ждут от такого графика.
+
         ->and($result['sql'])->toContain('ORDER BY `value` DESC')
         ->and($result['sql'])->toContain('LIMIT 10');
 });
@@ -82,8 +74,7 @@ it('округляет дату до периода и сортирует ось
 
     expect($result['ok'])->toBeTrue()
         ->and($result['sql'])->toContain("DATE_FORMAT(`created_at`, '%Y-%m')")
-        // Ось времени, идущая справа налево, не читается — по ней сортируем
-        // по возрастанию, а не по величине метрики.
+
         ->and($result['sql'])->toContain("ORDER BY DATE_FORMAT(`created_at`, '%Y-%m') ASC");
 });
 
@@ -114,14 +105,12 @@ it('вторую разбивку делает рядами', function () {
         ->and($result['sql'])->toContain('`status` AS `series`')
         ->and($result['sql'])->toContain('`country` AS `category`')
         ->and($result['sql'])->toContain('GROUP BY `country`, `status`')
-        // Сортировка по оси: «топ по значению» перемешал бы категории
-        // между рядами, и ось встала бы в случайном порядке.
+
         ->and($result['sql'])->toContain('ORDER BY `country` ASC');
 });
 
 it('не даёт совместить вторую разбивку с несколькими метриками', function () {
-    // Иначе получились бы ряды «Выручка / Москва», «Заказы / Москва»… —
-    // на графике это нечитаемо.
+
     $result = $this->composer->compose([
         'table' => 'orders',
         'metrics' => [['agg' => 'count'], ['agg' => 'sum', 'column' => 'amount']],
@@ -179,10 +168,6 @@ it('строит условия отбора', function () {
         ->and($result['sql'])->toContain('`status` IS NOT NULL');
 });
 
-// ---------------------------------------------------------------------------
-// Что в запрос не попадает
-// ---------------------------------------------------------------------------
-
 it('не пускает в запрос колонку, которой нет в таблице', function () {
     $result = $this->composer->compose([
         'table' => 'orders',
@@ -206,8 +191,7 @@ it('не пускает в запрос чужую таблицу', function () 
 });
 
 it('отклоняет SQL, спрятанный в имени колонки', function () {
-    // Имя колонки не экранируется «на всякий случай», а проверяется по схеме:
-    // выражения, которого нет в таблице, не существует.
+
     $result = $this->composer->compose([
         'table' => 'orders',
         'metrics' => [['agg' => 'count']],
@@ -215,7 +199,7 @@ it('отклоняет SQL, спрятанный в имени колонки', 
     ], 'bar');
 
     expect($result['ok'])->toBeFalse()
-        // Выражение отклонено: такой колонки нет ни в одной таблице запроса.
+
         ->and($result['errors'][0])->toContain('SELECT password');
 });
 
@@ -228,7 +212,7 @@ it('экранирует кавычки в значении условия', fun
     ], 'bar');
 
     expect($result['ok'])->toBeTrue()
-        // Кавычка удвоена: значение осталось значением и условием не стало.
+
         ->and($result['sql'])->toContain("`status` = 'x'' OR 1=1 --'")
         ->and($result['sql'])->not->toContain("= 'x' OR 1=1");
 });
@@ -301,9 +285,7 @@ it('отклоняет неизвестную функцию и неизвест
 });
 
 it('не собирает запрос без единой метрики', function () {
-    // Раньше пустой список молча доходил до сборки, и получался обрубок
-    // «SELECT country AS label, AS value» — база отвечала невнятной
-    // ошибкой синтаксиса вместо понятной подсказки.
+
     foreach (['bar', 'pie', 'mini-counters'] as $family) {
         $result = $this->composer->compose([
             'table' => 'orders',
@@ -318,9 +300,7 @@ it('не собирает запрос без единой метрики', func
 });
 
 it('не режет плитки счётчика лимитом строк', function () {
-    // Модель охотно ставит limit по числу метрик, а иногда и меньше.
-    // Здесь строка результата — это метрика, поэтому лимит не должен
-    // молча убирать показатели, которых просили.
+
     $result = $this->composer->compose([
         'table' => 'orders',
         'metrics' => [
@@ -337,8 +317,7 @@ it('не режет плитки счётчика лимитом строк', fu
 });
 
 it('требует разбивку у точечной диаграммы', function () {
-    // Без разбивки агрегаты считаются по всей таблице, и на графике
-    // оказывается ровно одна точка — виджет из этого бессмысленный.
+
     $result = $this->composer->compose([
         'table' => 'orders',
         'metrics' => [
@@ -363,9 +342,7 @@ it('держит число строк в разумных пределах', fu
 });
 
 it('собирает запрос для каждого семейства каталога', function () {
-    // Проверка «конструктор умеет собрать любой виджет, который можно
-    // выбрать в палитре». Раньше точечная и комбо-диаграмма молча
-    // не собирались: слоты просили не то число метрик.
+
     Cache::put("datasource:{$this->source->id}:schema", [
         [
             'name' => 'orders',
@@ -387,8 +364,6 @@ it('собирает запрос для каждого семейства ка�
     foreach ($families as $family) {
         $slots = WidgetQueryComposer::slotsFor($family);
 
-        // Набираем ровно столько слотов, сколько семейство требует, —
-        // именно это делает конструктор при выборе таблицы.
         $metrics = [];
         for ($i = 0; $i < max(1, $slots['metrics']['min']); $i++) {
             $metrics[] = $i === 0
@@ -435,8 +410,6 @@ it('сам расставляет тип рядов комбо-графику', 
         'dimensions' => [['column' => 'country']],
     ], 'combo');
 
-    // Без этого комбо неотличим от гистограммы, и проверка формы его
-    // отклоняет — а просить такое у автора незачем: порядок метрик всё сказал.
     expect($result['ok'])->toBeTrue()
         ->and($result['presentation']['series_kinds'])->toBe([
             'Выручка' => 'column',
@@ -450,14 +423,12 @@ it('требует у комбо две метрики, а у точечной �
         ->and(WidgetQueryComposer::slotsFor('scatter')['metrics']['min'])->toBe(2)
         ->and(WidgetQueryComposer::slotsFor('scatter')['dimensions']['min'])->toBe(1)
         ->and(WidgetQueryComposer::slotsFor('scatter', 'bubble')['metrics']['min'])->toBe(3)
-        // Карте нужен код страны, а не любая подпись — об этом сказано сразу.
+
         ->and(WidgetQueryComposer::slotsFor('map')['hint'])->toContain('код страны');
 });
 
 it('считает процент выполнения у счётчика с полосой', function () {
-    // Виду with-progress нужна третья колонка. Пока конструктор её не
-    // добавлял, такой счётчик собрать было нельзя вовсе: запрос отдавал
-    // name и value, а проверка формы требовала percent.
+
     $result = $this->composer->compose([
         'table' => 'orders',
         'metrics' => [['agg' => 'count', 'label' => 'Заказов', 'target' => 200]],
@@ -466,13 +437,12 @@ it('считает процент выполнения у счётчика с п
     expect($result['ok'])->toBeTrue()
         ->and($result['sql'])->toContain('AS `percent`')
         ->and($result['sql'])->toContain('ROUND(100 * COUNT(*) / 200, 1)')
-        // Полоса, залитая на 300%, не читается — процент держим в шкале.
+
         ->and($result['sql'])->toContain('LEAST(100, GREATEST(0,');
 });
 
 it('без цели считает процентом саму метрику', function () {
-    // Так задают показатель, который уже посчитан в процентах:
-    // средняя загрузка, доля выполненных.
+
     $result = $this->composer->compose([
         'table' => 'orders',
         'metrics' => [['agg' => 'avg', 'column' => 'amount', 'label' => 'Загрузка']],
@@ -501,7 +471,6 @@ it('добавляет процент каждой плитке и разбив�
         ],
     ], 'mini-counters', 'with-progress');
 
-    // По плитке на метрику — процент нужен в каждой части объединения.
     expect(substr_count($many['sql'], 'AS `percent`'))->toBe(2);
 
     $byDimension = $this->composer->compose([
@@ -516,8 +485,7 @@ it('добавляет процент каждой плитке и разбив�
 });
 
 it('игнорирует цель, которой нельзя пользоваться', function () {
-    // Ноль и текст в цели: делить на них нечем, поэтому метрика считается
-    // процентом сама — виджет остаётся рабочим.
+
     foreach ([0, -5, 'много', ''] as $target) {
         $result = $this->composer->compose([
             'table' => 'orders',
@@ -533,10 +501,6 @@ it('говорит конструктору, что виду нужна цель
     expect(WidgetQueryComposer::slotsFor('mini-counters', 'with-progress')['needs_target'])->toBeTrue()
         ->and(WidgetQueryComposer::slotsFor('mini-counters', 'cards')['needs_target'])->toBeFalse();
 });
-
-// ---------------------------------------------------------------------------
-// Связи таблиц
-// ---------------------------------------------------------------------------
 
 it('связывает несколько таблиц в одном виджете', function () {
     Cache::put("datasource:{$this->source->id}:schema", [
@@ -572,15 +536,13 @@ it('связывает несколько таблиц в одном видже�
 
     expect($result['ok'])->toBeTrue()
         ->and($result['sql'])->toContain('LEFT JOIN `customers` ON `orders`.`customer_id` = `customers`.`id`')
-        // Со связями имя колонки становится неоднозначным: id есть в обеих
-        // таблицах, поэтому в запрос идёт полное имя.
+
         ->and($result['sql'])->toContain('`customers`.`country` AS `category`')
         ->and($result['sql'])->toContain('SUM(`orders`.`amount`)');
 });
 
 it('оставляет запрос без префиксов, пока таблица одна', function () {
-    // Виджеты, собранные до появления связей, не должны измениться:
-    // лишние префиксы только зашумляют запрос.
+
     $result = $this->composer->compose([
         'table' => 'orders',
         'metrics' => [['agg' => 'sum', 'column' => 'amount', 'label' => 'Выручка']],
@@ -632,13 +594,8 @@ it('отклоняет связь без условия и по чужой ко�
     expect($badColumn['ok'])->toBeFalse();
 });
 
-// ---------------------------------------------------------------------------
-// Подзапрос как источник
-// ---------------------------------------------------------------------------
-
 it('строит виджет поверх запроса-источника', function () {
-    // Ответ на подзапросы: сложную выборку пишут один раз, а метрики
-    // и разрезы дальше набирают слотами.
+
     $result = $this->composer->compose([
         'subquery' => [
             'query' => 'SELECT country, amount FROM orders JOIN customers ON 1 = 1',
@@ -673,7 +630,7 @@ it('проверяет колонки подзапроса так же стро�
 });
 
 it('не берёт запрос-источник без списка его колонок', function () {
-    // Иначе конструктор не знал бы, что можно складывать, а что — разбивка.
+
     $result = $this->composer->compose([
         'subquery' => ['query' => 'SELECT * FROM orders'],
         'metrics' => [['agg' => 'count']],
@@ -685,9 +642,7 @@ it('не берёт запрос-источник без списка его к�
 });
 
 it('считает метрики из несвязанных таблиц каждую по своей', function () {
-    // Счётчик «Заказов / Клиентов / Товаров»: три числа из трёх таблиц,
-    // которые нечем и незачем связывать. Раньше таблица метрики молча
-    // терялась, и всё считалось по основной — тихо и неверно.
+
     Cache::put("datasource:{$this->source->id}:schema", [
         ['name' => 'orders', 'columns' => [['name' => 'id', 'type' => 'int', 'kind' => 'number']]],
         ['name' => 'customers', 'columns' => [['name' => 'id', 'type' => 'int', 'kind' => 'number']]],
@@ -710,13 +665,12 @@ it('считает метрики из несвязанных таблиц ка�
         ->and($result['sql'])->toContain('FROM `orders`')
         ->and($result['sql'])->toContain('FROM `customers`')
         ->and($result['sql'])->toContain('FROM `products`')
-        // Каждая метрика — своя выборка, поэтому объединений на одну меньше.
+
         ->and(substr_count($result['sql'], 'UNION ALL'))->toBe(2);
 });
 
 it('требует связь, когда метрики считаются одной выборкой', function () {
-    // У графика со сравнением строки общие: чужая таблица без связи дала бы
-    // перемножение строк и неверные числа.
+
     Cache::put("datasource:{$this->source->id}:schema", [
         ['name' => 'orders', 'columns' => [['name' => 'country', 'type' => 'varchar', 'kind' => 'string']]],
         ['name' => 'stock', 'columns' => [['name' => 'quantity', 'type' => 'int', 'kind' => 'number']]],
@@ -751,7 +705,7 @@ it('связывает таблицы без условия, когда связ
 
     expect($result['ok'])->toBeTrue()
         ->and($result['sql'])->toContain('CROSS JOIN `targets`')
-        // У связи без условия ON быть не должно.
+
         ->and($result['sql'])->not->toContain('CROSS JOIN `targets` ON');
 });
 
@@ -775,9 +729,7 @@ it('объясняет, что делать, когда связь не зада
 });
 
 it('находит колонку сам, когда таблица не указана', function () {
-    // Виджеты, собранные до появления связей, хранят колонки без таблицы.
-    // Раньше все они искались в основной, и «В таблице payments нет колонки
-    // customerName» останавливало настройку на ровном месте.
+
     Cache::put("datasource:{$this->source->id}:schema", [
         ['name' => 'payments', 'columns' => [
             ['name' => 'customer_id', 'type' => 'int', 'kind' => 'number'],
@@ -806,7 +758,7 @@ it('находит колонку сам, когда таблица не ука�
         ], 'bar');
 
         expect($result['ok'])->toBeTrue()
-            // Колонка нашлась в связанной таблице, и в запрос ушла именно она.
+
             ->and($result['sql'])->toContain('`customers`.`name` AS `category`');
     }
 });
@@ -836,7 +788,6 @@ it('не гадает, когда колонка есть в нескольки�
         'dimensions' => [['column' => 'customer_id']],
     ], 'bar');
 
-    // Взять любую из двух — значит молча посчитать не то.
     expect($result['ok'])->toBeFalse()
         ->and($result['errors'][0])->toContain('в нескольких таблицах')
         ->and($result['errors'][0])->toContain('payments, customers');
@@ -855,9 +806,7 @@ it('перечисляет таблицы запроса, когда колон�
 });
 
 it('поднимает первую букву подписи метрики', function () {
-    // Подпись едет в легенду и на плитки: «количество клиентов» рядом
-    // с «Заказы» выглядит небрежно, а просить об этом модель — значит
-    // зависеть от её настроения на каждом виджете.
+
     $result = $this->composer->compose([
         'table' => 'orders',
         'metrics' => [['agg' => 'count', 'label' => 'количество заказов']],
@@ -868,10 +817,7 @@ it('поднимает первую букву подписи метрики', f
 });
 
 it('применяет условия к виджетам с одной подписью и значением', function () {
-    // Круговая, воронка, treemap и счётчики с разбивкой — это одна выборка,
-    // а не объединение метрик. Условия доходили сюда парами «таблица +
-    // условие» и подставлялись в текст как «WHERE Array»: любой фильтр
-    // на таком виджете ронял сборку.
+
     foreach (['pie', 'funnel', 'treemap', 'mini-counters'] as $family) {
         $result = $this->composer->compose([
             'table' => 'orders',
@@ -887,9 +833,7 @@ it('применяет условия к виджетам с одной подп
 });
 
 it('экранирует обратный слэш в значении и в подписи', function () {
-    // MySQL по умолчанию считает обратный слэш экранирующим символом:
-    // значение, оканчивающееся на «\», закрывало строку раньше времени,
-    // и всё, что шло следом, читалось как часть запроса.
+
     $result = $this->composer->compose([
         'table' => 'orders',
         'metrics' => [['agg' => 'count', 'label' => 'Заказов']],
@@ -899,6 +843,6 @@ it('экранирует обратный слэш в значении и в п�
 
     expect($result['ok'])->toBeTrue()
         ->and($result['sql'])->toContain("'\\\\'' OR 1=1 -- '")
-        // Условие осталось одним литералом: ничего не «выскочило» наружу.
+
         ->and(substr_count($result['sql'], 'OR 1=1'))->toBe(1);
 });

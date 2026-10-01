@@ -16,18 +16,10 @@ use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
-/**
- * Выгрузка данных в файл по просьбе пользователя в чате.
- *
- * Отдельная задача очереди, потому что путь длинный и небыстрый: три
- * обращения к модели плюс запуск Python-скрипта на источнике данных.
- * В HTTP-запросе это держать нельзя.
- */
 class ChatExportJob implements ShouldQueue
 {
     use Queueable;
 
-    /** Скрипт выгрузки сам по себе может работать до exports.timeout. */
     public $timeout = 600;
 
     public function __construct(
@@ -89,7 +81,6 @@ class ChatExportJob implements ShouldQueue
                 $task->load(['status', 'task']);
             }
 
-            // Файл создан — маршрут «выгрузка» подтверждён делом.
             IntentSample::confirm($this->messageId);
 
             Log::info('ChatExportJob: export ready', [
@@ -104,7 +95,6 @@ class ChatExportJob implements ShouldQueue
             Log::error('ChatExportJob: export failed: '.$e->getMessage());
             Log::error($e->getTraceAsString());
 
-            // Пользователь ждал файл — молчаливый провал хуже честного отказа.
             $message->answer = 'Не удалось сформировать файл: '.$e->getMessage()
                 ."\n\nПопробуйте сформулировать выгрузку конкретнее — например, "
                 .'«выгрузи в csv топ-10 клиентов по сумме заказов за 2024 год».';
@@ -119,15 +109,10 @@ class ChatExportJob implements ShouldQueue
         } finally {
             $this->broadcastSafely($message, $task);
 
-            // Воркер долгоживущий — контекст обязан сбрасываться.
             AiUsageContext::clear();
         }
     }
 
-    /**
-     * Ответ уже сохранён в БД: сбой сокета не должен ронять задачу —
-     * клиент получит сообщение при следующей загрузке чата.
-     */
     private function broadcastSafely($message, $task): void
     {
         try {

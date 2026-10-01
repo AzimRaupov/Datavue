@@ -2,12 +2,6 @@
 
 namespace App\Helpers\Ai\Providers;
 
-/**
- * Генерация python-кода виджета для MySQL.
- *
- * Текст промптов общий для всех SQL-источников и живёт в SqlProviderAi —
- * здесь остаются только отличия диалекта.
- */
 class MysqlProviderAi extends SqlProviderAi
 {
     protected function dialectName(): string

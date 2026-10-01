@@ -4,11 +4,6 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-/**
- * Одна строка — одна проверка алерта: когда началась, чем закончилась,
- * что увидела и ушло ли письмо. Пишется ВСЕГДА, включая ошибку, — иначе
- * сломанная проверка выглядела бы как молчаливое бездействие.
- */
 return new class extends Migration
 {
     public function up(): void
@@ -23,15 +18,11 @@ return new class extends Migration
 
             $table->enum('status', ['ok', 'triggered', 'error']);
 
-            // Значение, с которым сравнивали порог (kind=value), как текст —
-            // под ним могут быть и числа, и даты.
             $table->string('value')->nullable();
             $table->unsignedInteger('matched_rows')->nullable();
 
-            // Образец строк результата — тот же, что уходит в письмо.
             $table->json('payload')->nullable();
-            // Пояснение от Python-условия (поле "message" в его JSON-выводе) —
-            // отдельно от error: это не сбой проверки, а комментарий автора кода.
+
             $table->text('message')->nullable();
             $table->text('error')->nullable();
 

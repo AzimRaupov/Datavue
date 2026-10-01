@@ -8,11 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Dashboard extends Model
 {
-    /**
-     * The attributes that are mass assignable.
-     *
-     * @var array<int, string>
-     */
+
     protected $fillable = [
         'company_id',
         'workspace_id',
@@ -26,26 +22,14 @@ class Dashboard extends Model
         'version',
     ];
 
-    /**
-     * Значение по умолчанию есть и в схеме, но модель о нём должна знать сама:
-     * после create() без origin объект в памяти иначе остаётся с null, и
-     * проверка isManual() зависела бы от того, перечитали строку из базы или нет.
-     */
     protected $attributes = [
         'origin' => self::ORIGIN_AI,
     ];
 
-    /** Дашборд собрал пайплайн ИИ по сообщению в чате. */
     public const ORIGIN_AI = 'ai';
 
-    /** Дашборд собрал человек в конструкторе. */
     public const ORIGIN_MANUAL = 'manual';
 
-    /**
-     * The attributes that should be cast.
-     *
-     * @return array<string, string>
-     */
     protected function casts(): array
     {
         return [
@@ -53,9 +37,6 @@ class Dashboard extends Model
         ];
     }
 
-    /**
-     * Get the company that owns the dashboard.
-     */
     public function company(): BelongsTo
     {
         return $this->belongsTo(Company::class);
@@ -65,9 +46,6 @@ class Dashboard extends Model
         return $this->hasMany(DashboardWidget::class, 'dashboard_id');
     }
 
-    /**
-     * Рабочее пространство, в котором лежит дашборд.
-     */
     public function workspace(): BelongsTo
     {
         return $this->belongsTo(Workspace::class);
@@ -93,14 +71,6 @@ class Dashboard extends Model
         return $this->origin === self::ORIGIN_MANUAL;
     }
 
-    /**
-     * Источник данных, по которому считаются виджеты этого дашборда.
-     *
-     * Порядок важен: у ручного дашборда источник указан прямо на нём, у
-     * сгенерированного — приходит из чата. Пока оба пути живы, дашборды,
-     * созданные до появления конструктора, продолжают работать без правок
-     * данных.
-     */
     public function resolveDataSource(array $with = ['type', 'extracted']): ?DataSource
     {
         if ($this->data_source_id) {

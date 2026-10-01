@@ -15,26 +15,6 @@ use Illuminate\Support\Facades\Schema;
 
 uses(RefreshDatabase::class);
 
-/**
- * Регресс: условие «по значению» в режиме builder на метрике без подписи.
- *
- * Автор выбирает метрику sum(total_usd) и не заполняет подпись — конструктор
- * сам подставляет ей алиас вида «Сумма total_usd» (WidgetQueryComposer::
- * readMetrics()), а не имя колонки как есть. Раньше форма подставляла в
- * condition.column голое имя колонки, и AlertCondition не находил его в
- * результате: «В результате запроса нет колонки «total_usd»» — хотя колонка
- * есть, просто под другим именем в SELECT.
- *
- * Правильное поведение: автор выбирает метрику по номеру (metric_index),
- * а настоящее имя колонки результата подставляет сервер при сохранении
- * (AlertQueryBuilder::resolveConditionColumn) — раньше гадал фронт.
- *
- * Таблица — не из RefreshDatabase-транзакции: AlertRunner открывает своё
- * подключение по кредам источника, и DDL (implicit commit) — единственный
- * способ дать ей увидеть реальные данные (см. AlertDispatchTest про то же
- * ограничение).
- */
-
 beforeEach(function () {
     $this->seed(RolePermissionSeeder::class);
     DataSourceType::query()->firstOrCreate(['name' => 'mysql']);
@@ -97,8 +77,6 @@ it('находит колонку метрики без подписи по её
         'name' => 'Пространство',
     ]);
 
-    // Ровно то, что отправляет форма: метрика без подписи (label пуст)
-    // и condition.metric_index вместо имени колонки.
     $response = $this->actingAs($user)->postJson("/api/company/workspaces/{$workspace->id}/alerts", [
         'title' => 'Тест',
         'mode' => Alert::MODE_BUILDER,
@@ -119,7 +97,6 @@ it('находит колонку метрики без подписи по её
         'recipients' => ['emails' => ['ops@example.com']],
     ])->assertCreated()->json();
 
-    // Сервер сам разрешил условие в настоящий алиас — не голое имя колонки.
     expect($response['condition']['column'])
         ->not->toBe('total_usd')
         ->and($response['condition']['column'])->toContain('total_usd');

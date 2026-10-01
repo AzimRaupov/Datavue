@@ -10,17 +10,9 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
-/**
- * Всё, что происходит с кодом виджета, который пишет человек.
- *
- * Собрано в одном месте, потому что путей два — «выполнить черновик» и
- * «сохранить», — а правила у них общие: сначала проверка, потом запуск, и
- * только потом запись. Разъехавшись по контроллеру, эти правила разошлись бы
- * и на одном из путей код попадал бы на сервер непроверенным.
- */
 class ManualWidgetAuthor
 {
-    /** Сколько строк результата показываем автору под редактором. */
+
     private const PREVIEW_ROWS = 20;
 
     public function __construct(
@@ -30,25 +22,6 @@ class ManualWidgetAuthor
     ) {
     }
 
-    /**
-     * Прогон запроса без сохранения — кнопка «Выполнить» в редакторе SQL.
-     *
-     * Порядок тот же, что у кода: сначала проверка, потом выполнение. Разница
-     * в том, что здесь проверить может сама база — пробным запросом с LIMIT 1,
-     * и ошибка приходит с точным именем несуществующей колонки.
-     *
-     * @return array{ok: bool, data: mixed, errors: array<int, string>, rows: array, columns: array}
-     */
-    /**
-     * Прогон настроек конструктора: сначала собираем запрос, дальше — общий
-     * путь с режимом «сырой SQL».
-     *
-     * Собранный запрос возвращается автору всегда, даже при ошибке: увидеть,
-     * ЧТО ушло в базу, — половина починки. Это же делает Superset кнопкой
-     * «View query».
-     *
-     * @return array{ok: bool, data: mixed, errors: array<int, string>, rows: array, columns: array, sql: ?string}
-     */
     public function runBuilderDraft(
         DashboardWidget $widget,
         array $builder,
@@ -71,25 +44,12 @@ class ManualWidgetAuthor
             return $this->emptyQueryResult($composed['errors']);
         }
 
-        // Оформление от настроек и оформление от автора складываются, причём
-        // автор главнее: он мог сознательно переназначить то, что конструктор
-        // выставил сам.
         $presentation = array_replace($composed['presentation'] ?? [], $presentation);
 
         return $this->runQueryDraft($widget, $composed['sql'], $presentation, $dataSource)
             + ['sql' => $composed['sql'], 'presentation' => $presentation];
     }
 
-    /**
-     * Сохранение настроек конструктора.
-     *
-     * В спецификацию попадает и декларация, и собранный из неё запрос:
-     * декларация нужна, чтобы открыть виджет в конструкторе и продолжить
-     * править слотами, а запрос — чтобы выполнение шло тем же путём, что
-     * и у виджетов, написанных запросом вручную.
-     *
-     * @return array{ok: bool, saved: bool, data: mixed, errors: array<int, string>, sql: ?string}
-     */
     public function saveBuilder(
         DashboardWidget $widget,
         array $builder,
@@ -108,8 +68,6 @@ class ManualWidgetAuthor
             ];
         }
 
-        // Оформление берём то, что вернул прогон: в нём уже учтено всё,
-        // что конструктор выставил сам.
         $saved = $this->saveQuery($widget, $run['sql'], $run['presentation'] ?? $presentation, $dataSource);
 
         if ($saved['saved']) {
@@ -118,9 +76,7 @@ class ManualWidgetAuthor
             $spec['builder'] = $builder;
 
             $widget->query_spec = $spec;
-            // Режим правим здесь же: saveQuery() пометил виджет как написанный
-            // запросом, а он собран конструктором. Разошедшись, эти два поля
-            // говорили бы о виджете разное.
+
             $widget->content_mode = DashboardWidget::MODE_BUILDER;
             $widget->save();
         }
@@ -128,20 +84,6 @@ class ManualWidgetAuthor
         return $saved + ['sql' => $run['sql']];
     }
 
-    /**
-     * Пересобирает запрос виджета под новый вариант отрисовки.
-     *
-     * Вариант отрисовки может требовать других колонок: у счётчика с полосой
-     * выполнения появляется процент, у пузырьковой — размер точки. Запрос,
-     * собранный под прежний вид, после смены типа отдавал бы неполный набор,
-     * и виджет молча рисовал бы нули там, где данных просто не спрашивали.
-     *
-     * Работает только для виджетов из конструктора: их настройки известны.
-     * Виджету с запросом, написанным вручную, платформа запрос не переписывает —
-     * там автор сам решает, какие колонки возвращать.
-     *
-     * @return bool Пересобирали ли запрос
-     */
     public function rebuildForType(DashboardWidget $widget, DataSource $dataSource): bool
     {
         $builder = $widget->query_spec['builder'] ?? null;
@@ -158,15 +100,12 @@ class ManualWidgetAuthor
                 $widget->effectiveType()?->name
             );
         } catch (Throwable $e) {
-            // До схемы источника не достучались — сам тип уже сменён и терять
-            // эту правку из-за недоступной базы клиента незачем. Причину
-            // записываем в виджет: она видна и в конструкторе, и на дашборде.
+
             $composed = ['ok' => false, 'errors' => [$e->getMessage()]];
         }
 
         if (!$composed['ok']) {
-            // Настройки не годятся новому виду — говорим об этом прямо,
-            // а не оставляем молча сломанный виджет.
+
             $widget->last_error = $composed['errors'][0] ?? null;
             $widget->status = 'failed';
             $widget->save();
@@ -217,8 +156,6 @@ class ManualWidgetAuthor
             ];
         }
 
-        // Строки показываем как есть, рядом с готовым виджетом: автору важно
-        // видеть и то, что вернула база, и то, во что это разложилось.
         $preview = $this->sampleRows($dataSource, $sql);
 
         $run = (new WidgetQueryRunner($dataSource))->run(
@@ -250,16 +187,6 @@ class ManualWidgetAuthor
         ];
     }
 
-    /**
-     * Сохраняет спецификацию виджета.
-     *
-     * В отличие от кода на Python, спецификация с ошибкой не сохраняется
-     * вовсе: запрос проверяется базой заранее, и «сохранил, а оно не работает»
-     * здесь просто не может случиться по вине синтаксиса или опечатки
-     * в названии колонки.
-     *
-     * @return array{ok: bool, saved: bool, data: mixed, errors: array<int, string>}
-     */
     public function saveQuery(
         DashboardWidget $widget,
         string $sql,
@@ -302,25 +229,6 @@ class ManualWidgetAuthor
         ];
     }
 
-    /**
-     * Спецификация, которую нужно записать при сохранении SQL-редактора.
-     *
-     * У счётчиков query_spec может содержать НЕСКОЛЬКО именных запросов —
-     * по одному на карточку (см. WidgetQueryAi::countersContract()). Поле
-     * SQL в редакторе одно, и показывает только первый из них
-     * (WidgetSpecValidator::primaryQueryOf()) — остальные автор физически
-     * не видит. Если просто перегенерировать спецификацию из текста этого
-     * поля, «открыл редактор и сразу нажал сохранить» молча стирает все
-     * запросы, кроме первого — три карточки становятся одной, хотя автор
-     * ничего не менял.
-     *
-     * Поэтому здесь запрос из формы сверяется с тем, что редактор показал
-     * изначально. Совпадает — автор его не трогал, и весь набор запросов
-     * остаётся как был, меняется только оформление. Отличается — это
-     * осознанная правка, и спецификация пересобирается заново обычным
-     * образом (в том числе если она сводит несколько запросов к одному —
-     * тогда это решение автора, а не потеря данных).
-     */
     private function nextQuerySpec(DashboardWidget $widget, string $family, string $sql, array $presentation): array
     {
         $existingQueries = $widget->query_spec['queries'] ?? null;
@@ -345,11 +253,6 @@ class ManualWidgetAuthor
         return $spec;
     }
 
-    /**
-     * @param array<int, string> $errors
-     *
-     * @return array{ok: bool, data: mixed, errors: array<int, string>, rows: array, columns: array, sql: ?string}
-     */
     private function emptyQueryResult(array $errors): array
     {
         return [
@@ -362,15 +265,6 @@ class ManualWidgetAuthor
         ];
     }
 
-    /**
-     * Несколько строк результата для предпросмотра «как вернула база».
-     *
-     * Ошибки здесь не важны: запрос к этому моменту уже проверен, а если
-     * выборка почему-то не удалась — показываем виджет без таблицы, но
-     * не роняем весь предпросмотр.
-     *
-     * @return array<int, array<string, mixed>>
-     */
     private function sampleRows(DataSource $dataSource, string $sql): array
     {
         try {
@@ -388,11 +282,6 @@ class ManualWidgetAuthor
         }
     }
 
-    /**
-     * Прогон кода без сохранения — предпросмотр в конструкторе.
-     *
-     * @return array{ok: bool, data: mixed, errors: array<int, string>, output: ?string}
-     */
     public function runDraft(DashboardWidget $widget, string $code, DataSource $dataSource): array
     {
         $inspection = $this->inspector->inspect($code);
@@ -418,8 +307,7 @@ class ManualWidgetAuthor
         $output = $result['output'] ?? [];
 
         if (($result['exit_code'] ?? 0) !== 0) {
-            // Трейсбек питона — самое полезное, что можно показать автору,
-            // поэтому отдаём его как есть, а не прячем за общей фразой.
+
             return $this->fail([
                 'Код завершился с ошибкой.',
                 trim(implode("\n", $output)),
@@ -443,9 +331,6 @@ class ManualWidgetAuthor
             return $this->fail(['У виджета не задано семейство — нечем проверить форму данных.'], $first);
         }
 
-        // Форму проверяет тот же валидатор, что и сгенерированные виджеты:
-        // иначе ручной виджет сохранился бы «успешно» и остался заглушкой
-        // на дашборде — данные есть, а нарисовать их нечем.
         $shapeErrors = $this->outputValidator->validate(
             $family,
             $data,
@@ -469,15 +354,6 @@ class ManualWidgetAuthor
         ];
     }
 
-    /**
-     * Сохраняет код виджета.
-     *
-     * Код не проходит проверку — не сохраняем вовсе. Код проверку прошёл, но
-     * упал на данных — сохраняем и помечаем виджет сломанным: автору нужно
-     * куда-то вернуться, чтобы починить, а причина лежит в last_error.
-     *
-     * @return array{ok: bool, saved: bool, data: mixed, errors: array<int, string>}
-     */
     public function save(DashboardWidget $widget, string $code, DataSource $dataSource): array
     {
         $inspection = $this->inspector->inspect($code);
@@ -493,8 +369,6 @@ class ManualWidgetAuthor
 
         $run = $this->runDraft($widget, $code, $dataSource);
 
-        // Предыдущая версия остаётся ровно одна — этого хватает, чтобы
-        // откатить неудачную правку, и не превращает таблицу в архив.
         if (is_string($widget->code) && trim($widget->code) !== '' && $widget->code !== $code) {
             $widget->code_previous = $widget->code;
         }
@@ -524,11 +398,6 @@ class ManualWidgetAuthor
         ];
     }
 
-    /**
-     * Возвращает виджет к предыдущей версии кода.
-     *
-     * @return array{ok: bool, saved: bool, data: mixed, errors: array<int, string>}
-     */
     public function restorePrevious(DashboardWidget $widget, DataSource $dataSource): array
     {
         $previous = $widget->code_previous;
@@ -542,7 +411,6 @@ class ManualWidgetAuthor
             ];
         }
 
-        // Меняем версии местами: откат тоже можно откатить.
         $current = $widget->code;
         $widget->code = $previous;
         $widget->code_previous = $current;
@@ -551,11 +419,6 @@ class ManualWidgetAuthor
         return $this->save($widget, $previous, $dataSource);
     }
 
-    /**
-     * Материализует код в файл — путь запуска у ручных и сгенерированных
-     * виджетов остаётся общим (WidgetCodeRun читает code_path, если в базе
-     * кода нет).
-     */
     private function writeFile(DashboardWidget $widget, string $code): string
     {
         $path = $this->pathFor($widget);
@@ -566,10 +429,6 @@ class ManualWidgetAuthor
         return $path;
     }
 
-    /**
-     * Ручной дашборд не привязан к чату, поэтому и файлы его виджетов лежат
-     * не в chats/, а в dashboards/.
-     */
     public function pathFor(DashboardWidget $widget): string
     {
         $companyId = $widget->dashboard?->company_id ?? 0;
@@ -582,10 +441,6 @@ class ManualWidgetAuthor
         );
     }
 
-    /**
-     * Удаляет файлы кода виджета. Вызывается при удалении виджета и дашборда,
-     * иначе storage копит скрипты, на которые уже никто не сошлётся.
-     */
     public function deleteFiles(DashboardWidget $widget): void
     {
         $directory = dirname($this->pathFor($widget));
@@ -594,17 +449,11 @@ class ManualWidgetAuthor
             File::deleteDirectory($directory);
         }
 
-        // У сгенерированного виджета файл лежит в каталоге чата.
         if ($widget->code_path && is_file($widget->code_path)) {
             File::delete($widget->code_path);
         }
     }
 
-    /**
-     * @param array<int, string> $errors
-     *
-     * @return array{ok: bool, data: mixed, errors: array<int, string>, output: ?string}
-     */
     private function fail(array $errors, ?string $output = null): array
     {
         return [

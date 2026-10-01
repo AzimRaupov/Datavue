@@ -4,27 +4,12 @@ namespace App\Helpers\Ai;
 
 use Illuminate\Support\Facades\Log;
 
-/**
- * Подбирает 2–4 варианта дашборда, с которых осмысленно начать работу
- * с конкретным источником данных.
- *
- * На вход идут смысловые группы таблиц (результат DataSourceGrouping) —
- * то есть модель видит не сырую схему, а уже осмысленную картину:
- * «Продажи и заказы», «Клиенты», «Склад». Этого достаточно, чтобы
- * предложить темы дашбордов, и заметно дешевле полной схемы.
- */
 class DashboardSuggestionAi
 {
-    /** Сколько вариантов просим у модели. */
+
     private const MIN_SUGGESTIONS = 2;
     private const MAX_SUGGESTIONS = 4;
 
-    /**
-     * @param array $groups Компактные группы: [['name','description','tables'=>[...]], ...]
-     * @param array $widgetTypes Доступные типы виджетов: [['name','description'], ...]
-     *
-     * @return array{total_tokens: int, suggestions: array<int, array{title: string, prompt: string, description: string}>}
-     */
     public function generate(array $groups, array $widgetTypes = [], ?string $sourceName = null): array
     {
         $min = self::MIN_SUGGESTIONS;
@@ -94,7 +79,7 @@ TEXT;
    Это самое важное поле — именно по нему будет строиться дашборд.
 6. "title" — коротко, до 40 символов, для кнопки.
 7. "description" — одна фраза о том, что покажет дашборд.
-8. Всё пиши по-русски.
+8. Сообщение пользователя пока неизвестно (чат ещё пуст) — пиши на языке: {$this->promptLanguageName()}.
 
 ========================
 ФОРМАТ ОТВЕТА
@@ -129,6 +114,14 @@ TEXT;
         ];
     }
 
+    private function promptLanguageName(): string
+    {
+        return match (app()->getLocale()) {
+            'en' => 'английском',
+            'tg' => 'таджикском',
+            default => 'русском',
+        };
+    }
 
     private function normalize(mixed $content): array
     {
@@ -148,8 +141,6 @@ TEXT;
             $title = trim((string) ($item['title'] ?? ''));
             $promptText = trim((string) ($item['prompt'] ?? ''));
 
-            // Вариант без готового сообщения агенту бесполезен: по клику
-            // будет нечего отправить.
             if ($title === '' || $promptText === '') {
                 continue;
             }

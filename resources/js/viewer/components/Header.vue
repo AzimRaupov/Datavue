@@ -88,10 +88,10 @@ onUnmounted(() => {
     <nav class="navbar navbar-expand-lg navbar-transparent py-3" role="banner">
         <div class="container">
             <!-- BEGIN NAVBAR LOGO -->
-            <a href=".." aria-label="Tabler" class="navbar-brand navbar-brand-autodark">
+            <router-link to="/" aria-label="Datavue" class="navbar-brand navbar-brand-autodark">
                 <img :src="'/logos/logo.png'" width="120" />
 
-            </a>
+            </router-link>
             <!-- END NAVBAR LOGO -->
 
             <!-- Мобильный toggler -->
@@ -112,13 +112,13 @@ onUnmounted(() => {
                 <!-- Навигация по центру -->
                 <ul class="navbar-nav mx-auto mb-2 mb-lg-0 text-center text-lg-start">
                     <li class="nav-item">
-                        <a class="nav-link active" href="../marketing"><span class="nav-link-title">{{ t('header.home')}}</span></a>
+                        <router-link class="nav-link" to="/"><span class="nav-link-title">{{ t('header.home')}}</span></router-link>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="../marketing/pricing.html"><span class="nav-link-title">{{ t('header.pricing') }}</span></a>
+                        <router-link class="nav-link" to="/terms"><span class="nav-link-title">{{ t('header.terms') }}</span></router-link>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="../marketing/about.html"><span class="nav-link-title">{{ t('header.about') }}</span></a>
+                        <router-link class="nav-link" to="/privacy"><span class="nav-link-title">{{ t('header.privacy') }}</span></router-link>
                     </li>
 
                 </ul>

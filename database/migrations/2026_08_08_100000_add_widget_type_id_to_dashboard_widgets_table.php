@@ -6,12 +6,7 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Какой вариант отрисовки внутри семейства выбрал ИИ для этого виджета.
-     *
-     * nullable: если тип не указан или ИИ вернул несуществующий, фронт берёт
-     * тип по умолчанию из семейства — виджет всё равно отрисуется.
-     */
+
     public function up(): void
     {
         Schema::table('dashboard_widgets', function (Blueprint $table) {

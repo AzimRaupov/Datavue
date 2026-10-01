@@ -8,10 +8,6 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Queue\SerializesModels;
 
-/**
- * Условие алерта выполнилось: переход в «сработал» либо повтор после
- * repeat_after_minutes, пока условие продолжает выполняться.
- */
 class AlertTriggeredMail extends Mailable
 {
     use Queueable, SerializesModels;

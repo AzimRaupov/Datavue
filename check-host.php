@@ -1,18 +1,5 @@
 <?php
 
-/**
- * Проверка хостинга под DataVue.
- *
- * Загрузите этот файл на хост и запустите:
- *
- *     php check-host.php
- *
- * Если консоли нет — откройте его в браузере, вывод будет тот же.
- *
- * Скрипт ничего не меняет и не устанавливает: только проверяет и печатает
- * заключение. Единственное, что он создаёт, — временный каталог для пробы
- * venv, который тут же удаляет.
- */
 
 if (PHP_SAPI !== 'cli') {
     header('Content-Type: text/plain; charset=utf-8');
@@ -34,7 +21,6 @@ function line(string $mark, string $text, string $detail = ''): void
     echo $mark.$text.($detail !== '' ? "  —  {$detail}" : '')."\n";
 }
 
-/** Запускает команду в обход отключённых функций, если это возможно. */
 function runCommand(string $command): ?array
 {
     $command .= ' 2>&1';
@@ -72,8 +58,6 @@ function runCommand(string $command): ?array
     return null;
 }
 
-// ─────────────────────────────────────────────────────────────── PHP
-
 section('PHP');
 
 echo "  версия: ".PHP_VERSION."   SAPI: ".PHP_SAPI."\n";
@@ -95,7 +79,6 @@ foreach (['exec', 'shell_exec', 'proc_open'] as $function) {
         : line(NO, "функция {$function}() отключена");
 }
 
-// Главный вопрос: можно ли вообще запустить внешнюю программу.
 $probe = runCommand('echo datavue');
 
 if ($probe !== null && str_contains($probe['output'], 'datavue')) {
@@ -116,8 +99,6 @@ foreach (['pdo_mysql', 'mbstring', 'zip', 'gd', 'curl', 'openssl', 'fileinfo'] a
 }
 
 echo "  memory_limit: ".ini_get('memory_limit')."   max_execution_time: ".ini_get('max_execution_time')."\n";
-
-// ─────────────────────────────────────────────────────────── Python
 
 section('PYTHON');
 
@@ -146,7 +127,6 @@ if ($python === null) {
         $verdict['blockers'][] = 'нет pip: pandas и остальные библиотеки установить нечем';
     }
 
-    // Уже установленные библиотеки: вдруг хостинг их даёт.
     $needed = ['pandas', 'numpy', 'sklearn', 'openpyxl', 'reportlab', 'docx', 'mysql.connector'];
     $missing = [];
 
@@ -164,7 +144,6 @@ if ($python === null) {
         line(WARN, 'не установлены: '.implode(', ', $missing), 'их нужно поставить через pip');
     }
 
-    // Проба venv: без него библиотеки ставить некуда, если нет прав на系统ные.
     $venvPath = sys_get_temp_dir().'/datavue_venv_probe_'.getmypid();
     $venv = runCommand("{$python} -m venv ".escapeshellarg($venvPath));
 
@@ -179,8 +158,6 @@ if ($python === null) {
         runCommand('rm -rf '.escapeshellarg($venvPath));
     }
 }
-
-// ───────────────────────────────────────────────────────── Ресурсы
 
 section('РЕСУРСЫ');
 
@@ -205,8 +182,6 @@ if ($quota !== null && trim($quota['output']) !== '') {
     echo "  квота:\n    ".str_replace("\n", "\n    ", trim($quota['output']))."\n";
 }
 
-// ────────────────────────────────────────────────────────── Сеть
-
 section('СЕТЬ');
 
 $targets = [
@@ -227,7 +202,6 @@ foreach ($targets as $target => $why) {
     }
 }
 
-// Порт чужой базы: проверяем на публичном хосте, отвечающем на 3306.
 $socket = @fsockopen('db4free.net', 3306, $errno, $errstr, 5);
 
 if ($socket) {
@@ -237,8 +211,6 @@ if ($socket) {
     line(WARN, 'исходящий 3306 закрыт', 'внешние базы пользователей подключить не выйдет');
     $verdict['warnings'][] = 'закрыт исходящий 3306 — только локальные базы';
 }
-
-// ────────────────────────────────────────────────────── Заключение
 
 section('ЗАКЛЮЧЕНИЕ');
 

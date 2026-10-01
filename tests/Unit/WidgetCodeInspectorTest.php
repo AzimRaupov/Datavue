@@ -3,18 +3,10 @@
 use App\Helpers\Widget\WidgetCodeInspector;
 use Tests\TestCase;
 
-// Инспектор ищет свой python-скрипт через resource_path(), поэтому ему нужно
-// поднятое приложение: по умолчанию Pest поднимает его только в Feature.
 uses(TestCase::class);
 
-/**
- * Инспектор — единственное, что стоит между формой в браузере и выполнением
- * кода на сервере. Поэтому проверяется не «в целом работает», а каждый способ
- * выбраться за пределы разрешённого.
- */
-
 beforeEach(function () {
-    // Разбор идёт настоящим python: без него проверять нечего.
+
     $binary = base_path('venv/bin/python');
 
     if (!file_exists($binary)) {
@@ -78,8 +70,7 @@ PYTHON);
 });
 
 it('отклоняет обход через служебные атрибуты', function () {
-    // Классический побег из белого списка модулей: до subprocess добираются
-    // не импортом, а через дерево классов.
+
     $result = (new WidgetCodeInspector())->inspect(<<<'PYTHON'
 def main():
     victim = "".__class__.__mro__[1].__subclasses__()
@@ -110,8 +101,7 @@ PYTHON);
 });
 
 it('сообщает о синтаксической ошибке номером строки', function () {
-    // Сигнатура main на месте — значит быстрые проверки пройдены и ошибку
-    // ловит уже разбор дерева.
+
     $result = (new WidgetCodeInspector())->inspect(<<<'PYTHON'
 def main():
     result = {"labels": [,

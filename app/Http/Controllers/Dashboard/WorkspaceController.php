@@ -16,22 +16,9 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 
-/**
- * Рабочие пространства.
- *
- * Пространство — это задача, над которой работают: свой источник данных, свои
- * дашборды и один разговор с агентом. До него дашборды принадлежали чату, из
- * которого выросли, а собранные руками — ничему; поговорить с агентом про свой
- * дашборд было нельзя, а «все дашборды одной базы» — не задача, а свалка.
- *
- * Всё, что делает страница пространства, делается над ОДНИМ открытым дашбордом,
- * поэтому и чат, и конструктор всегда говорят об одном и том же.
- */
 class WorkspaceController extends Controller
 {
-    /**
-     * Список пространств компании.
-     */
+
     public function index(Request $request)
     {
         $workspaces = Workspace::query()
@@ -53,8 +40,7 @@ class WorkspaceController extends Controller
         $data = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
-            // Источник обязателен: дашборды внутри должны быть по чему считать,
-            // и агент в разговоре смотрит на него же.
+
             'data_source_id' => [
                 'required',
                 Rule::exists('data_sources', 'id')->where('company_id', $user->company_id),
@@ -86,12 +72,6 @@ class WorkspaceController extends Controller
         return response()->json($this->card($workspace->fresh('dataSource.type')));
     }
 
-    /**
-     * Удаление пространства вместе с его дашбордами и разговором.
-     *
-     * Источник данных при этом не трогается: он принадлежит компании, и на нём
-     * работают другие пространства.
-     */
     public function destroy(Request $request, $id)
     {
         $workspace = $this->find($request, $id);
@@ -108,9 +88,6 @@ class WorkspaceController extends Controller
                 $chat->delete();
             }
 
-            // Строки алертов и их истории удалятся каскадом на уровне БД
-            // (alerts.workspace_id / alert_checker_histories.alert_id
-            // ON DELETE CASCADE) — а вот CSV-файлы на диске сами не пропадут.
             foreach ($workspace->alerts as $alert) {
                 File::deleteDirectory(
                     storage_path('app/company/'.$alert->company_id.'/alerts/'.$alert->id)
@@ -123,13 +100,6 @@ class WorkspaceController extends Controller
         return response()->json(['message' => 'Рабочее пространство удалено.']);
     }
 
-    /**
-     * Пространство целиком: источник, его дашборды и разговор.
-     *
-     * Открытый дашборд можно назвать явно (?dashboard=id) — иначе берётся
-     * последний: перегенерация не правит дашборд, а создаёт следующую версию,
-     * и открывать надо именно её.
-     */
     public function show(Request $request, $id)
     {
         $workspace = $this->find($request, $id);
@@ -139,9 +109,6 @@ class WorkspaceController extends Controller
         );
     }
 
-    /**
-     * Пространство по дашборду — для ссылок, которые знают только его.
-     */
     public function byDashboard(Request $request, $dashboardId)
     {
         $dashboard = Dashboard::query()
@@ -155,9 +122,6 @@ class WorkspaceController extends Controller
         return response()->json($this->payload($workspace, $dashboard->id));
     }
 
-    /**
-     * Пространство по чату — для ссылок из прежней версии интерфейса.
-     */
     public function byChat(Request $request, $chatId)
     {
         $chat = AiChat::query()
@@ -171,14 +135,6 @@ class WorkspaceController extends Controller
         return response()->json($this->payload($workspace, null));
     }
 
-    /**
-     * Заводит разговор пространству.
-     *
-     * Разговор один на пространство: дашборды внутри — про одну задачу, и
-     * держать под каждый свою переписку значит терять контекст ровно там,
-     * где он нужен. Именно это делает дашборд, собранный руками, обсуждаемым:
-     * до пространств агент умел править только то, что сам и построил.
-     */
     public function attachChat(Request $request, $id)
     {
         $workspace = $this->find($request, $id);
@@ -210,16 +166,11 @@ class WorkspaceController extends Controller
         return response()->json(['chat' => $this->chatPayload($chat)], 201);
     }
 
-    // -----------------------------------------------------------------
-    // Сборка ответа
-    // -----------------------------------------------------------------
-
     private function payload(Workspace $workspace, ?int $dashboardId): array
     {
         $dashboards = $workspace->dashboards()
             ->withCount('widgets')
-            // Новые сверху: перегенерация создаёт следующую версию дашборда,
-            // и актуальная должна быть первой.
+
             ->orderByDesc('id')
             ->get();
 
@@ -255,9 +206,6 @@ class WorkspaceController extends Controller
         ];
     }
 
-    /**
-     * @return array{id: int, name: string, ...}
-     */
     private function card(Workspace $workspace): array
     {
         return [
@@ -274,12 +222,6 @@ class WorkspaceController extends Controller
         ];
     }
 
-    /**
-     * Разговор вместе с подсказками для пустого чата.
-     *
-     * Подсказки только читаются: генерировать их здесь нельзя — это обращение
-     * к модели, а пространство открывается при каждом переключении дашборда.
-     */
     private function chatPayload(AiChat $chat): array
     {
         return [
@@ -293,14 +235,6 @@ class WorkspaceController extends Controller
         ];
     }
 
-    /**
-     * Пространство для дашборда, у которого его почему-то нет.
-     *
-     * Переезд раскладывает по пространствам всё, что было, но дашборд мог
-     * появиться и в обход — например, из задачи, поставленной в очередь до
-     * обновления. Тогда заводим пространство здесь: остаться без него дашборд
-     * не должен, иначе открыть его будет негде.
-     */
     private function adopt(Dashboard $dashboard): Workspace
     {
         $source = $dashboard->resolveDataSource(['type']);

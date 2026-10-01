@@ -27,6 +27,53 @@ const props = defineProps({
 const chartRef = ref(null)
 let chart = null
 
+/** Насколько один ряд должен быть мельче другого, чтобы уйти на свою ось. */
+const AXIS_SCALE_RATIO = 8
+
+function seriesMax(item) {
+    const values = Array.isArray(item?.data) ? item.data.map(Number).filter(Number.isFinite) : []
+    return values.length ? Math.max(...values.map(Math.abs)) : 0
+}
+
+/**
+ * Несколько рядов на одной оси ломаются, когда их масштаб отличается на
+ * порядки: «выручка» тянет ось под свой максимум, и «количество броней»
+ * рядом с ней превращается в плоскую линию у нуля. Модель заранее это не
+ * предвидит (у неё нет понятия оси, только числа), поэтому решаем по самим
+ * данным — так же, как Combo.vue уже уводит line-ряд на правую ось.
+ */
+function buildYAxis(series) {
+    const shared = { labels: { padding: 4 } }
+
+    if (series.length < 2) return shared
+
+    const maxes = series.map(seriesMax)
+    const overallMax = Math.max(0, ...maxes)
+
+    if (overallMax === 0) return shared
+
+    const isSecondary = maxes.map((max) => max > 0 && max * AXIS_SCALE_RATIO < overallMax)
+
+    // Раздельные оси нужны только когда масштаб реально разошёлся: если все
+    // ряды крупные (или все мелкие), общая ось их не портит.
+    if (!isSecondary.includes(true) || isSecondary.every(Boolean)) return shared
+
+    const shownForBucket = { primary: false, secondary: false }
+
+    return series.map((item, index) => {
+        const bucket = isSecondary[index] ? "secondary" : "primary"
+        const isFirstOfBucket = !shownForBucket[bucket]
+        shownForBucket[bucket] = true
+
+        return {
+            seriesName: item.name,
+            opposite: isSecondary[index],
+            show: isFirstOfBucket,
+            labels: { padding: 4 },
+        }
+    })
+}
+
 const renderChart = async () => {
     await nextTick()
     if (!chartRef.value) return
@@ -64,7 +111,7 @@ const renderChart = async () => {
             : { opacity: 1 },
         series: props.series,
         labels: props.labels.map(String),
-        tooltip: { theme: "dark" },
+        tooltip: { theme: "dark", shared: true, intersect: false },
         grid: {
             padding: { top: -20, right: 0, left: -4, bottom: -4 },
             strokeDashArray: 4,
@@ -75,9 +122,7 @@ const renderChart = async () => {
             tooltip: { enabled: false },
             axisBorder: { show: false },
         },
-        yaxis: {
-            labels: { padding: 4 },
-        },
+        yaxis: buildYAxis(props.series),
         colors: colorsFor(props.options),
         legend: {
             show: props.series.length > 1,

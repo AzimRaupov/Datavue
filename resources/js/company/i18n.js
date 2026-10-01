@@ -989,6 +989,9 @@ const messages = {
                     username_label: 'Пользователь',
                     password_label: 'Пароль',
                     db_check_notice: 'Подключение проверяется сразу — источник сохранится, только если база действительно отвечает.',
+                    mode_connect: 'Подключиться к серверу',
+                    mode_upload: 'Загрузить .sql дамп',
+                    sql_dump_hint: 'Дамп импортируется на сервере командой mysql — годится и для больших файлов, память браузера и PHP не расходуется.',
                 },
             },
             buttons: {
@@ -2167,6 +2170,9 @@ const messages = {
                     username_label: 'Username',
                     password_label: 'Password',
                     db_check_notice: 'The connection is verified immediately — the source will only be saved if the database actually responds.',
+                    mode_connect: 'Connect to a server',
+                    mode_upload: 'Upload a .sql dump',
+                    sql_dump_hint: 'The dump is imported on the server via the mysql command — works for large files too, no browser or PHP memory is used.',
                 },
             },
             buttons: {
@@ -3344,6 +3350,9 @@ const messages = {
                     username_label: 'Корбар',
                     password_label: 'Парол',
                     db_check_notice: 'Пайваст дарҳол тафтиш карда мешавад — манбаъ танҳо дар сурати ҷавобгӯии воқеии пойгоҳи додаҳо захира мешавад.',
+                    mode_connect: 'Пайваст шудан ба сервер',
+                    mode_upload: 'Боркунии дампи .sql',
+                    sql_dump_hint: 'Дамп дар сервер бо фармони mysql ворид карда мешавад — барои файлҳои калон низ мувофиқ аст, хотираи браузер ва PHP сарф намешавад.',
                 },
             },
             buttons: {

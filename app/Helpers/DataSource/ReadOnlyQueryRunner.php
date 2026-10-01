@@ -5,23 +5,10 @@ namespace App\Helpers\DataSource;
 use RuntimeException;
 use Throwable;
 
-/**
- * Выполняет ТОЛЬКО читающие запросы, которые сформировал AI-агент чата.
- *
- * Агент отвечает на вопросы пользователя о его данных, поэтому ему нужен доступ
- * к источнику — но исключительно на чтение и с жёстким ограничением объёма
- * результата, чтобы ответ модели не мог ничего изменить в базе клиента
- * и не утащил в промпт таблицу на миллион строк.
- */
 class ReadOnlyQueryRunner
 {
     public const MAX_ROWS = 200;
 
-    /**
-     * Ключевые слова, которых не должно быть в запросе от агента.
-     * Проверяем по границам слов, чтобы не ловить ложные срабатывания
-     * на именах колонок вроде "updated_at" или "created_by".
-     */
     private const FORBIDDEN_KEYWORDS = [
         'insert', 'update', 'delete', 'drop', 'alter', 'create', 'truncate',
         'replace', 'grant', 'revoke', 'attach', 'detach', 'copy', 'export',
@@ -34,9 +21,6 @@ class ReadOnlyQueryRunner
     ) {
     }
 
-    /**
-     * @return array{ok: bool, rows?: array, row_count?: int, truncated?: bool, error?: string}
-     */
     public function run(string $sql): array
     {
         try {
@@ -48,8 +32,7 @@ class ReadOnlyQueryRunner
         try {
             $rows = $this->router->query($safeSql);
         } catch (Throwable $e) {
-            // Ошибку отдаём агенту текстом — он сможет исправить запрос
-            // и попробовать ещё раз, вместо того чтобы молча выдумать ответ.
+
             return ['ok' => false, 'error' => $e->getMessage()];
         }
 
@@ -64,13 +47,10 @@ class ReadOnlyQueryRunner
         ];
     }
 
-    /**
-     * Пропускает только одиночный SELECT/WITH и навешивает LIMIT.
-     */
     private function sanitize(string $sql): string
     {
         $clean = trim($sql);
-        // Срезаем комментарии, чтобы через них нельзя было спрятать вторую инструкцию.
+
         $clean = preg_replace('/--[^\n]*/', ' ', $clean);
         $clean = preg_replace('/\/\*.*?\*\//s', ' ', $clean);
         $clean = trim($clean);
@@ -94,7 +74,6 @@ class ReadOnlyQueryRunner
             }
         }
 
-        // Если агент не ограничил выборку сам — ограничиваем за него.
         if (!preg_match('/\blimit\s+\d+/i', $clean)) {
             $clean .= ' LIMIT '.self::MAX_ROWS;
         }

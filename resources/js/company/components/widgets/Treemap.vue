@@ -9,7 +9,7 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from "vue"
 import ApexCharts from "apexcharts"
-import { colorsFor } from "./palette.js"
+import { colorsFor, resolveThemeColors } from "./palette.js"
 
 /**
  * Семейство "treemap": доли категорий площадью блоков.
@@ -58,7 +58,7 @@ const renderChart = async () => {
         series: props.series,
         tooltip: { theme: "dark" },
         legend: { show: false },
-        colors: colorsFor(props.options),
+        colors: resolveThemeColors(colorsFor(props.options)),
     })
 
     chart.render()

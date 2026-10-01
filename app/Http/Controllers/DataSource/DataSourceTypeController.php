@@ -7,13 +7,7 @@ use App\Models\DataSourceType;
 
 class DataSourceTypeController extends Controller
 {
-    /**
-     * Список провайдеров для мастера подключения.
-     *
-     * Отдаём только активные и в заданном порядке: фронт рисует карточки
-     * выбора прямо по этому ответу и ничего не знает про конкретные
-     * провайдеры — форма выбирается по полю kind.
-     */
+
     public function index()
     {
         $types = DataSourceType::query()

@@ -24,12 +24,8 @@ class DatabaseSeeder extends Seeder
 {
     use WithoutModelEvents;
 
-    /**
-     * Seed the application's database.
-     */
     public function run(): void
     {
-        // User::factory(10)->create();
 
         $this->call([
             RolePermissionSeeder::class,
@@ -40,7 +36,6 @@ class DatabaseSeeder extends Seeder
             DashboardStatusesSeeder::class,
             FilersSeeder::class,
 
-            // Каталог виджетов: одно семейство = один сидер, типы внутри него.
             MiniCountersSeeder::class,
             BarChartSeeder::class,
             LineChartSeeder::class,

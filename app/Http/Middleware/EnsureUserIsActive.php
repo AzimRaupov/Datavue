@@ -6,10 +6,6 @@ use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
-/**
- * Отключённый администратором сотрудник не должен пользоваться API даже по
- * ранее выданному токену — проверяем флаг на каждом запросе.
- */
 class EnsureUserIsActive
 {
     public function handle(Request $request, Closure $next): Response

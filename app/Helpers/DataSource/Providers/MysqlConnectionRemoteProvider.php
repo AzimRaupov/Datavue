@@ -4,12 +4,6 @@ namespace App\Helpers\DataSource\Providers;
 
 use Illuminate\Support\Facades\DB;
 
-/**
- * Источник данных MySQL.
- *
- * Сборка схемы и определение связей живут в AbstractSqlConnectionProvider —
- * здесь остаётся только то, чем MySQL отличается от других диалектов.
- */
 class MysqlConnectionRemoteProvider extends AbstractSqlConnectionProvider
 {
     public string $host;
@@ -120,12 +114,6 @@ class MysqlConnectionRemoteProvider extends AbstractSqlConnectionProvider
             ->toArray();
     }
 
-    /**
-     * Создаёт базу данных, если её ещё нет.
-     *
-     * Использует "сырой" PDO-коннект без указания database, т.к. Laravel-соединение
-     * требует, чтобы база уже существовала — иначе будет "Unknown database".
-     */
     public function createDatabaseIfNotExists(): bool
     {
         try {
@@ -150,8 +138,6 @@ class MysqlConnectionRemoteProvider extends AbstractSqlConnectionProvider
 
             $pdo = null;
 
-            // Сбрасываем закешированное соединение, чтобы следующий connection()
-            // подключился уже к существующей базе.
             DB::purge('remote_database');
 
             return true;

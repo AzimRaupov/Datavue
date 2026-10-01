@@ -6,13 +6,6 @@ use App\Helpers\Ai\AiUsage;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 
-/**
- * Расход ИИ компанией.
- *
- * До появления этого раздела расход был не виден вообще: токены писались
- * в сообщения, но нигде не суммировались, и один сотрудник мог за вечер
- * сжечь любой бюджет незаметно.
- */
 class UsageController extends Controller
 {
     public function show(Request $request)
@@ -22,14 +15,10 @@ class UsageController extends Controller
         );
     }
 
-    /**
-     * Месячный потолок расхода. Менять может только тот, кто управляет
-     * компанией, — это финансовое решение, а не пользовательская настройка.
-     */
     public function update(Request $request)
     {
         $data = $request->validate([
-            // null — снять ограничение.
+
             'ai_token_limit' => 'present|nullable|integer|min:0',
         ]);
 

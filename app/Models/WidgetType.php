@@ -32,9 +32,6 @@ class WidgetType extends Model
         return $this->belongsTo(Widget::class);
     }
 
-    /**
-     * Форма данных для этого типа: своя, если задана, иначе — форма семейства.
-     */
     public function effectiveScheme(): ?string
     {
         return $this->scheme ?: $this->widget?->scheme;

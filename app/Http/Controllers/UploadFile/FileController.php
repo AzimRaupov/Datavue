@@ -17,7 +17,7 @@ class FileController extends Controller
             if ($file instanceof UploadedFile) {
                 $paths[] = $this->uploadFile($file);
             } else {
-                // Если пришел массив файлов (мультизагрузка)
+
                 foreach ($file as $f) {
                     if ($f instanceof UploadedFile) {
                         $paths[] = $this->uploadFile($f);
@@ -29,16 +29,12 @@ class FileController extends Controller
         return response()->json($paths);
     }
 
-    /**
-     * Хелпер для сохранения файла с его оригинальным расширением
-     */
     private function uploadFile(UploadedFile $file): string
     {
-        // Генерируем уникальное имя, но берем родное расширение (например, csv)
+
         $extension = $file->getClientOriginalExtension();
         $filename = Str::random(40) . '.' . $extension;
 
-        // Используем storeAs вместо store
         return $file->storeAs('uploads', $filename, 'company');
     }
 }

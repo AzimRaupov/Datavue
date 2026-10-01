@@ -6,10 +6,6 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Str;
 
-/**
- * Одна строка — одна проверка алерта. Пишется всегда, включая ошибку:
- * иначе сломанная проверка выглядела бы как молчаливое бездействие.
- */
 class AlertCheckerHistory extends Model
 {
     protected $fillable = [
@@ -45,10 +41,8 @@ class AlertCheckerHistory extends Model
         'csv_row_count' => 'integer',
     ];
 
-    /** Путь на диске наружу не отдаётся — только по нему знают, что скачивать. */
     protected $hidden = ['csv_path'];
 
-    /** Готовая ссылка — фронту незачем знать токен и собирать её самому. */
     protected $appends = ['csv_url'];
 
     public const STATUS_OK = 'ok';
@@ -68,10 +62,6 @@ class AlertCheckerHistory extends Model
         return Str::random(48);
     }
 
-    /**
-     * Публичная ссылка на CSV этой проверки — как у выгрузок чата: без
-     * файла (csv_path пуст, например у проверки с ошибкой) ссылки нет.
-     */
     public function getCsvUrlAttribute(): ?string
     {
         return $this->csv_token ? route('alert-history.csv', ['token' => $this->csv_token]) : null;
