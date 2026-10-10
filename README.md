@@ -56,7 +56,7 @@ Datavue — платформа для генерации BI-дашбордов �
 - PHP >= 8.3, Composer
 - Node.js + npm
 - MySQL (или иной источник для очередей/сессий/кэша — по умолчанию используется MySQL)
-- Python 3 + виртуальное окружение с `pandas`, `duckdb`, `mysql-connector-python` (Python-раннер по умолчанию ищет `venv/bin/python` в корне проекта, иначе — `python3` в `PATH`)
+- Python 3 + виртуальное окружение с зависимостями из `requirements.txt` (pandas, duckdb, драйверы БД, openpyxl/reportlab/python-docx для выгрузок, scikit-learn для классификатора намерений; Python-раннер по умолчанию ищет `venv/bin/python` в корне проекта, иначе — `python3` в `PATH`)
 - Ключ OpenAI API
 
 ## Установка
@@ -85,7 +85,7 @@ Python-окружение (если ещё не создано):
 
 ```bash
 python3 -m venv venv
-venv/bin/pip install pandas duckdb mysql-connector-python numpy
+venv/bin/pip install -r requirements.txt
 ```
 
 ## Запуск для разработки
@@ -94,11 +94,7 @@ venv/bin/pip install pandas duckdb mysql-connector-python numpy
 composer run dev
 ```
 
-Эта команда параллельно поднимает: `php artisan serve`, воркер очереди (`queue:listen`), `php artisan pail` (логи) и `npm run dev` (Vite с HMR). Отдельно нужно запустить Reverb-сервер:
-
-```bash
-php artisan reverb:start
-```
+Это `php artisan dev` — TUI с вкладками по процессам: `server` (`artisan serve`), `queue` (`queue:listen`), `logs` (`pail`), `vite` (`npm run dev`), `reverb` (`reverb:start`) и `schedule` (`schedule:work`). Список задаётся в `AppServiceProvider::boot()` через `DevCommands`; посмотреть его можно командой `php artisan dev:list`.
 
 Приложение будет доступно на `http://127.0.0.1:8000`:
 

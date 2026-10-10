@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, nextTick, onUnmounted } from "vue"
+import { ref, watch, onMounted, nextTick, onUnmounted } from "vue"
 import api from '../../api.js';
 import { useEcho } from '../../echo.js';
 import { useI18n } from 'vue-i18n'
@@ -42,6 +42,15 @@ const props = defineProps({
         type: Boolean,
         default: false,
     },
+    /**
+     * Заводит разговор, когда его ещё нет: вызывается с первым сообщением и
+     * возвращает id нового чата. Так дашборд без чата не заводит его заранее,
+     * а получает вместе с первым вопросом агенту.
+     */
+    ensureChat: {
+        type: Function,
+        default: null,
+    },
 });
 
 /**
@@ -52,7 +61,7 @@ const props = defineProps({
  */
 const emit = defineEmits(['dashboard', 'open-dashboard']);
 
-const chatId = props.chatId;
+const chatId = ref(props.chatId);
 const messages = ref([]);
 const chatInput = ref('');
 const loading = ref(false);
@@ -104,9 +113,11 @@ async function getChat() {
 }
 
 async function fetchMessages() {
+    if (!chatId.value) return;
+
     try {
         const response = await api.get('/messages', {
-            params: { chat_id: chatId },
+            params: { chat_id: chatId.value },
         });
         messages.value = response.data || [];
         await nextTick();
@@ -132,8 +143,15 @@ async function sendMessage() {
     loading.value = true;
     error.value = null;
     try {
+        if (!chatId.value) {
+            if (!props.ensureChat) return;
+
+            chatId.value = await props.ensureChat();
+            subscribeToChat();
+        }
+
         const response = await api.post('/messages', {
-            chat_id: chatId,
+            chat_id: chatId.value,
             message: text,
             dashboard_id: dashboardId
         });
@@ -205,31 +223,65 @@ function applyTaskUpdate(payload) {
     nextTick(scrollChatToBottom);
 }
 
+let subscribedChannel = null;
+
+function subscribeToChat() {
+    if (!chatId.value || subscribedChannel) return;
+
+    subscribedChannel = `tasks.${chatId.value}`;
+
+    echo.private(subscribedChannel)
+        .listen('.MessageTasksChanged', (e) => {
+            applyTaskUpdate(e);
+
+            // Длинный ответ агента не помещается в лимит сокета и не был
+            // отправлен целиком — забираем его обычным запросом.
+            if (e.answer_truncated) {
+                fetchMessages();
+            }
+
+            if (e.dashboard_id) {
+                emit('dashboard', e.dashboard_id);
+            }
+        });
+}
+
+function unsubscribeFromChat() {
+    if (subscribedChannel) {
+        echo.leave(subscribedChannel);
+        subscribedChannel = null;
+    }
+}
+
 onMounted(async () => {
     await getChat();
 
-    if (chatId) {
-        echo.private(`tasks.${chatId}`)
-            .listen('.MessageTasksChanged', (e) => {
-                applyTaskUpdate(e);
-
-                // Длинный ответ агента не помещается в лимит сокета и не был
-                // отправлен целиком — забираем его обычным запросом.
-                if (e.answer_truncated) {
-                    fetchMessages();
-                }
-
-                if (e.dashboard_id) {
-                    emit('dashboard', e.dashboard_id);
-                }
-            });
-    }
+    subscribeToChat();
 });
 
-onUnmounted(() => {
-    if (chatId) {
-        echo.leave(`tasks.${chatId}`);
+onUnmounted(unsubscribeFromChat);
+
+// Рабочее пространство переключает дашборды, не пересоздавая панель: у каждого
+// дашборда свой разговор (или его ещё нет), поэтому лента следует за chatId.
+watch(() => props.chatId, async (id) => {
+    if (String(id ?? '') === String(chatId.value ?? '')) return;
+
+    // Разговор только что завёлся с первым сообщением (sendMessage) — лента уже
+    // показывает его, перечитывать её нельзя: она сотрёт отправленное.
+    if (loading.value) {
+        chatId.value = id;
+        subscribeToChat();
+
+        return;
     }
+
+    unsubscribeFromChat();
+    chatId.value = id;
+    messages.value = [];
+    error.value = null;
+
+    await fetchMessages();
+    subscribeToChat();
 });
 </script>
 <template>

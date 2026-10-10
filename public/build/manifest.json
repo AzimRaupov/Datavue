@@ -126,7 +126,7 @@
     ]
   },
   "resources/js/company/app.js": {
-    "file": "assets/app-mQ9QPeI3.js",
+    "file": "assets/app-CtUIqMLB.js",
     "name": "app",
     "src": "resources/js/company/app.js",
     "isEntry": true,
@@ -136,11 +136,11 @@
       "_tabler-theme-DKEt2_th.js"
     ],
     "css": [
-      "assets/app-B8eQFCcO.css"
+      "assets/app-DMYFGitd.css"
     ]
   },
   "resources/js/viewer/app.js": {
-    "file": "assets/app-CPkse5cO.js",
+    "file": "assets/app-Ch_DDkh0.js",
     "name": "app",
     "src": "resources/js/viewer/app.js",
     "isEntry": true,

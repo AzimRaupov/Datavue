@@ -39,7 +39,7 @@ Route::middleware(['auth:sanctum', 'active'])->prefix('company')->group(function
     Route::delete('chats/{chat}', [ChatController::class, 'destroy'])->middleware('permission:delete chats');
 
     Route::get('workspaces', [WorkspaceController::class, 'index'])
-        ->middleware('permission:view dashboards');
+        ->middleware('permission:view dashboards|view chats');
     Route::post('workspaces', [WorkspaceController::class, 'store'])
         ->middleware('permission:create dashboards');
     Route::get('workspaces/by-dashboard/{dashboard}', [WorkspaceController::class, 'byDashboard'])
@@ -54,6 +54,8 @@ Route::middleware(['auth:sanctum', 'active'])->prefix('company')->group(function
         ->middleware('permission:delete dashboards');
 
     Route::post('workspaces/{workspace}/chat', [WorkspaceController::class, 'attachChat'])
+        ->middleware('permission:create chats');
+    Route::post('workspaces/{workspace}/chats', [WorkspaceController::class, 'storeChat'])
         ->middleware('permission:create chats');
 
     Route::get('workspaces/{workspace}/alerts', [AlertController::class, 'index'])

@@ -16,8 +16,8 @@ class StoreRequest extends FormRequest
     public function rules(): array
     {
         return [
-
-            'data_source_id' => 'required|integer',
+            'workspace_id' => 'required_without:data_source_id|nullable|integer',
+            'data_source_id' => 'required_without:workspace_id|nullable|integer',
             'title' => 'nullable|string|max:255',
         ];
     }

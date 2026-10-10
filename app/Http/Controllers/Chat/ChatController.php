@@ -70,20 +70,37 @@ class ChatController extends Controller
     {
         $user = $request->user();
 
+        $workspace = null;
+
+        if ($request->filled('workspace_id')) {
+            $workspace = Workspace::query()
+                ->ofCompany($user->company_id)
+                ->find($request->input('workspace_id'));
+
+            if (!$workspace) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Рабочее пространство не найдено.',
+                ], 404);
+            }
+        }
+
         $dataSource = DataSource::query()
             ->ofCompany($user->company_id)
-            ->find($request->input('data_source_id'));
+            ->find($workspace ? $workspace->data_source_id : $request->input('data_source_id'));
 
         if (!$dataSource) {
             return response()->json([
                 'success' => false,
-                'message' => 'Источник данных не найден.',
-            ], 404);
+                'message' => $workspace
+                    ? 'У пространства не задан источник данных — агенту не по чему считать.'
+                    : 'Источник данных не найден.',
+            ], $workspace ? 422 : 404);
         }
 
         $title = $request->input('title') ?: 'Новый чат — ' . $dataSource->name;
 
-        $workspace = Workspace::query()->create([
+        $workspace ??= Workspace::query()->create([
             'company_id' => $user->company_id,
             'created_by' => $user->id,
             'data_source_id' => $dataSource->id,

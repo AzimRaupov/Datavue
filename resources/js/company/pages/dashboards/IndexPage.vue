@@ -18,7 +18,7 @@ const router = useRouter();
 const { t } = useI18n();
 
 const dashboards = ref([]);
-const sources = ref([]);
+const workspaces = ref([]);
 const loading = ref(true);
 const listError = ref(null);
 const search = ref("");
@@ -29,7 +29,6 @@ const permissions = computed(() => currentUser?.permissions ?? []);
 const canCreate = computed(() => permissions.value.includes("create dashboards"));
 const canEdit = computed(() => permissions.value.includes("edit dashboards"));
 const canDelete = computed(() => permissions.value.includes("delete dashboards"));
-const canViewSources = computed(() => permissions.value.includes("view data sources"));
 
 /**
  * Статус дашборда словами. Пока идёт генерация, дашборд открыть можно, но
@@ -90,13 +89,13 @@ async function fetchAll() {
     listError.value = null;
 
     try {
-        const requests = [api.get("/dashboards")];
-        if (canViewSources.value) requests.push(api.get("/data_source"));
-
-        const [dashboardsResponse, sourcesResponse] = await Promise.all(requests);
+        const [dashboardsResponse, workspacesResponse] = await Promise.all([
+            api.get("/dashboards"),
+            api.get("/workspaces"),
+        ]);
 
         dashboards.value = dashboardsResponse.data ?? [];
-        sources.value = sourcesResponse?.data ?? [];
+        workspaces.value = workspacesResponse.data ?? [];
     } catch (err) {
         listError.value = t("dashboardsIndex.load_error");
     } finally {
@@ -111,12 +110,12 @@ let createModal = null;
 const creating = ref(false);
 const createError = ref(null);
 const createErrors = ref({});
-const createForm = reactive({ name: "", description: "", data_source_id: "" });
+const createForm = reactive({ name: "", description: "", workspace_id: "" });
 
 async function openCreateModal() {
     createForm.name = "";
     createForm.description = "";
-    createForm.data_source_id = sources.value.length === 1 ? sources.value[0].id : "";
+    createForm.workspace_id = workspaces.value.length === 1 ? workspaces.value[0].id : "";
     createError.value = null;
     createErrors.value = {};
 
@@ -135,7 +134,7 @@ async function submitCreate() {
         const { data } = await api.post("/dashboards", {
             name: createForm.name,
             description: createForm.description || null,
-            data_source_id: createForm.data_source_id || null,
+            workspace_id: createForm.workspace_id || null,
         });
 
         createModal?.hide();
@@ -375,23 +374,23 @@ onBeforeUnmount(() => {
                             </div>
 
                             <div>
-                                <label class="form-label required">{{ t('dashboardsIndex.data_source_label') }}</label>
-                                <select v-model="createForm.data_source_id" class="form-select"
-                                        :class="{ 'is-invalid': createErrors.data_source_id }"
-                                        :disabled="!sources.length" required>
-                                    <option value="" disabled>{{ t('dashboardsIndex.data_source_placeholder') }}</option>
-                                    <option v-for="source in sources" :key="source.id" :value="source.id">
-                                        {{ source.name }} — {{ source.format_label }}
+                                <label class="form-label required">{{ t('dashboardsIndex.workspace_label') }}</label>
+                                <select v-model="createForm.workspace_id" class="form-select"
+                                        :class="{ 'is-invalid': createErrors.workspace_id }"
+                                        :disabled="!workspaces.length" required>
+                                    <option value="" disabled>{{ t('dashboardsIndex.workspace_placeholder') }}</option>
+                                    <option v-for="workspace in workspaces" :key="workspace.id" :value="workspace.id">
+                                        {{ workspace.name }}<template v-if="workspace.data_source"> — {{ workspace.data_source.name }}</template>
                                     </option>
                                 </select>
-                                <div v-if="createErrors.data_source_id" class="invalid-feedback">
-                                    {{ createErrors.data_source_id[0] }}
+                                <div v-if="createErrors.workspace_id" class="invalid-feedback">
+                                    {{ createErrors.workspace_id[0] }}
                                 </div>
-                                <small v-if="sources.length" class="form-hint">
-                                    {{ t('dashboardsIndex.data_source_hint') }}
+                                <small v-if="workspaces.length" class="form-hint">
+                                    {{ t('dashboardsIndex.workspace_hint') }}
                                 </small>
                                 <small v-else class="form-hint text-danger">
-                                    {{ t('dashboardsIndex.no_sources_hint') }}
+                                    {{ t('dashboardsIndex.no_workspaces_hint') }}
                                 </small>
                             </div>
                         </div>
@@ -401,7 +400,7 @@ onBeforeUnmount(() => {
                                 {{ t('dashboardsIndex.cancel') }}
                             </button>
                             <button type="submit" class="btn btn-primary" :class="{ 'btn-loading': creating }"
-                                    :disabled="creating || !sources.length">
+                                    :disabled="creating || !workspaces.length">
                                 {{ t('dashboardsIndex.create_and_open') }}
                             </button>
                         </div>
