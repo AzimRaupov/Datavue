@@ -16,13 +16,12 @@ import '@tabler/core/js/tabler-theme.js';
 
 
 import '@tabler/core/dist/css/tabler-marketing.css'
+import '../../css/viewer/landing.css'
 const app = createApp(App);
 
 app.use(router);
 app.use(i18n);
 
 window.viewerRouter = router;
-
-console.log('Viewer router routes:', router.getRoutes());
 
 app.mount('#app');
