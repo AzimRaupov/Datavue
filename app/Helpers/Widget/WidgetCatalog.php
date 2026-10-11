@@ -9,8 +9,6 @@ use Illuminate\Support\Collection;
 class WidgetCatalog
 {
 
-    public const CORE_FAMILIES = ['mini-counters', 'bar', 'line', 'table', 'pie'];
-
     private Collection $widgets;
 
     public function __construct(?Collection $widgets = null)
@@ -19,16 +17,6 @@ class WidgetCatalog
             ->where('is_ai_selectable', true)
             ->with('selectableTypes')
             ->get();
-    }
-
-    public function briefJson(): string
-    {
-        $brief = $this->widgets->map(fn (Widget $widget) => [
-            'name' => $widget->name,
-            'purpose' => $this->firstSentence($widget->description),
-        ])->values();
-
-        return json_encode($brief, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
     }
 
     public function compactJson(): string
@@ -45,17 +33,17 @@ class WidgetCatalog
         return json_encode($compact, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
     }
 
-    public function detailedJson(array $familyNames = []): string
+    public function detailedJson(): string
     {
         return json_encode(
-            $this->detailed($familyNames),
+            $this->detailed(),
             JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT
         );
     }
 
-    public function detailed(array $familyNames = []): array
+    public function detailed(): array
     {
-        return $this->select($familyNames)
+        return $this->widgets
             ->map(fn (Widget $widget) => [
                 'name' => $widget->name,
                 'description' => $widget->description,
@@ -75,23 +63,6 @@ class WidgetCatalog
             ])
             ->values()
             ->all();
-    }
-
-    public function select(array $familyNames = []): Collection
-    {
-        $names = collect($familyNames)
-            ->filter(fn ($name) => is_string($name) && $name !== '')
-            ->values();
-
-        if ($names->isEmpty()) {
-            return $this->widgets;
-        }
-
-        $names = $names->merge(self::CORE_FAMILIES)->unique();
-
-        $selected = $this->widgets->filter(fn (Widget $widget) => $names->contains($widget->name));
-
-        return $selected->isEmpty() ? $this->widgets : $selected->values();
     }
 
     public function names(): array
