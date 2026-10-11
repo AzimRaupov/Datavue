@@ -3,7 +3,7 @@ import { ref, computed, onMounted, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import api from "../api.js";
 
-import { familyOf, propsFor, hasData } from "./widgets/registry.js";
+import { familyOf, prepare, hasData } from "./widgets/registry.js";
 
 const props = defineProps({
     widget: {
@@ -71,9 +71,66 @@ const contentHasData = computed(() => hasData(familyName.value, contentWidget.va
 
 const showWidget = computed(() => family.value && isReady.value && contentHasData.value);
 
+// Сервер отдаёт графику данные целиком, но не больше потолка в строках.
+// Если упёрлись в него — это надо сказать, иначе обрезанный график выдаёт
+// себя за полный.
 const isTruncated = computed(() => Boolean(contentMeta.value?.truncated));
 
-const widgetProps = computed(() => propsFor(familyName.value, contentWidget.value, typeOptions.value));
+// С какой категории начинается окно по оси. null — позиция по умолчанию:
+// у времени последние периоды, у обычных категорий первые.
+const axisOffset = ref(null);
+
+const prepared = computed(() => prepare(
+    familyName.value,
+    contentWidget.value,
+    typeOptions.value,
+    { offset: axisOffset.value, otherLabel: t("widgetContainer.other_label") }
+));
+
+const widgetProps = computed(() => prepared.value.props);
+
+const axis = computed(() => prepared.value.axis);
+
+const notice = computed(() => {
+    const info = prepared.value.notice;
+
+    if (!info) return null;
+
+    return t(`widgetContainer.${info.kind}_notice`, {
+        shown: info.shown,
+        total: info.total,
+        other: t("widgetContainer.other_label"),
+    });
+});
+
+function moveAxis(start) {
+    if (!axis.value) return;
+
+    axisOffset.value = Math.max(0, Math.min(start, axis.value.total - axis.value.size));
+}
+
+// Таблица листается, ищется и сортируется на сервере: набор строк может быть
+// больше одной страницы. Параметры живут здесь, а не в таблице, потому что
+// запрос делает контейнер.
+const isTable = computed(() => familyName.value === "table");
+
+const tableQuery = ref({ page: 1, search: "", sort_by: null, sort_dir: "asc" });
+const isPageLoading = ref(false);
+
+const remote = computed(() =>
+    isTable.value && contentMeta.value?.paginated
+        ? { meta: contentMeta.value, loading: isPageLoading.value }
+        : null
+);
+
+// Лишние атрибуты остальным семействам не нужны: они бы попали в разметку.
+const extraProps = computed(() => (remote.value ? { remote: remote.value, onQuery: onTableQuery } : {}));
+
+function onTableQuery(query) {
+    tableQuery.value = { ...tableQuery.value, ...query };
+
+    return getWidgetContent({ silent: true });
+}
 
 /**
  * Высоты столбцов в заглушке — фиксированные, а не случайные.
@@ -83,7 +140,36 @@ const widgetProps = computed(() => propsFor(familyName.value, contentWidget.valu
  */
 const PLACEHOLDER_BARS = [45, 70, 35, 85, 55, 95, 40, 65];
 
-async function getWidgetContent() {
+// Номер последнего запроса. Ответы приходят не по порядку (перелистнули
+// страницу, пока грузилась прошлая), и устаревший не должен затирать свежий.
+let requestSeq = 0;
+
+function requestBody() {
+    const body = { chat_id: props.chatId };
+
+    if (!isTable.value) return body;
+
+    const query = tableQuery.value;
+
+    body.page = query.page;
+    body.per_page = typeOptions.value.compact === true ? 12 : 5;
+
+    if (query.search) body.search = query.search;
+
+    if (query.sort_by) {
+        body.sort_by = query.sort_by;
+        body.sort_dir = query.sort_dir;
+    }
+
+    return body;
+}
+
+/**
+ * silent — перезапрос страницы таблицы: прежние строки остаются на экране
+ * (с затемнением), а не заменяются заглушкой, иначе таблица пересоздалась
+ * бы и потеряла введённый поиск.
+ */
+async function getWidgetContent({ silent = false } = {}) {
     if (!widget.value?.id) return;
 
     // Виджет, который не удалось сгенерировать, не запрашиваем вовсе —
@@ -94,15 +180,25 @@ async function getWidgetContent() {
         return;
     }
 
+    const seq = ++requestSeq;
+
     try {
-        isLoading.value = true;
-        contentWidget.value = null;
-        contentMeta.value = null;
+        if (silent) {
+            isPageLoading.value = true;
+        } else {
+            isLoading.value = true;
+            contentWidget.value = null;
+            contentMeta.value = null;
+            axisOffset.value = null;
+            tableQuery.value = { page: 1, search: "", sort_by: null, sort_dir: "asc" };
+        }
 
         const response = await api.post(
             "/get-widget-content/" + widget.value.id,
-            { chat_id: props.chatId }
+            requestBody()
         );
+
+        if (seq !== requestSeq) return;
 
         // Два формата ответа — по числу способов посчитать виджет.
         //
@@ -131,13 +227,22 @@ async function getWidgetContent() {
             : null;
 
     } catch (err) {
+        if (seq !== requestSeq) return;
+
+        console.error("Ошибка загрузки данных виджета:", err);
+
+        // Не удалось перелистнуть — остаются прежние строки, а не пропадает
+        // вся таблица.
+        if (silent) return;
+
         // Виджет не смог посчитаться — не показываем его вовсе, а не заглушку
         // или сообщение об ошибке.
         emit("unavailable", widget.value.id);
-
-        console.error("Ошибка загрузки данных виджета:", err);
     } finally {
-        isLoading.value = false;
+        if (seq === requestSeq) {
+            isLoading.value = false;
+            isPageLoading.value = false;
+        }
     }
 }
 
@@ -167,13 +272,63 @@ onMounted(async () => {
 <template>
     <div v-if="family">
         <template v-if="showWidget">
-            <!-- Данные урезаны до потолка строк: показываем то, что поместилось, и предупреждаем -->
-
-
             <component
                 :is="family.component"
-                v-bind="widgetProps"
+                v-bind="{ ...widgetProps, ...extraProps }"
             />
+
+            <!-- Ось длиннее окна: листаем, а не обрезаем -->
+            <div v-if="axis" class="widget-pager mt-2 d-print-none">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="btn-group btn-group-sm flex-shrink-0">
+                        <button type="button" class="btn px-3 py-1 fs-3 lh-1" :disabled="axis.start === 0"
+                                :aria-label="t('widgetContainer.axis_first')"
+                                :title="t('widgetContainer.axis_first')"
+                                @click="moveAxis(0)">«</button>
+                        <button type="button" class="btn px-3 py-1 fs-3 lh-1" :disabled="axis.start === 0"
+                                :aria-label="t('widgetContainer.axis_prev')"
+                                :title="t('widgetContainer.axis_prev')"
+                                @click="moveAxis(axis.start - axis.size)">‹</button>
+                    </div>
+
+                    <input
+                        type="range"
+                        class="form-range flex-fill"
+                        min="0"
+                        :max="axis.total - axis.size"
+                        :value="axis.start"
+                        :aria-label="t('widgetContainer.axis_slider')"
+                        @input="moveAxis(Number($event.target.value))"
+                    />
+
+                    <div class="btn-group btn-group-sm flex-shrink-0">
+                        <button type="button" class="btn px-3 py-1 fs-3 lh-1" :disabled="axis.end >= axis.total"
+                                :aria-label="t('widgetContainer.axis_next')"
+                                :title="t('widgetContainer.axis_next')"
+                                @click="moveAxis(axis.start + axis.size)">›</button>
+                        <button type="button" class="btn px-3 py-1 fs-3 lh-1" :disabled="axis.end >= axis.total"
+                                :aria-label="t('widgetContainer.axis_last')"
+                                :title="t('widgetContainer.axis_last')"
+                                @click="moveAxis(axis.total)">»</button>
+                    </div>
+                </div>
+
+                <div class="text-secondary small text-center mt-1">
+                    {{ t('widgetContainer.axis_range', {
+                        from: axis.start + 1,
+                        to: axis.end,
+                        total: axis.total,
+                    }) }}
+                    · {{ axis.firstLabel }} – {{ axis.lastLabel }}
+                </div>
+            </div>
+
+            <div v-if="notice" class="text-secondary small mt-2">{{ notice }}</div>
+
+            <!-- Данные урезаны до потолка строк: показываем то, что поместилось, и предупреждаем -->
+            <div v-if="isTruncated" class="alert alert-warning py-2 mt-2 mb-0 small" role="status">
+                {{ t('widgetContainer.truncated_notice') }}
+            </div>
         </template>
 
         <!-- Плейсхолдеры на время генерации: форма подсказывает, что появится -->

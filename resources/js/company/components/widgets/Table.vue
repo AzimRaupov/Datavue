@@ -25,7 +25,7 @@
             </div>
         </div>
 
-        <div class="table-responsive">
+        <div class="table-responsive" :class="{ 'opacity-50': isLoading }" :aria-busy="isLoading">
             <table
                 class="table table-vcenter card-table"
                 :class="{ 'table-striped': isStriped, 'table-sm': isCompact }"
@@ -51,7 +51,7 @@
                         {{ cell }}
                     </td>
                 </tr>
-                <tr v-if="filteredRows.length === 0">
+                <tr v-if="totalRows === 0">
                     <td :colspan="tableData.headers.length || 1" class="text-center text-secondary py-4">
                         {{ t('widgets.table.no_results') }}
                     </td>
@@ -63,12 +63,12 @@
         <div class="card-footer d-flex flex-wrap align-items-center gap-2">
             <p class="m-0 text-secondary">
                 {{ t('widgets.table.shown_prefix') }} <span class="fw-bold">{{ shownStart }}-{{ shownEnd }}</span>
-                {{ t('widgets.table.shown_of') }} <span class="fw-bold">{{ filteredRows.length }}</span>
+                {{ t('widgets.table.shown_of') }} <span class="fw-bold">{{ totalRows }}</span>
             </p>
 
             <ul class="pagination pagination-sm m-0 ms-auto flex-nowrap overflow-x-auto">
-                <li class="page-item" :class="{ disabled: currentPage === 1 }">
-                    <button class="page-link" :disabled="currentPage === 1" @click="currentPage--">
+                <li class="page-item" :class="{ disabled: currentPage === 1 || isLoading }">
+                    <button class="page-link" :disabled="currentPage === 1 || isLoading" @click="goTo(currentPage - 1)">
                         {{ t('widgets.table.back') }}
                     </button>
                 </li>
@@ -78,10 +78,10 @@
                     class="page-item"
                     :class="{ active: currentPage === page }"
                 >
-                    <button class="page-link" @click="currentPage = page">{{ page }}</button>
+                    <button class="page-link" :disabled="isLoading" @click="goTo(page)">{{ page }}</button>
                 </li>
-                <li class="page-item" :class="{ disabled: currentPage >= totalPages }">
-                    <button class="page-link" :disabled="currentPage >= totalPages" @click="currentPage++">
+                <li class="page-item" :class="{ disabled: currentPage >= totalPages || isLoading }">
+                    <button class="page-link" :disabled="currentPage >= totalPages || isLoading" @click="goTo(currentPage + 1)">
                         {{ t('widgets.table.next') }}
                     </button>
                 </li>
@@ -91,7 +91,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from "vue"
+import { ref, computed, watch, onBeforeUnmount } from "vue"
 import { useI18n } from "vue-i18n"
 
 const { t } = useI18n()
@@ -109,19 +109,38 @@ const props = defineProps({
         type: Object,
         default: () => ({})
     },
+
+    // Серверный режим: { meta, loading }. Таблица может быть куда больше
+    // одной страницы, поэтому страницы, поиск и сортировка живут на сервере
+    // и действуют на весь набор, а не на уже пришедшие строки. Без remote
+    // (галерея виджетов) таблица листает и ищет сама.
+    remote: {
+        type: Object,
+        default: null
+    },
 })
+
+// Родитель перезапрашивает страницу с новыми параметрами.
+const emit = defineEmits(["query"])
 
 const isStriped = computed(() => props.options.striped === true)
 const isCompact = computed(() => props.options.compact === true)
 // Отступы и размер шрифта в ячейках задаёт сам Tabler через .table-sm —
 // считать их вручную больше не нужно.
 
+const isRemote = computed(() => Boolean(props.remote?.meta?.paginated))
+const isLoading = computed(() => Boolean(props.remote?.loading))
+
 // Плотный вид берут, когда строк много — показываем их больше за страницу.
-const ITEMS_PER_PAGE = computed(() => (isCompact.value ? 12 : 5))
-const currentPage = ref(1)
+const ITEMS_PER_PAGE = computed(() =>
+    isRemote.value ? props.remote.meta.per_page : (isCompact.value ? 12 : 5)
+)
+const localPage = ref(1)
 const searchQuery = ref("")
 const sortColumn = ref(null)
 const sortOrder = ref("asc") // 'asc' или 'desc'
+
+const currentPage = computed(() => (isRemote.value ? props.remote.meta.page : localPage.value))
 
 // Безопасное извлечение схемы данных (в зависимости от того, обернута она бэкендом или нет)
 const tableData = computed(() => {
@@ -131,13 +150,36 @@ const tableData = computed(() => {
     return props.table?.table || { headers: [], rows: [] };
 })
 
-// Сброс страницы на 1 при изменении поискового запроса
+function requestPage(page) {
+    emit("query", {
+        page,
+        search: searchQuery.value.trim(),
+        sort_by: sortColumn.value === null ? null : tableData.value.headers[sortColumn.value],
+        sort_dir: sortOrder.value,
+    })
+}
+
+// Поиск на сервере ждёт паузы в наборе — запрос на каждую букву не нужен.
+let searchTimer = null
+
 watch(searchQuery, () => {
-    currentPage.value = 1
+    if (isRemote.value) {
+        clearTimeout(searchTimer)
+        searchTimer = setTimeout(() => requestPage(1), 350)
+
+        return
+    }
+
+    // Сброс страницы на 1 при изменении поискового запроса
+    localPage.value = 1
 })
+
+onBeforeUnmount(() => clearTimeout(searchTimer))
 
 // 1. Фильтрация строк по поиску
 const filteredRows = computed(() => {
+    if (isRemote.value) return tableData.value.rows
+
     const query = searchQuery.value.toLowerCase().trim()
     if (!query) return [...tableData.value.rows]
 
@@ -148,6 +190,8 @@ const filteredRows = computed(() => {
 
 // 2. Сортировка отфильтрованных строк
 const sortedRows = computed(() => {
+    if (isRemote.value) return filteredRows.value
+
     const rows = [...filteredRows.value]
     if (sortColumn.value === null) return rows
 
@@ -176,24 +220,38 @@ const sortedRows = computed(() => {
     return rows
 })
 
-// 3. Пагинация (срез данных для текущей страницы)
+// 3. Пагинация (срез данных для текущей страницы). На сервере страница
+// уже пришла целиком.
 const paginatedRows = computed(() => {
+    if (isRemote.value) return sortedRows.value
+
     const start = (currentPage.value - 1) * ITEMS_PER_PAGE.value
     return sortedRows.value.slice(start, start + ITEMS_PER_PAGE.value)
 })
 
+// Сколько строк всего (после поиска) — на сервере его знает только сервер.
+const totalRows = computed(() =>
+    isRemote.value ? (props.remote.meta.total ?? 0) : filteredRows.value.length
+)
+
 // Расчет общего количества страниц
 const totalPages = computed(() => {
-    return Math.max(1, Math.ceil(filteredRows.value.length / ITEMS_PER_PAGE.value))
+    if (isRemote.value) return Math.max(1, props.remote.meta.pages ?? 1)
+
+    return Math.max(1, Math.ceil(totalRows.value / ITEMS_PER_PAGE.value))
 })
 
 // Логика отображения информации о пагинации (Показано X-Y из Z)
 const shownStart = computed(() => {
-    return filteredRows.value.length ? (currentPage.value - 1) * ITEMS_PER_PAGE.value + 1 : 0
+    return totalRows.value ? (currentPage.value - 1) * ITEMS_PER_PAGE.value + 1 : 0
 })
 
 const shownEnd = computed(() => {
-    return Math.min(currentPage.value * ITEMS_PER_PAGE.value, filteredRows.value.length)
+    if (isRemote.value) {
+        return totalRows.value ? shownStart.value - 1 + paginatedRows.value.length : 0
+    }
+
+    return Math.min(currentPage.value * ITEMS_PER_PAGE.value, totalRows.value)
 })
 
 // Массив номеров страниц для отображения кнопок (текущая +- 2 страницы)
@@ -207,6 +265,18 @@ const visiblePages = computed(() => {
     return pages
 })
 
+function goTo(page) {
+    const next = Math.min(Math.max(1, page), totalPages.value)
+
+    if (next === currentPage.value) return
+
+    if (isRemote.value) {
+        requestPage(next)
+    } else {
+        localPage.value = next
+    }
+}
+
 // Обработчик клика по колонке сортировки
 function handleSort(index) {
     if (sortColumn.value === index) {
@@ -215,6 +285,11 @@ function handleSort(index) {
         sortColumn.value = index
         sortOrder.value = 'asc'
     }
-    currentPage.value = 1
+
+    if (isRemote.value) {
+        requestPage(1)
+    } else {
+        localPage.value = 1
+    }
 }
 </script>

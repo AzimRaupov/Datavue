@@ -273,6 +273,15 @@ const messages = {
             unknown_widget_type: 'Неизвестный тип виджета: {type}',
             load_error: 'Не удалось загрузить данные виджета.',
             truncated_notice: 'Показана часть данных — набор слишком большой для одного графика.',
+            other_label: 'Прочее',
+            folded_notice: 'Показаны {shown} крупнейших долей из {total}, остальные объединены в «{other}».',
+            capped_notice: 'Показаны первые {shown} из {total}.',
+            axis_first: 'В начало',
+            axis_prev: 'Назад',
+            axis_next: 'Вперёд',
+            axis_last: 'В конец',
+            axis_slider: 'Прокрутка по оси',
+            axis_range: 'Показано {from}–{to} из {total}',
         },
 
         sourcesIndex: {
@@ -1468,6 +1477,15 @@ const messages = {
             unknown_widget_type: 'Unknown widget type: {type}',
             load_error: 'Failed to load widget data.',
             truncated_notice: 'Showing partial data — the full set is too large for one chart.',
+            other_label: 'Other',
+            folded_notice: 'Showing the {shown} largest of {total}; the rest is grouped into “{other}”.',
+            capped_notice: 'Showing the first {shown} of {total}.',
+            axis_first: 'To the start',
+            axis_prev: 'Previous',
+            axis_next: 'Next',
+            axis_last: 'To the end',
+            axis_slider: 'Scroll along the axis',
+            axis_range: 'Showing {from}–{to} of {total}',
         },
 
         sourcesIndex: {
@@ -2662,6 +2680,15 @@ const messages = {
             unknown_widget_type: 'Навъи номаълуми виҷет: {type}',
             load_error: 'Маълумоти виҷетро бор карда нашуд.',
             truncated_notice: 'Қисми маълумот нишон дода мешавад — маҷмӯа барои як график калон аст.',
+            other_label: 'Дигар',
+            folded_notice: 'Аз {total} то {shown} ҳиссаи калонтарин нишон дода шуд, боқимонда дар «{other}» ҷамъ шудааст.',
+            capped_notice: 'Аввалин {shown} аз {total} нишон дода шуд.',
+            axis_first: 'Ба оғоз',
+            axis_prev: 'Қафо',
+            axis_next: 'Пеш',
+            axis_last: 'Ба охир',
+            axis_slider: 'Ҳаракат бо меҳвар',
+            axis_range: 'Нишон дода шуд {from}–{to} аз {total}',
         },
 
         sourcesIndex: {
