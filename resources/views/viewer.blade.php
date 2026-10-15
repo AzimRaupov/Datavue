@@ -10,6 +10,10 @@
 
     @fonts
 
+    <script>
+        window.__DATAVUE__ = @json(['showCompanies' => config('app.show_companies')]);
+    </script>
+
     @vite(['resources/css/viewer/app.css', 'resources/js/viewer/app.js'])
 
 </head>

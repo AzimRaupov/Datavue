@@ -4,6 +4,10 @@
  */
 
 const ru = {
+    clients: {
+        title: 'Нам доверяют',
+    },
+
     hero: {
         badge: 'ИИ-аналитика',
         title: 'Дашборды и алерты из ваших данных',
@@ -98,6 +102,10 @@ const ru = {
 }
 
 const en = {
+    clients: {
+        title: 'Trusted by',
+    },
+
     hero: {
         badge: 'AI analytics',
         title: 'Dashboards and alerts from your data',
@@ -192,6 +200,10 @@ const en = {
 }
 
 const tj = {
+    clients: {
+        title: 'Ба мо боварӣ доранд',
+    },
+
     hero: {
         badge: 'Таҳлили ИИ',
         title: 'Дашбордҳо ва огоҳиномаҳо аз маълумоти шумо',

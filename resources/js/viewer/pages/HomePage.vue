@@ -10,11 +10,25 @@ import MiniShowcase from '../components/landing/MiniShowcase.vue'
 
 const { t } = useI18n()
 
+// Флаг приходит из .env (SHOW_COMPANIES) через viewer.blade.php.
+const showCompanies = window.__DATAVUE__?.showCompanies ?? true
+
 const sources = [
     { key: 'db', icon: 'database', color: 'blue', items: ['MySQL', 'PostgreSQL', 'SQLite', 'DuckDB'] },
     { key: 'files', icon: 'spreadsheet', color: 'green', items: ['Excel', 'CSV'] },
     { key: 'sheets', icon: 'table', color: 'teal', items: ['Google Sheets'] },
     { key: 'erp', icon: 'plug', color: 'orange', items: ['OData'] },
+]
+
+const clients = [
+    { file: 'bg-maorif.png', name: 'Маорифи ноҳияи Бобоҷон Ғафуров', wide: true },
+
+    { file: 'fatir.jpg', name: 'Фатир' },
+    { file: 'asr.png', name: 'ASR Construction Company', zoom: true },
+    { file: 'kompazit.png', name: 'Kompazit Group', zoom: true },
+
+    { file: 'khimus.jpg', name: 'Химус' },
+    { file: 'sun_light.png', name: 'Sun Light', zoom: true },
 ]
 
 const flow = [
@@ -73,6 +87,27 @@ const security = [
                 </div>
             </div>
         </header>
+
+        <!-- CLIENTS -->
+        <section v-if="showCompanies" id="clients" class="section dv-clients">
+            <div class="container">
+                <div class="section-header">
+                    <h2 class="section-title">{{ t('home.clients.title') }}</h2>
+                </div>
+
+                <div class="row g-3 g-lg-4 justify-content-center">
+                    <div v-for="c in clients" :key="c.file" class="col-6 col-md-4 col-lg-2">
+                        <div class="dv-client" :class="{ 'dv-client-wide': c.wide, 'dv-client-zoom': c.zoom }" :title="c.name">
+                            <img
+                                :src="`/company-logos/${c.file}`"
+                                :alt="c.name"
+                                decoding="async"
+                            >
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
 
         <!-- SOURCES -->
         <section id="sources" class="section">
