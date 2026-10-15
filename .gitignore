@@ -14,6 +14,7 @@ venv/
 /.nova
 /.phpunit.cache
 /venv
+myvps.txt
 /.vscode
 /.zed
 /auth.json
