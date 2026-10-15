@@ -19,6 +19,11 @@ class MySqlDataHandler
     {
         ini_set('memory_limit', '1G');
         set_time_limit(300);
+
+        $this->host = config('datasource.mysql.host');
+        $this->port = config('datasource.mysql.port');
+        $this->username = config('datasource.mysql.username');
+        $this->password = config('datasource.mysql.password');
         $this->sqlPath = $sqlPath;
         $this->database = $database;
     }
