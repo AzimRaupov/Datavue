@@ -91,7 +91,12 @@ const dashboards = computed(() => workspace.value.dashboards ?? []);
 const space = computed(() => workspace.value.workspace ?? null);
 const workspaceId = computed(() => space.value?.id ?? null);
 const dataSource = computed(() => workspace.value.data_source ?? null);
-const chat = computed(() => workspace.value.chat ?? null);
+const workspaceChats = computed(() => workspace.value.chats ?? []);
+// На обзоре пространства чат выбирают из списка; в дашборде — это чат самого дашборда.
+const activeChat = ref(null);
+const chat = computed(() => (dashboardId.value ? workspace.value.chat : activeChat.value) ?? null);
+// Панель агента есть, если разговор уже заведён или дашборд может завести его с первым сообщением.
+const hasChatPanel = computed(() => !!chat.value || (!!dashboardId.value && canChat.value));
 
 /**
  * Голый адрес пространства (без дашборда в пути) — заход «в пространство
@@ -183,6 +188,13 @@ async function load() {
             dashboard.value = null;
             widgets.value = [];
             subscribeToDashboard();
+
+            // Ссылка на конкретный чат (из списка чатов компании) — открываем его сразу.
+            const wanted = Number(route.query.chat);
+
+            if (wanted && workspaceChats.value.some((item) => item.id === wanted)) {
+                await selectChat({ id: wanted });
+            }
         } else {
             await loadDashboard(current);
 
@@ -576,6 +588,10 @@ async function submitCreate() {
 
 // --- Чат --------------------------------------------------------------------
 
+watch(workspaceId, () => {
+    activeChat.value = null;
+});
+
 const chatOpen = ref(localStorage.getItem("workspaceChatOpen") !== "0");
 const openingChat = ref(false);
 
@@ -586,35 +602,80 @@ function closeChat() {
 }
 
 /**
- * Открывает разговор пространства.
+ * Открывает панель агента.
  *
- * Он один на всю задачу и заводится на месте — без ухода на другую страницу
- * и без выбора «а к какому чату это относится». Именно это делает дашборд,
- * собранный руками, обсуждаемым: раньше агент умел править только то,
- * что сам и построил.
+ * Разговор принадлежит дашборду: у открытого дашборда он уже есть — просто
+ * показываем его; нет — панель открывается пустой, а сам разговор заводится
+ * с первым отправленным сообщением (см. createChat). На обзоре пространства
+ * дашборда нет, и чат выбирают из списка на вкладке «Чаты».
  */
-async function openAssistant() {
-    if (chat.value) {
+function openAssistant() {
+    if (chat.value || dashboardId.value) {
         chatOpen.value = true;
 
         return;
     }
 
-    if (!workspaceId.value || openingChat.value || !canChat.value) return;
+    setOverviewTab("chats");
+}
+
+/** Выбор чата из списка на обзоре пространства. */
+async function selectChat(item) {
+    if (openingChat.value) return;
+
+    if (activeChat.value?.id === item.id) {
+        chatOpen.value = true;
+
+        return;
+    }
 
     openingChat.value = true;
     notice.value = null;
 
     try {
-        const { data } = await api.post(`/workspaces/${workspaceId.value}/chat`);
+        const { data } = await api.get(`/chats/${item.id}`);
 
-        workspace.value = { ...workspace.value, chat: data.chat };
+        activeChat.value = { id: data.id, title: data.title, suggestions: data.suggestions ?? [] };
         chatOpen.value = true;
     } catch (err) {
         notice.value = err.response?.data?.message || t("workspacePage.errors.open_chat_failed");
     } finally {
         openingChat.value = false;
     }
+}
+
+/** Новый разговор пространства, не привязанный к дашборду. */
+async function startNewChat() {
+    if (!workspaceId.value || openingChat.value || !canChat.value) return;
+
+    openingChat.value = true;
+    notice.value = null;
+
+    try {
+        const { data } = await api.post(`/workspaces/${workspaceId.value}/chats`);
+
+        workspace.value = {
+            ...workspace.value,
+            chats: [data.card, ...workspaceChats.value],
+        };
+        activeChat.value = data.chat;
+        chatOpen.value = true;
+    } catch (err) {
+        notice.value = err.response?.data?.message || t("workspacePage.errors.open_chat_failed");
+    } finally {
+        openingChat.value = false;
+    }
+}
+
+/** Заводит разговор открытого дашборда и возвращает его id. */
+async function createChat() {
+    const { data } = await api.post(`/workspaces/${workspaceId.value}/chat`, {
+        dashboard_id: dashboardId.value,
+    });
+
+    workspace.value = { ...workspace.value, chat: data.chat };
+
+    return data.chat.id;
 }
 
 /**
@@ -832,10 +893,10 @@ onBeforeUnmount(() => {
                                 </button>
 
                                 <button
-                                    v-if="!chatOpen || !chat"
+                                    v-if="!chatOpen || !hasChatPanel"
                                     class="btn btn-primary d-inline-flex align-items-center text-nowrap px-3"
                                     :class="{ 'btn-loading': openingChat }"
-                                    :disabled="openingChat || (!chat && (!canChat || !workspaceId))"
+                                    :disabled="openingChat || (!hasChatPanel && (!canChat || !workspaceId))"
                                     :title="t('workspacePage.ai_assistant_title')"
                                     @click="openAssistant"
                                 >
@@ -945,39 +1006,59 @@ onBeforeUnmount(() => {
                         </div>
                     </div>
 
-                    <!-- Чат пространства: один на всю задачу. -->
+                    <!-- Чаты пространства: у каждого дашборда свой, плюс общие разговоры. -->
                     <div v-show="overviewTab === 'chats'">
-                        <div class="row row-cards">
-                            <div class="col-12">
-                                <div class="card">
-                                    <div class="card-body d-flex align-items-center gap-3 flex-wrap">
-                                        <span class="avatar avatar-lg bg-primary-lt">
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"
-                                                 viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                                                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                                <path d="M12 8a4 4 0 0 1 4 4" />
-                                                <path d="M12 4a8 8 0 0 1 8 8" />
-                                                <path d="M12 20a8 8 0 0 1-8-8" />
-                                                <circle cx="12" cy="12" r="1" />
-                                            </svg>
-                                        </span>
-                                        <div class="flex-fill">
-                                            <h3 class="mb-1">{{ t('workspacePage.overview.chat_title') }}</h3>
-                                            <div class="text-secondary">
-                                                {{ chat ? t('workspacePage.overview.chat_subtitle_existing') : t('workspacePage.overview.chat_subtitle_new') }}
-                                            </div>
-                                        </div>
-                                        <button
-                                            class="btn btn-primary d-inline-flex align-items-center text-nowrap px-3"
-                                            type="button"
-                                            :class="{ 'btn-loading': openingChat }"
-                                            :disabled="openingChat || (!chat && !canChat)"
-                                            @click="openAssistant"
-                                        >
-                                            {{ chat ? t('workspacePage.overview.open_chat') : t('workspacePage.overview.start_chat') }}
-                                        </button>
-                                    </div>
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="flex-fill">
+                                    <h3 class="card-title mb-1">{{ t('workspacePage.overview.chats_title') }}</h3>
+                                    <div class="text-secondary small">{{ t('workspacePage.overview.chats_hint') }}</div>
                                 </div>
+                                <button
+                                    v-if="canChat"
+                                    class="btn btn-primary d-inline-flex align-items-center text-nowrap px-3"
+                                    type="button"
+                                    :class="{ 'btn-loading': openingChat }"
+                                    :disabled="openingChat"
+                                    @click="startNewChat"
+                                >
+                                    {{ t('workspacePage.overview.new_chat') }}
+                                </button>
+                            </div>
+
+                            <div v-if="!workspaceChats.length" class="card-body text-secondary text-center py-5">
+                                {{ t('workspacePage.overview.chats_empty') }}
+                            </div>
+
+                            <div v-else class="list-group list-group-flush">
+                                <button
+                                    v-for="item in workspaceChats"
+                                    :key="item.id"
+                                    type="button"
+                                    class="list-group-item list-group-item-action d-flex align-items-center gap-3"
+                                    :class="{ active: activeChat?.id === item.id && chatOpen }"
+                                    :disabled="openingChat"
+                                    @click="selectChat(item)"
+                                >
+                                    <span class="avatar avatar-sm bg-primary-lt flex-shrink-0">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+                                             viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                            <path d="M12 8a4 4 0 0 1 4 4" />
+                                            <path d="M12 4a8 8 0 0 1 8 8" />
+                                            <path d="M12 20a8 8 0 0 1-8-8" />
+                                            <circle cx="12" cy="12" r="1" />
+                                        </svg>
+                                    </span>
+                                    <span class="flex-fill text-start overflow-hidden">
+                                        <span class="d-block fw-bold text-truncate">{{ item.title || t('workspacePage.overview.chat_untitled', { id: item.id }) }}</span>
+                                        <span class="d-block small text-secondary">
+                                            {{ t('workspacePage.overview.chat_meta', { dashboards: item.dashboards_count, messages: item.messages_count }) }}
+                                            · {{ new Date(item.created_at).toLocaleDateString() }}
+                                        </span>
+                                    </span>
+                                    <span class="text-secondary small text-nowrap">{{ t('workspacePage.overview.open_chat') }}</span>
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -1226,22 +1307,22 @@ onBeforeUnmount(() => {
         />
 
         <!-- ЧАТ -->
-        <div class="chat-backdrop d-print-none" :class="{ 'd-none': !chatOpen || !chat }"
+        <div class="chat-backdrop d-print-none" :class="{ 'd-none': !chatOpen || !hasChatPanel }"
              @click="closeChat"></div>
 
         <AiChatSidebar
-            v-if="chat"
-            :key="chat.id"
+            v-if="chat || (dashboardId && canChat)"
             class="d-print-none"
             :open="chatOpen"
-            :chat-id="chat.id"
+            :chat-id="chat?.id ?? null"
             :dashboard-id="dashboardId"
-            :suggestions="chat.suggestions ?? []"
+            :suggestions="chat?.suggestions ?? []"
+            :ensure-chat="dashboardId ? createChat : null"
             @close="closeChat"
             @dashboard="onChatDashboard"
         />
 
-        <button v-if="chat && !chatOpen" class="chat-fab d-print-none" @click="chatOpen = true"
+        <button v-if="hasChatPanel && !chatOpen" class="chat-fab d-print-none" @click="chatOpen = true"
                 :aria-label="t('workspacePage.open_chat_aria')">
             <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none"
                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

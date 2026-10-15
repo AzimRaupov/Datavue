@@ -10,6 +10,9 @@ return [
 
     'url' => env('APP_URL', 'http://localhost'),
 
+    // Блок «Нам доверяют» с логотипами компаний на главной странице.
+    'show_companies' => (bool) env('SHOW_COMPANIES', true),
+
     'timezone' => 'UTC',
 
     'locale' => env('APP_LOCALE', 'en'),

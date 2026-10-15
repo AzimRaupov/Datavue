@@ -1,15 +1,22 @@
-# Python-зависимости для сгенерированных скриптов виджетов и выгрузок.
-# Устанавливаются в venv/ проекта:  venv/bin/pip install -r requirements.txt
+# Python-зависимости проекта. Ставятся в venv/ в корне:
+#   python3 -m venv venv && venv/bin/pip install -r requirements.txt
+# App\Helpers\PythonRunner по умолчанию берёт venv/bin/python.
 
-pandas
-numpy
+# Код виджетов, алертов и выгрузок, который пишет ИИ (CodeTemplater, ExportCodeTemplater)
+pandas==3.0.6
+numpy==2.5.3
 
-# Драйверы источников данных (ставьте те, которые реально используются)
-mysql-connector-python
-psycopg2-binary
-duckdb
+# DuckDB: сборка базы из CSV/Excel (sql_to_duck.py) и источники DuckDB
+duckdb==1.5.6
 
-# Форматы файлов для выгрузок из чата (App\Helpers\Export)
-openpyxl        # xlsx
-reportlab       # pdf
-python-docx     # docx
+# Драйверы внешних источников (CodeTemplater::driverImport; sqlite3 — стандартная библиотека)
+mysql-connector-python==26.7.0
+psycopg2-binary==2.9.13
+
+# Выгрузки из чата (ExportCodeTemplater)
+openpyxl==3.1.5        # xlsx
+reportlab==5.0.1       # pdf
+python-docx==1.2.0     # docx
+
+# Классификатор намерений (php artisan intents:retrain -> ml/intents/train.py)
+scikit-learn==1.9.1

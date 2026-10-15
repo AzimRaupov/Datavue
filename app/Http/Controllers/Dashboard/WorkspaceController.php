@@ -139,7 +139,21 @@ class WorkspaceController extends Controller
     {
         $workspace = $this->find($request, $id);
 
-        if ($chat = $workspace->chat()) {
+        $data = $request->validate([
+            'dashboard_id' => [
+                'nullable',
+                Rule::exists('dashboards', 'id')->where('workspace_id', $workspace->id),
+            ],
+        ]);
+
+        $dashboard = !empty($data['dashboard_id'])
+            ? Dashboard::query()->where('workspace_id', $workspace->id)->find($data['dashboard_id'])
+            : null;
+
+        // Разговор живёт у дашборда: есть он — открываем, нет — заводим.
+        $chat = $dashboard ? $this->dashboardChat($dashboard) : $workspace->chat();
+
+        if ($chat) {
             return response()->json(['chat' => $this->chatPayload($chat)]);
         }
 
@@ -154,16 +168,70 @@ class WorkspaceController extends Controller
             'company_id' => $workspace->company_id,
             'workspace_id' => $workspace->id,
             'data_source_id' => $workspace->data_source_id,
-            'title' => $workspace->name,
+            'title' => $dashboard?->name ?: $workspace->name,
         ]);
+
+        $dashboard?->update(['chat_id' => $chat->id]);
 
         Log::info('Workspace: заведён разговор', [
             'workspace_id' => $workspace->id,
+            'dashboard_id' => $dashboard?->id,
             'chat_id' => $chat->id,
             'user_id' => $request->user()->id,
         ]);
 
         return response()->json(['chat' => $this->chatPayload($chat)], 201);
+    }
+
+    /** Новый разговор пространства — не привязанный ни к какому дашборду. */
+    public function storeChat(Request $request, $id)
+    {
+        $workspace = $this->find($request, $id);
+
+        $data = $request->validate([
+            'title' => 'nullable|string|max:255',
+        ]);
+
+        if (!$workspace->data_source_id) {
+            return response()->json([
+                'message' => 'У пространства не задан источник данных — агенту не по чему считать.',
+            ], 422);
+        }
+
+        $chat = AiChat::query()->create([
+            'user_id' => $request->user()->id,
+            'company_id' => $workspace->company_id,
+            'workspace_id' => $workspace->id,
+            'data_source_id' => $workspace->data_source_id,
+            'title' => $data['title'] ?? null ?: 'Новый чат — '.$workspace->name,
+        ]);
+
+        return response()->json([
+            'chat' => $this->chatPayload($chat),
+            'card' => $this->chatCard($chat->loadCount(['dashboards', 'messages'])),
+        ], 201);
+    }
+
+    private function chatCard(AiChat $chat): array
+    {
+        return [
+            'id' => $chat->id,
+            'title' => $chat->title,
+            'dashboards_count' => $chat->dashboards_count ?? 0,
+            'messages_count' => $chat->messages_count ?? 0,
+            'created_at' => $chat->created_at,
+        ];
+    }
+
+    private function dashboardChat(Dashboard $dashboard): ?AiChat
+    {
+        if (!$dashboard->chat_id) {
+            return null;
+        }
+
+        return AiChat::query()
+            ->where('company_id', $dashboard->company_id)
+            ->find($dashboard->chat_id);
     }
 
     private function payload(Workspace $workspace, ?int $dashboardId): array
@@ -179,7 +247,11 @@ class WorkspaceController extends Controller
             : $dashboards->first()?->id;
 
         $source = $workspace->dataSource;
-        $chat = $workspace->chat();
+
+        // Открыт конкретный дашборд — показываем его разговор (или его отсутствие:
+        // тогда он заведётся с первым сообщением). На обзоре чат выбирают из списка `chats`.
+        $openedDashboard = $dashboardId ? $dashboards->firstWhere('id', $dashboardId) : null;
+        $chat = $openedDashboard ? $this->dashboardChat($openedDashboard) : null;
 
         return [
             'workspace' => [
@@ -199,9 +271,17 @@ class WorkspaceController extends Controller
                 'status' => $dashboard->status,
                 'origin' => $dashboard->origin,
                 'widgets_count' => $dashboard->widgets_count,
+                'chat_id' => $dashboard->chat_id,
                 'created_at' => $dashboard->created_at,
             ])->values()->all(),
             'chat' => $chat ? $this->chatPayload($chat) : null,
+            'chats' => $workspace->chats()
+                ->withCount(['dashboards', 'messages'])
+                ->orderByDesc('id')
+                ->get()
+                ->map(fn (AiChat $item) => $this->chatCard($item))
+                ->values()
+                ->all(),
             'current_dashboard_id' => $current,
         ];
     }

@@ -1,15 +1,6 @@
 <template>
-    <div class="page page-center">
-        <div class="container container-tight py-4">
-            <div class="text-center mb-4">
-                <!-- BEGIN NAVBAR LOGO --><router-link to="/" aria-label="Datavue" class="navbar-brand navbar-brand-autodark"
-            >
-                <img :src="'/logos/logo.png'" width="135" />
-
-            </router-link
-            ><!-- END NAVBAR LOGO -->
-            </div>
-            <form class="card card-md" @submit.prevent="login" autocomplete="off" novalidate>
+    <AuthLayout>
+        <form class="card card-md" @submit.prevent="login" autocomplete="off" novalidate>
                 <div class="card-body">
                     <h2 class="card-title text-center mb-4">{{ t('auth.page_login')}}</h2>
 
@@ -56,13 +47,13 @@
                 </div>
             </form>
             <div class="text-center text-secondary mt-3">{{ t('auth.no_account')}} <router-link to="register" tabindex="-1">{{ t('auth.page_register')}}</router-link></div>
-        </div>
-    </div>
+    </AuthLayout>
 </template>
 
 <script setup>
 import {reactive ,ref} from 'vue';
 import api from '../api.js';
+import AuthLayout from '../components/AuthLayout.vue';
 import { useI18n } from 'vue-i18n'
 const { t, locale } = useI18n()
 

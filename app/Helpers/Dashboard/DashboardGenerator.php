@@ -4,6 +4,7 @@ namespace App\Helpers\Dashboard;
 
 use App\Events\DashboardWidgetChanged;
 use App\Helpers\Ai\DashboardAi;
+use App\Helpers\DataSource\ColumnProfile;
 use App\Helpers\DataSource\ConnectionProviderRouter;
 use App\Helpers\DataSource\SchemaOptions;
 use App\Models\AiChat;
@@ -131,46 +132,6 @@ class DashboardGenerator
     private function result(bool $errors, string $message = '', array $extra = []): array
     {
         return array_merge(['errors' => $errors, 'message' => $message], $extra);
-    }
-
-    private function defineWidgetFamilies(WidgetCatalog $catalog, array $scheme, string $text): array
-    {
-
-        $summary = [];
-
-        foreach ($scheme as $tableName => $tableSchema) {
-            $columns = array_keys($tableSchema['columns'] ?? []);
-            $relations = array_keys($tableSchema['relations'] ?? []);
-
-            $summary[$tableName] = array_values(array_merge($columns, $relations));
-        }
-
-        try {
-            $response = $this->dashboardGeneratorAi->defineWidgetFamilies(
-                $catalog->briefJson(),
-                json_encode($summary, JSON_UNESCAPED_UNICODE),
-                $text
-            );
-
-            $families = $response['content']['families'] ?? [];
-
-            if (!is_array($families)) {
-                $families = [];
-            }
-
-            Log::info('DashboardGenerator: widget families selected', [
-                'families' => $families,
-            ]);
-
-            return $families;
-        } catch (Throwable $e) {
-
-            Log::warning('DashboardGenerator: widget family selection failed, using full catalog', [
-                'error' => $e->getMessage(),
-            ]);
-
-            return [];
-        }
     }
 
     private function resolveWidgetType(Widget $widget, ?string $typeName): ?WidgetType
@@ -305,12 +266,15 @@ class DashboardGenerator
             }
             unset($tableSchema);
 
-            $catalog = new WidgetCatalog($this->widgets);
-            $families = $this->defineWidgetFamilies($catalog, $scheme, $text);
-            $widgets = $catalog->detailedJson($families);
+            $scheme = ColumnProfile::annotate($this->connectionProviderRouter, $scheme);
+
+            // Каталог целиком: предварительный отбор семейств делался до того,
+            // как модель спланировала блоки, и отсекал как раз точные семейства
+            // (treemap, heatmap, scatter), оставляя универсальные.
+            $widgets = (new WidgetCatalog($this->widgets))->detailedJson();
 
             $schemeStr = json_encode($scheme, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-            $response = $this->dashboardGeneratorAi->generateWidgets($schemeStr, $widgets, $text, $families);
+            $response = $this->dashboardGeneratorAi->generateWidgets($schemeStr, $widgets, $text);
             $generateWidgets = $response['content']['widgets'];
 
             $position = 0;

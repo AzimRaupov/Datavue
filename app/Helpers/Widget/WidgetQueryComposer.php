@@ -235,6 +235,11 @@ class WidgetQueryComposer
 
         if ($breakdown) {
 
+            // Строка запроса здесь — ячейка «категория × ряд», а не категория.
+            // Лимит в SQL обрывал бы ось посреди категории, и недостающие ряды
+            // рисовались бы нулями. Берём всё, что помещается в потолок, а
+            // читаемость (окно по оси) обеспечивает виджет. Лишняя строка
+            // сверх потолка — признак обрезки для раннера.
             return $this->select(
                 [
                     $breakdown['expression'].' AS '.$this->alias('series'),
@@ -245,17 +250,28 @@ class WidgetQueryComposer
                 $where,
                 [$axis['expression'], $breakdown['expression']],
                 $axis['expression'].' ASC',
-                $limit
+                self::MAX_LIMIT + 1
             );
         }
 
+        $latest = $this->keepsLatestPeriods($builder, $axis);
+
         if (count($metrics) === 1) {
+            $columns = [
+                $this->literalString($metrics[0]['label']).' AS '.$this->alias('series'),
+                $axis['expression'].' AS '.$this->alias('category'),
+                $metrics[0]['expression'].' AS '.$this->alias('value'),
+            ];
+
+            if ($latest) {
+                return $this->oldestFirst(
+                    $this->select($columns, $table, $where, [$axis['expression']], $axis['expression'].' DESC', $limit),
+                    $limit
+                );
+            }
+
             return $this->select(
-                [
-                    $this->literalString($metrics[0]['label']).' AS '.$this->alias('series'),
-                    $axis['expression'].' AS '.$this->alias('category'),
-                    $metrics[0]['expression'].' AS '.$this->alias('value'),
-                ],
+                $columns,
                 $table,
                 $where,
                 [$axis['expression']],
@@ -281,9 +297,46 @@ class WidgetQueryComposer
             );
         }
 
-        return implode("\nUNION ALL\n", $parts)
+        // Лимит — это число категорий, а строк на категорию столько же, сколько
+        // метрик: считаем в строках, иначе последняя категория оборвётся.
+        $rows = min($limit * count($metrics), self::MAX_LIMIT + 1);
+
+        $union = implode("\nUNION ALL\n", $parts);
+
+        if ($latest) {
+            return $this->oldestFirst(
+                $union."\nORDER BY ".$this->alias('category')." DESC\nLIMIT ".$rows,
+                $rows
+            );
+        }
+
+        return $union
             ."\nORDER BY ".$this->alias('category')
-            ."\nLIMIT ".$limit;
+            ."\nLIMIT ".$rows;
+    }
+
+    /**
+     * Ось времени без явной сортировки: лимит должен оставлять последние
+     * периоды, а не первые. Иначе у длинной истории свежие данные —
+     * самые нужные — как раз и пропадали бы.
+     */
+    private function keepsLatestPeriods(array $builder, array $axis): bool
+    {
+        $sort = is_array($builder['sort'] ?? null) ? $builder['sort'] : [];
+
+        return ($sort['by'] ?? null) === null && $this->isTimeDimension($axis);
+    }
+
+    /**
+     * Берёт последние строки (запрос уже отсортирован по убыванию и урезан)
+     * и возвращает их в хронологическом порядке. Внешний LIMIT нужен не для
+     * отбора: без него MySQL вправе выбросить ORDER BY у подзапроса.
+     */
+    private function oldestFirst(string $sql, int $rows): string
+    {
+        return "SELECT * FROM (\n".$sql."\n) AS ".$this->quote('latest')
+            ."\nORDER BY ".$this->alias('category')." ASC"
+            ."\nLIMIT ".$rows;
     }
 
     private function composeValues(

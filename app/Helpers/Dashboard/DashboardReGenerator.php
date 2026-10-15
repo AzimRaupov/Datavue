@@ -4,6 +4,7 @@ namespace App\Helpers\Dashboard;
 
 use App\Events\DashboardWidgetChanged;
 use App\Helpers\Ai\DashboardAi;
+use App\Helpers\DataSource\ColumnProfile;
 use App\Helpers\DataSource\ConnectionProviderRouter;
 use App\Helpers\DataSource\SchemaOptions;
 use App\Models\AiChat;
@@ -233,7 +234,10 @@ class DashboardReGenerator
             ->whereIn('data_source_group_id', $this->selectedGroupsTables)
             ->pluck('name')
             ->toArray();
-        $schema = $this->connectionProviderRouter->getSchema($tables, SchemaOptions::basic());
+        $schema = ColumnProfile::annotate(
+            $this->connectionProviderRouter,
+            $this->connectionProviderRouter->getSchema($tables, SchemaOptions::basic())
+        );
 
         $this->prepareAiPayload();
 

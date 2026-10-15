@@ -41,6 +41,18 @@ const selectedLanguage = ref(
 
 const dropdownRef = ref(null)
 
+const links = [
+    { key: 'dashboards', hash: '#dashboards' },
+    { key: 'alerts', hash: '#alerts' },
+    { key: 'sources', hash: '#sources' },
+]
+
+// Граница шапки появляется только после прокрутки — на самом верху страницы она лишняя.
+const scrolled = ref(false)
+const onScroll = () => {
+    scrolled.value = window.scrollY > 8
+}
+
 // Изменение языка
 const changeLanguage = (language) => {
     selectedLanguage.value = language
@@ -77,24 +89,22 @@ const handleClickOutside = (event) => {
 
 onMounted(() => {
     document.addEventListener('click', handleClickOutside)
+    window.addEventListener('scroll', onScroll, { passive: true })
 })
 
 onUnmounted(() => {
     document.removeEventListener('click', handleClickOutside)
+    window.removeEventListener('scroll', onScroll)
 })
 </script>
 
 <template>
-    <nav class="navbar navbar-expand-lg navbar-transparent py-3" role="banner">
+    <nav class="navbar navbar-expand-lg dv-nav py-2" :class="{ 'is-scrolled': scrolled }" role="banner">
         <div class="container">
-            <!-- BEGIN NAVBAR LOGO -->
             <router-link to="/" aria-label="Datavue" class="navbar-brand navbar-brand-autodark">
-                <img :src="'/logos/logo.png'" width="120" />
-
+                <img :src="'/logos/logo.png'" width="120" alt="Datavue" />
             </router-link>
-            <!-- END NAVBAR LOGO -->
 
-            <!-- Мобильный toggler -->
             <button
                 class="navbar-toggler"
                 type="button"
@@ -107,38 +117,23 @@ onUnmounted(() => {
                 <span class="navbar-toggler-icon"></span>
             </button>
 
-            <!-- Сворачиваемый контент -->
             <div class="collapse navbar-collapse" id="navbarTogglerDemo01">
-                <!-- Навигация по центру -->
                 <ul class="navbar-nav mx-auto mb-2 mb-lg-0 text-center text-lg-start">
-                    <li class="nav-item">
-                        <router-link class="nav-link" to="/"><span class="nav-link-title">{{ t('header.home')}}</span></router-link>
+                    <li v-for="link in links" :key="link.hash" class="nav-item">
+                        <router-link class="nav-link" :to="{ path: '/', hash: link.hash }">
+                            <span class="nav-link-title">{{ t(`header.${link.key}`) }}</span>
+                        </router-link>
                     </li>
-                    <li class="nav-item">
-                        <router-link class="nav-link" to="/terms"><span class="nav-link-title">{{ t('header.terms') }}</span></router-link>
-                    </li>
-                    <li class="nav-item">
-                        <router-link class="nav-link" to="/privacy"><span class="nav-link-title">{{ t('header.privacy') }}</span></router-link>
-                    </li>
-
                 </ul>
 
-                <!-- Правая часть -->
-                <div class="d-flex align-items-center justify-content-center justify-content-lg-start gap-3 mt-3 mt-lg-0">
-                    <router-link  :to="'register'" class="btn btn-primary">{{ t('header.startBtn') }}</router-link>
-
+                <div class="d-flex align-items-center justify-content-center gap-2 mt-3 mt-lg-0">
                     <div class="dropdown position-relative" ref="dropdownRef">
                         <button
                             type="button"
-                            class="btn dropdown-toggle d-flex align-items-center gap-2"
+                            class="btn btn-ghost-secondary dropdown-toggle d-flex align-items-center gap-2"
                             @click.stop="toggleDropdown"
                         >
-                            <img
-                                :src="selectedLanguage.flag"
-                                width="20"
-                                height="14"
-                                alt=""
-                            >
+                            <img :src="selectedLanguage.flag" width="20" height="14" alt="" />
                             {{ selectedLanguage.name }}
                         </button>
 
@@ -154,16 +149,14 @@ onUnmounted(() => {
                                 class="dropdown-item d-flex align-items-center gap-2"
                                 @click="changeLanguage(language)"
                             >
-                                <img
-                                    :src="language.flag"
-                                    width="20"
-                                    height="14"
-                                    alt=""
-                                >
+                                <img :src="language.flag" width="20" height="14" alt="" />
                                 {{ language.name }}
                             </button>
                         </div>
                     </div>
+
+                    <router-link to="/login" class="btn">{{ t('header.login') }}</router-link>
+                    <router-link to="/register" class="btn btn-primary">{{ t('header.startBtn') }}</router-link>
                 </div>
             </div>
         </div>

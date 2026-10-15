@@ -22,6 +22,10 @@ const props = defineProps({
         type: Array,
         default: () => [],
     },
+    ensureChat: {
+        type: Function,
+        default: null,
+    },
 });
 
 const emit = defineEmits(['close', 'dashboard']);
@@ -87,6 +91,7 @@ function stopResize() {
             :chat-id="chatId"
             :dashboard-id="dashboardId"
             :suggestions="suggestions"
+            :ensure-chat="ensureChat"
             class="flex-fill"
             style="min-height: 0;"
             @dashboard="emit('dashboard', $event)"

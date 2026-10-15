@@ -65,7 +65,7 @@ it('собирает запрос со столбцами: ряд, ось, зн�
         ->and($result['sql'])->toContain('LIMIT 10');
 });
 
-it('округляет дату до периода и сортирует ось по возрастанию', function () {
+it('округляет дату до периода и отдаёт ось по возрастанию', function () {
     $result = $this->composer->compose([
         'table' => 'orders',
         'metrics' => [['agg' => 'count', 'label' => 'Заказов']],
@@ -75,7 +75,51 @@ it('округляет дату до периода и сортирует ось
     expect($result['ok'])->toBeTrue()
         ->and($result['sql'])->toContain("DATE_FORMAT(`created_at`, '%Y-%m')")
 
-        ->and($result['sql'])->toContain("ORDER BY DATE_FORMAT(`created_at`, '%Y-%m') ASC");
+        ->and($result['sql'])->toEndWith("ORDER BY `category` ASC\nLIMIT 100");
+});
+
+it('лимит по оси времени оставляет последние периоды, а не первые', function () {
+    $result = $this->composer->compose([
+        'table' => 'orders',
+        'metrics' => [['agg' => 'count', 'label' => 'Заказов']],
+        'dimensions' => [['column' => 'created_at', 'grain' => 'day']],
+        'limit' => 30,
+    ], 'line');
+
+    expect($result['ok'])->toBeTrue()
+
+        ->and($result['sql'])->toContain("ORDER BY DATE_FORMAT(`created_at`, '%Y-%m-%d') DESC\nLIMIT 30")
+        ->and($result['sql'])->toEndWith("ORDER BY `category` ASC\nLIMIT 30");
+});
+
+it('явная сортировка оси времени отключает выбор последних периодов', function () {
+    $result = $this->composer->compose([
+        'table' => 'orders',
+        'metrics' => [['agg' => 'count', 'label' => 'Заказов']],
+        'dimensions' => [['column' => 'created_at', 'grain' => 'day']],
+        'sort' => ['by' => 'dimension', 'dir' => 'asc'],
+        'limit' => 30,
+    ], 'line');
+
+    expect($result['ok'])->toBeTrue()
+        ->and($result['sql'])->not->toContain('AS `latest`')
+        ->and($result['sql'])->toContain("ORDER BY DATE_FORMAT(`created_at`, '%Y-%m-%d') ASC\nLIMIT 30");
+});
+
+it('лимит графика с несколькими метриками считает категории, а не строки', function () {
+    $result = $this->composer->compose([
+        'table' => 'orders',
+        'metrics' => [
+            ['agg' => 'sum', 'column' => 'amount', 'label' => 'Выручка'],
+            ['agg' => 'count', 'label' => 'Заказов'],
+        ],
+        'dimensions' => [['column' => 'country']],
+        'limit' => 10,
+    ], 'bar');
+
+    // 10 категорий × 2 метрики = 20 строк; на 10 строках ось оборвалась бы на пятой категории.
+    expect($result['ok'])->toBeTrue()
+        ->and($result['sql'])->toEndWith("ORDER BY `category`\nLIMIT 20");
 });
 
 it('разворачивает несколько метрик в ряды', function () {
@@ -107,6 +151,20 @@ it('вторую разбивку делает рядами', function () {
         ->and($result['sql'])->toContain('GROUP BY `country`, `status`')
 
         ->and($result['sql'])->toContain('ORDER BY `country` ASC');
+});
+
+it('не режет лимитом ячейки «категория × ряд» у графика со второй разбивкой', function () {
+    $result = $this->composer->compose([
+        'table' => 'orders',
+        'metrics' => [['agg' => 'count', 'label' => 'Заказов']],
+        'dimensions' => [['column' => 'country'], ['column' => 'status']],
+        'limit' => 5,
+    ], 'bar');
+
+    // Лимит в пять строк оборвал бы ось посреди категории. Вместо него —
+    // потолок плюс одна строка, по которой раннер узнаёт об обрезке.
+    expect($result['ok'])->toBeTrue()
+        ->and($result['sql'])->toEndWith('LIMIT '.(WidgetQueryComposer::MAX_LIMIT + 1));
 });
 
 it('не даёт совместить вторую разбивку с несколькими метриками', function () {

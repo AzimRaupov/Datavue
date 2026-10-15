@@ -12,7 +12,20 @@ use Throwable;
 class WidgetQueryRunner
 {
 
+    /**
+     * Потолок строк для превью и фильтра «limit».
+     */
     public const MAX_ROWS = 50;
+
+    /**
+     * Сколько строк виджет получает целиком. Раньше здесь стояло MAX_ROWS:
+     * ряды графика — это ячейки «ряд × категория», и срез на 50 ячейках
+     * обрывал ось посреди категории, а недостающие значения становились
+     * нулями. Теперь график получает данные целиком (потолок — тот же,
+     * что у конструктора), а читаемость обеспечивает фронт: окно по оси
+     * с переключением страниц и «Прочее» у круговых.
+     */
+    public const MAX_FETCH_ROWS = 5000;
 
     public const DEFAULT_PER_PAGE = 25;
     public const MAX_PER_PAGE = 50;
@@ -52,6 +65,8 @@ class WidgetQueryRunner
             return ['ok' => false, 'error' => 'В спецификации нет ни одного запроса.'];
         }
 
+        $truncated = false;
+
         try {
 
             $multi = count($queries) > 1;
@@ -62,12 +77,16 @@ class WidgetQueryRunner
                 foreach ($queries as $name => $sql) {
                     $prepared = $this->prepare($sql, $filters, $input, stripLimit: false);
 
-                    foreach ($this->fetch($prepared, $this->sampleMeta(self::MAX_ROWS))['rows'] as $row) {
+                    $fetched = $this->fetch($prepared, $this->chartMeta());
+
+                    $truncated = $truncated || $fetched['truncated'];
+
+                    foreach ($fetched['rows'] as $row) {
                         $rows[] = $row;
                     }
                 }
 
-                $meta = $this->sampleMeta(self::MAX_ROWS);
+                $meta = $this->chartMeta();
             } else {
                 $prepared = $this->prepare(reset($queries), $filters, $input);
 
@@ -77,15 +96,19 @@ class WidgetQueryRunner
 
                 $fetched = $this->fetch($prepared, $meta);
                 $rows = $fetched['rows'];
-
-                if ($fetched['truncated']) {
-                    $meta['truncated'] = true;
-                }
+                $truncated = $fetched['truncated'];
             }
         } catch (Throwable $e) {
 
             return ['ok' => false, 'error' => $e->getMessage()];
         }
+
+        if ($truncated && $shape === WidgetShapeMapper::SHAPE_SERIES_MATRIX) {
+            $rows = $this->withoutIncompleteTail($rows);
+        }
+
+        $meta['truncated'] = $truncated;
+        $meta['max_rows'] = self::MAX_FETCH_ROWS;
 
         try {
             $data = (new WidgetShapeMapper())->map(
@@ -184,20 +207,43 @@ class WidgetQueryRunner
             $limit = max(1, min($limit, self::MAX_ROWS));
         }
 
-        $searchColumns = $search !== '' ? $this->searchColumns($prepared) : [];
+        $sortBy = $paginated ? trim((string) ($input['sort_by'] ?? '')) : '';
+
+        // Колонки читаем один раз: они нужны и поиску, и сортировке. Имя из
+        // запроса принимаем только если оно есть в результате — произвольную
+        // строку в ORDER BY не пускаем.
+        $columns = $search !== '' || $sortBy !== '' ? $this->searchColumns($prepared) : [];
+
+        $searchColumns = $search !== '' ? $columns : [];
+
+        $sort = $sortBy !== '' && in_array($sortBy, $columns, true)
+            ? [
+                'by' => $sortBy,
+                'dir' => strtolower((string) ($input['sort_dir'] ?? 'asc')) === 'desc' ? 'desc' : 'asc',
+            ]
+            : null;
 
         $total = $paginated
             ? $this->countRows($prepared, $search, $searchColumns)
             : null;
 
+        $pages = $paginated ? max(1, (int) ceil($total / $perPage)) : null;
+
+        // Страница за последней (строк стало меньше, пока пользователь листал)
+        // — показываем последнюю, а не пустую таблицу.
+        if ($pages !== null) {
+            $page = min($page, $pages);
+        }
+
         return [
             'paginated' => $paginated,
             'limit' => $limit,
             'search_columns' => $searchColumns,
+            'sort' => $sort,
             'total' => $total,
             'page' => $page,
             'per_page' => $perPage,
-            'pages' => $paginated && $perPage > 0 ? (int) ceil($total / $perPage) : null,
+            'pages' => $pages,
             'truncated' => false,
             'search' => $search !== '' ? $search : null,
         ];
@@ -209,6 +255,7 @@ class WidgetQueryRunner
             'paginated' => false,
             'limit' => $limit ?? self::SAMPLE_ROWS,
             'search_columns' => [],
+            'sort' => null,
             'total' => null,
             'page' => 1,
             'per_page' => self::SAMPLE_ROWS,
@@ -216,6 +263,15 @@ class WidgetQueryRunner
             'search' => null,
             'truncated' => false,
         ];
+    }
+
+    /**
+     * Без лимита: fetch() сам берёт MAX_FETCH_ROWS + 1 и по лишней строке
+     * понимает, что данные обрезаны.
+     */
+    private function chartMeta(): array
+    {
+        return ['limit' => null] + $this->sampleMeta();
     }
 
     private function countRows(array $prepared, string $search, array $searchColumns): int
@@ -239,7 +295,7 @@ class WidgetQueryRunner
             $offset = ($meta['page'] - 1) * $meta['per_page'];
         } else {
 
-            $limit = $meta['limit'] ?? (self::MAX_ROWS + 1);
+            $limit = $meta['limit'] ?? (self::MAX_FETCH_ROWS + 1);
         }
 
         $wrapped = $this->wrap(
@@ -247,7 +303,9 @@ class WidgetQueryRunner
             $meta['search'] ?? '',
             $meta['search_columns'] ?? [],
             $limit,
-            $offset
+            $offset,
+            $meta['sort'] ?? null,
+            keepOrder: (bool) $meta['paginated']
         );
 
         $rows = ReadOnlySqlGuard::normalizeRows(
@@ -256,12 +314,32 @@ class WidgetQueryRunner
 
         $truncated = false;
 
-        if (!$meta['paginated'] && $meta['limit'] === null && count($rows) > self::MAX_ROWS) {
+        if (!$meta['paginated'] && $meta['limit'] === null && count($rows) > self::MAX_FETCH_ROWS) {
             $truncated = true;
-            $rows = array_slice($rows, 0, self::MAX_ROWS);
+            $rows = array_slice($rows, 0, self::MAX_FETCH_ROWS);
         }
 
         return ['rows' => $rows, 'truncated' => $truncated];
+    }
+
+    /**
+     * Обрезанный по потолку набор оканчивается посреди категории: у неё
+     * есть не все ряды, и недостающие превратились бы в нули. Целая
+     * категория лучше, чем категория с неверными значениями.
+     */
+    private function withoutIncompleteTail(array $rows): array
+    {
+        if ($rows === []) {
+            return $rows;
+        }
+
+        $last = $rows[array_key_last($rows)]['category'] ?? null;
+
+        while ($rows !== [] && ($rows[array_key_last($rows)]['category'] ?? null) === $last) {
+            array_pop($rows);
+        }
+
+        return $rows;
     }
 
     private function wrap(
@@ -269,13 +347,30 @@ class WidgetQueryRunner
         string $search,
         array $searchColumns,
         ?int $limit,
-        ?int $offset
+        ?int $offset,
+        ?array $sort = null,
+        bool $keepOrder = false
     ): array {
         $bindings = $prepared['bindings'];
 
+        $hasSearch = $search !== '' && $searchColumns !== [];
+
+        // Постраничный вывод без поиска и сортировки лимитируем прямо в
+        // исходном запросе: подзапрос без LIMIT база вправе отдать в любом
+        // порядке (MySQL выбрасывает его ORDER BY), и страницы поплыли бы.
+        if ($keepOrder && $limit !== null && !$hasSearch && $sort === null) {
+            $sql = $prepared['sql'].' LIMIT '.(int) $limit;
+
+            if ($offset) {
+                $sql .= ' OFFSET '.(int) $offset;
+            }
+
+            return ['sql' => $sql, 'bindings' => $bindings];
+        }
+
         $sql = 'SELECT * FROM ('.$prepared['sql'].') AS widget_base';
 
-        if ($search !== '' && $searchColumns !== []) {
+        if ($hasSearch) {
             $conditions = [];
 
             $applied = $this->binder->apply(
@@ -293,6 +388,10 @@ class WidgetQueryRunner
             }
 
             $sql .= ' WHERE '.implode(' OR ', $conditions);
+        }
+
+        if ($sort !== null) {
+            $sql .= ' ORDER BY '.$this->quote($sort['by']).' '.($sort['dir'] === 'desc' ? 'DESC' : 'ASC');
         }
 
         if ($limit !== null) {

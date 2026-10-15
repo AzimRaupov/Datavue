@@ -19,7 +19,7 @@ const router = useRouter();
 const { t } = useI18n();
 
 const chats = ref([]);
-const sources = ref([]);
+const workspaces = ref([]);
 const loading = ref(true);
 const listError = ref(null);
 const search = ref("");
@@ -28,7 +28,6 @@ const currentUser = JSON.parse(localStorage.getItem("user") || "null");
 const permissions = computed(() => currentUser?.permissions ?? []);
 const canCreate = computed(() => permissions.value.includes("create chats"));
 const canDelete = computed(() => permissions.value.includes("delete chats"));
-const canViewSources = computed(() => permissions.value.includes("view data sources"));
 
 const visible = computed(() => {
     const needle = search.value.trim().toLowerCase();
@@ -57,13 +56,13 @@ async function fetchAll() {
     listError.value = null;
 
     try {
-        const requests = [api.get("/chats")];
-        if (canViewSources.value) requests.push(api.get("/data_source"));
-
-        const [chatsResponse, sourcesResponse] = await Promise.all(requests);
+        const [chatsResponse, workspacesResponse] = await Promise.all([
+            api.get("/chats"),
+            api.get("/workspaces"),
+        ]);
 
         chats.value = chatsResponse.data ?? [];
-        sources.value = sourcesResponse?.data ?? [];
+        workspaces.value = workspacesResponse.data ?? [];
     } catch (err) {
         listError.value =
             err.response?.status === 403
@@ -87,14 +86,14 @@ let createModal = null;
 const creating = ref(false);
 const createError = ref(null);
 const createErrors = ref({});
-const createForm = reactive({ data_source_id: "", title: "" });
+const createForm = reactive({ workspace_id: "", title: "" });
 
 const creatingSourceName = computed(() =>
-    sources.value.find((s) => s.id === createForm.data_source_id)?.name ?? ""
+    workspaces.value.find((w) => w.id === createForm.workspace_id)?.name ?? ""
 );
 
 async function openCreateModal() {
-    createForm.data_source_id = sources.value.length === 1 ? sources.value[0].id : "";
+    createForm.workspace_id = workspaces.value.length === 1 ? workspaces.value[0].id : "";
     createForm.title = "";
     createError.value = null;
     createErrors.value = {};
@@ -112,12 +111,16 @@ async function submitCreate() {
 
     try {
         const { data } = await api.post("/chats", {
-            data_source_id: createForm.data_source_id,
+            workspace_id: createForm.workspace_id,
             title: createForm.title || undefined,
         });
 
         createModal?.hide();
-        router.push({ name: "company.workspace", params: { workspace: data.workspace.id } });
+        router.push({
+            name: "company.workspace",
+            params: { workspace: data.workspace.id },
+            query: { tab: "chats", chat: data.chat.id },
+        });
     } catch (err) {
         const body = err.response?.data;
         if (body?.errors) createErrors.value = body.errors;
@@ -159,7 +162,11 @@ async function confirmDelete() {
 
 function openChat(chat) {
     if (chat.workspace_id) {
-        router.push({ name: "company.workspace", params: { workspace: chat.workspace_id } });
+        router.push({
+            name: "company.workspace",
+            params: { workspace: chat.workspace_id },
+            query: { tab: "chats", chat: chat.id },
+        });
         return;
     }
 
@@ -328,23 +335,23 @@ onBeforeUnmount(() => {
                             <div v-if="createError" class="alert alert-danger" role="alert">{{ createError }}</div>
 
                             <div class="mb-3">
-                                <label class="form-label required">{{ t('chatsIndex.create_modal.source_label') }}</label>
-                                <select v-model="createForm.data_source_id" class="form-select"
-                                        :class="{ 'is-invalid': createErrors.data_source_id }"
-                                        :disabled="!sources.length" required>
-                                    <option value="" disabled>{{ t('chatsIndex.create_modal.source_placeholder') }}</option>
-                                    <option v-for="source in sources" :key="source.id" :value="source.id">
-                                        {{ source.name }} — {{ source.format_label }}
+                                <label class="form-label required">{{ t('chatsIndex.create_modal.workspace_label') }}</label>
+                                <select v-model="createForm.workspace_id" class="form-select"
+                                        :class="{ 'is-invalid': createErrors.workspace_id }"
+                                        :disabled="!workspaces.length" required>
+                                    <option value="" disabled>{{ t('chatsIndex.create_modal.workspace_placeholder') }}</option>
+                                    <option v-for="workspace in workspaces" :key="workspace.id" :value="workspace.id">
+                                        {{ workspace.name }}<template v-if="workspace.data_source"> — {{ workspace.data_source.name }}</template>
                                     </option>
                                 </select>
-                                <div v-if="createErrors.data_source_id" class="invalid-feedback">
-                                    {{ createErrors.data_source_id[0] }}
+                                <div v-if="createErrors.workspace_id" class="invalid-feedback">
+                                    {{ createErrors.workspace_id[0] }}
                                 </div>
-                                <small v-if="sources.length" class="form-hint">
-                                    {{ t('chatsIndex.create_modal.source_hint') }}
+                                <small v-if="workspaces.length" class="form-hint">
+                                    {{ t('chatsIndex.create_modal.workspace_hint') }}
                                 </small>
                                 <small v-else class="form-hint text-danger">
-                                    {{ t('chatsIndex.create_modal.no_sources_hint') }}
+                                    {{ t('chatsIndex.create_modal.no_workspaces_hint') }}
                                 </small>
                             </div>
 
@@ -364,7 +371,7 @@ onBeforeUnmount(() => {
                             <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">
                                 {{ t('chatsIndex.actions.cancel') }}
                             </button>
-                            <button type="submit" class="btn btn-primary ms-auto" :disabled="!sources.length || !createForm.data_source_id">
+                            <button type="submit" class="btn btn-primary ms-auto" :disabled="!workspaces.length || !createForm.workspace_id">
                                 {{ t('chatsIndex.create_modal.submit') }}
                             </button>
                         </div>
