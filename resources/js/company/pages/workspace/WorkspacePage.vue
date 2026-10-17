@@ -339,6 +339,7 @@ watch(isEditing, async () => {
 
 const schema = ref([]);
 const dictionary = ref({});
+const dialect = ref('duckdb');
 let schemaLoadedFor = null;
 
 async function loadSchema() {
@@ -348,6 +349,7 @@ async function loadSchema() {
         const { data } = await api.get(`/dashboards/${dashboardId.value}/schema`);
 
         schema.value = data.tables ?? [];
+        dialect.value = data.data_source?.dialect ?? 'duckdb';
         dictionary.value = {
             aggregates: data.aggregates ?? {},
             grains: data.grains ?? {},
@@ -1316,6 +1318,7 @@ onBeforeUnmount(() => {
             :dashboard-id="dashboardId"
             :widget="editingWidget"
             :schema="schema"
+            :dialect="dialect"
             :dictionary="dictionary"
             @saved="onWidgetSaved"
         />
@@ -1326,6 +1329,7 @@ onBeforeUnmount(() => {
             :dashboard-id="dashboardId"
             :widget="editingWidget"
             :schema="schema"
+            :dialect="dialect"
             @saved="onWidgetSaved"
         />
 

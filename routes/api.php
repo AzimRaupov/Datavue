@@ -170,6 +170,9 @@ Route::middleware(['auth:sanctum', 'active'])->prefix('company')->group(function
                 Route::get('{id}/tables', [DataSourceController::class, 'tables'])
                     ->whereNumber('id');
 
+                Route::get('{id}/schema', [DataSourceController::class, 'schema'])
+                    ->whereNumber('id');
+
                 Route::post('{id}/refresh', [DataSourceController::class, 'refresh'])
                     ->whereNumber('id');
 

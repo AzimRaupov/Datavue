@@ -1,7 +1,8 @@
 <script setup>
-import { ref, computed, watch, onBeforeUnmount, nextTick } from "vue";
+import { ref, computed, watch, onBeforeUnmount } from "vue";
 import { useI18n } from "vue-i18n";
 import api from "../../api.js";
+import SqlEditor from "../SqlEditor.vue";
 import { queryTemplateFor, COLUMN_HINTS } from "./queryTemplates.js";
 import { CHART_COLORS } from "../widgets/palette.js";
 import { supportsColors } from "../widgets/registry.js";
@@ -32,6 +33,7 @@ const props = defineProps({
     dashboardId: { type: [String, Number], required: true },
     widget: { type: Object, default: null },
     schema: { type: Array, default: () => [] },
+    dialect: { type: String, default: "duckdb" },
     dictionary: { type: Object, default: () => ({}) },
 });
 
@@ -628,18 +630,6 @@ function resetAllColors() {
 watch([table, joins, metrics, dimensions, filters, sort, limit], scheduleCompose, { deep: true });
 
 /** Tab внутри запроса — отступ, а не переход к следующему полю. */
-function onTab(event) {
-    const field = event.target;
-    const start = field.selectionStart;
-    const end = field.selectionEnd;
-
-    query.value = query.value.slice(0, start) + "    " + query.value.slice(end);
-
-    nextTick(() => {
-        field.selectionStart = field.selectionEnd = start + 4;
-    });
-}
-
 function builderPayload() {
     return {
         table: table.value,
@@ -918,7 +908,8 @@ function hide() {
 }
 
 function onKeydown(event) {
-    if (event.key === "Escape") hide();
+    // Escape, уже обработанный редактором (закрыл список подсказок), шторку не закрывает.
+    if (event.key === "Escape" && !event.defaultPrevented) hide();
 }
 
 watch(open, (value) => {
@@ -1483,10 +1474,10 @@ onBeforeUnmount(() => {
                     <div class="mb-3">
                         <label class="form-label">{{ t('widgetSettings.sql_tab.label') }}</label>
 
-                        <textarea v-model="query" class="form-control builder-sql" spellcheck="false"
-                                  rows="14" :aria-label="t('widgetSettings.sql_tab.aria')"
-                                  @input="sqlTouched = true"
-                                  @keydown.tab.prevent="onTab"></textarea>
+                        <SqlEditor v-model="query" :rows="14" :max-rows="30" :schema="schema" :dialect="dialect"
+                                   :aria-label="t('widgetSettings.sql_tab.aria')"
+                                   @edit="sqlTouched = true"
+                                   @run="run" />
 
                         <div v-if="!sqlTouched && composedSql" class="form-hint">
                             {{ t('widgetSettings.sql_tab.composed_hint') }}

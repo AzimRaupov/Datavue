@@ -3,6 +3,7 @@ import { ref, reactive, computed, onMounted, inject } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import api from "../../api.js";
+import SqlEditor from "../../components/SqlEditor.vue";
 
 /**
  * Заведение и правка алерта — отдельной страницей, а не модалкой
@@ -414,23 +415,30 @@ onMounted(load);
                                 <!-- SQL -->
                                 <template v-else-if="form.mode === 'sql'">
                                     <label class="form-label">{{ t("alerts.form.sql.label") }}</label>
-                                    <textarea v-model="form.query" class="form-control font-monospace" rows="8"
-                                              :disabled="!canWriteCode" placeholder="SELECT id FROM orders WHERE status = 'failed'"></textarea>
+                                    <SqlEditor v-model="form.query" :rows="8" :schema="schema.tables"
+                                               :dialect="schema.data_source?.dialect ?? 'duckdb'"
+                                               :disabled="!canWriteCode"
+                                               :aria-label="t('alerts.form.sql.label')"
+                                               placeholder="SELECT id FROM orders WHERE status = 'failed'"
+                                               @run="runPreview" />
                                     <div class="form-hint">{{ t("alerts.form.sql.hint") }}</div>
                                 </template>
 
                                 <!-- Python -->
                                 <template v-else>
                                     <label class="form-label">{{ t("alerts.form.python.label") }}</label>
-                                    <textarea v-model="form.code" class="form-control font-monospace" rows="12" :disabled="!canWriteCode"
-                                              placeholder="def main():
+                                    <SqlEditor v-model="form.code" language="python" :rows="12" :schema="schema.tables"
+                                               :disabled="!canWriteCode"
+                                               :aria-label="t('alerts.form.python.label')"
+                                               placeholder="def main():
     rows = query(&quot;SELECT COUNT(*) AS c FROM orders WHERE status = 'failed'&quot;)
     failed = rows[0][0]
     print(json.dumps({
         &quot;triggered&quot;: failed > 0,
         &quot;value&quot;: failed,
         &quot;message&quot;: f&quot;Проваленных заказов: {failed}&quot;,
-    }))"></textarea>
+    }))"
+                                               @run="runPreview" />
                                     <div class="form-hint">{{ t("alerts.form.python.hint") }}</div>
                                 </template>
 

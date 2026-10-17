@@ -4,6 +4,7 @@ import { Modal } from 'bootstrap';
 import { useRoute } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import api from '../../api.js';
+import SqlEditor from '../../components/SqlEditor.vue';
 
 const route = useRoute();
 const { t } = useI18n();
@@ -22,6 +23,20 @@ const sqlQuery = ref('');
 const sqlRunning = ref(false);
 const sqlError = ref(null);
 const sqlResult = ref(null);
+const sqlSchema = ref([]);
+const sqlDialect = ref('duckdb');
+const sqlEditor = ref(null);
+const sqlElapsed = ref(null);
+
+// Браузер схемы: поиск по таблицам и колонкам, раскрытие таблицы кликом.
+const tableSearch = ref('');
+const expandedTables = ref(new Set());
+const schemaLoading = ref(false);
+
+// Недавние запросы живут в браузере: это удобство одного человека, а не данные источника.
+const HISTORY_LIMIT = 15;
+const historyKey = `datavue.sqlHistory.${sourceId}`;
+const sqlHistory = ref([]);
 
 // Обновление данных
 const refreshModalEl = ref(null);
@@ -87,17 +102,146 @@ async function fetchSource() {
     }
 }
 
-/** Tab в поле запроса — отступ, а не переход к следующему полю. */
-function onSqlTab(event) {
-    const field = event.target;
-    const start = field.selectionStart;
-    const end = field.selectionEnd;
+/**
+ * Схема кормит и подсказки редактора, и браузер таблиц слева. Не загрузилась —
+ * консоль работает как обычное поле, поэтому ошибку не показываем.
+ */
+async function fetchSqlSchema() {
+    if (!canManageSources.value) return;
 
-    sqlQuery.value = sqlQuery.value.slice(0, start) + '    ' + sqlQuery.value.slice(end);
+    schemaLoading.value = true;
 
-    nextTick(() => {
-        field.selectionStart = field.selectionEnd = start + 4;
-    });
+    try {
+        const { data } = await api.get(`/data_source/${sourceId}/schema`);
+        sqlSchema.value = data.tables ?? [];
+        sqlDialect.value = data.dialect ?? 'duckdb';
+    } catch (err) {
+        sqlSchema.value = [];
+    } finally {
+        schemaLoading.value = false;
+    }
+}
+
+const filteredTables = computed(() => {
+    const needle = tableSearch.value.trim().toLowerCase();
+
+    if (!needle) return sqlSchema.value;
+
+    return sqlSchema.value.filter((table) =>
+        table.name.toLowerCase().includes(needle)
+        || (table.columns ?? []).some((column) => column.name.toLowerCase().includes(needle))
+    );
+});
+
+// При поиске раскрываем таблицы, в которых совпала колонка, — иначе совпадение не видно.
+function isExpanded(table) {
+    if (expandedTables.value.has(table.name)) return true;
+
+    const needle = tableSearch.value.trim().toLowerCase();
+
+    return needle !== ''
+        && !table.name.toLowerCase().includes(needle)
+        && (table.columns ?? []).some((column) => column.name.toLowerCase().includes(needle));
+}
+
+function toggleTable(table) {
+    const next = new Set(expandedTables.value);
+
+    if (next.has(table.name)) next.delete(table.name);
+    else next.add(table.name);
+
+    expandedTables.value = next;
+}
+
+function quoteIdentifier(name) {
+    if (/^[a-z_][a-z0-9_]*$/i.test(name)) return name;
+
+    return sqlDialect.value === 'mysql'
+        ? '`' + name.replaceAll('`', '``') + '`'
+        : '"' + name.replaceAll('"', '""') + '"';
+}
+
+function insertName(name) {
+    sqlEditor.value?.insert(quoteIdentifier(name));
+}
+
+/** Первые строки таблицы одним кликом: самый частый первый шаг при знакомстве с данными. */
+function previewTable(table) {
+    sqlQuery.value = `SELECT *\nFROM ${quoteIdentifier(table.name)}\nLIMIT 100`;
+
+    return runSqlConsoleQuery();
+}
+
+function loadHistory() {
+    try {
+        const stored = JSON.parse(localStorage.getItem(historyKey) || '[]');
+        sqlHistory.value = Array.isArray(stored) ? stored.filter((item) => typeof item === 'string') : [];
+    } catch (err) {
+        sqlHistory.value = [];
+    }
+}
+
+function rememberQuery(query) {
+    const text = query.trim();
+
+    sqlHistory.value = [text, ...sqlHistory.value.filter((item) => item !== text)].slice(0, HISTORY_LIMIT);
+
+    try {
+        localStorage.setItem(historyKey, JSON.stringify(sqlHistory.value));
+    } catch (err) {
+        // Хранилище недоступно (приватное окно) — история просто не сохранится.
+    }
+}
+
+function historyLabel(query) {
+    const flat = query.replace(/\s+/g, ' ');
+
+    return flat.length > 70 ? flat.slice(0, 70) + '…' : flat;
+}
+
+function pickHistory(event) {
+    const index = Number(event.target.value);
+
+    if (Number.isInteger(index) && sqlHistory.value[index] !== undefined) {
+        sqlQuery.value = sqlHistory.value[index];
+        sqlEditor.value?.focus();
+    }
+
+    event.target.value = '';
+}
+
+function formatCell(value) {
+    if (value === null || value === undefined) return null;
+
+    return typeof value === 'object' ? JSON.stringify(value) : String(value);
+}
+
+function downloadCsv() {
+    const rows = sqlResult.value?.rows ?? [];
+
+    if (!rows.length) return;
+
+    const columns = Object.keys(rows[0]);
+    const escape = (value) => {
+        const text = formatCell(value) ?? '';
+
+        return /[",\n\r;]/.test(text) ? '"' + text.replaceAll('"', '""') + '"' : text;
+    };
+
+    const lines = [columns.map(escape).join(',')];
+
+    for (const row of rows) lines.push(columns.map((column) => escape(row[column])).join(','));
+
+    // BOM, чтобы Excel не ломал кириллицу.
+    const blob = new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+
+    link.href = url;
+    link.download = `${source.value?.name || 'query'}.csv`;
+    link.click();
+
+    URL.revokeObjectURL(url);
 }
 
 async function runSqlConsoleQuery() {
@@ -106,13 +250,18 @@ async function runSqlConsoleQuery() {
     sqlRunning.value = true;
     sqlError.value = null;
     sqlResult.value = null;
+    sqlElapsed.value = null;
+
+    const startedAt = performance.now();
 
     try {
         const { data } = await api.post(`/data_source/${sourceId}/connection`, {
             query: sqlQuery.value,
         });
 
+        sqlElapsed.value = ((performance.now() - startedAt) / 1000).toFixed(2);
         sqlResult.value = data;
+        rememberQuery(sqlQuery.value);
     } catch (err) {
         sqlError.value = err.response?.data?.message || t('sourcesShow.sqlConsole.error_default');
     } finally {
@@ -186,6 +335,8 @@ async function submitRefresh() {
 }
 
 onMounted(async () => {
+    loadHistory();
+    fetchSqlSchema();
     await fetchSource();
     await nextTick();
 
@@ -345,21 +496,13 @@ onBeforeUnmount(() => {
                                 <h3 class="card-title">{{ t('sourcesShow.schema.title') }}</h3>
                             </div>
 
-                            <!-- Схему разбирает ИИ при первом вопросе: до этого показывать нечего,
-                                 и лучше честно объяснить, а не оставлять пустой блок. -->
-                            <div v-if="!groups.length" class="card-body">
-                                <p class="text-secondary mb-0">
-                                    {{ t('sourcesShow.schema.not_parsed') }}
-                                </p>
-                            </div>
-
-                            <template v-else>
-                                <div class="card-body pb-2">
-                                    <div class="text-secondary">
-                                        {{ t('sourcesShow.schema.summary', { groups: groups.length, tables: tablesCount }) }}
-                                    </div>
-                                </div>
-                                <div class="list-group list-group-flush">
+                            <!-- Смысловые группы строит ИИ при первом вопросе в чате. Это то, как
+                                 агент видит источник, поэтому они первыми и раскрыты. -->
+                            <details v-if="groups.length" class="schema-section" open>
+                                <summary class="px-3 py-2 schema-summary">
+                                    {{ t('sourcesShow.schema.summary', { groups: groups.length, tables: tablesCount }) }}
+                                </summary>
+                                <div class="list-group list-group-flush border-top">
                                     <div v-for="group in groups" :key="group.id" class="list-group-item">
                                         <div class="d-flex align-items-center">
                                             <div class="flex-fill">
@@ -368,13 +511,100 @@ onBeforeUnmount(() => {
                                                     {{ group.description }}
                                                 </div>
                                             </div>
-                                            <span class="badge bg-secondary-lt ms-2">
-                                                {{ group.tables_count }}
-                                            </span>
+                                            <span class="badge bg-secondary-lt ms-2">{{ group.tables_count }}</span>
                                         </div>
                                     </div>
                                 </div>
-                            </template>
+                            </details>
+
+                            <div v-else class="card-body py-2">
+                                <p class="text-secondary small mb-0">{{ t('sourcesShow.schema.not_parsed') }}</p>
+                            </div>
+
+                            <!-- Все таблицы базы свёрнуты под группами: это справочник для запросов,
+                                 а не первое, что нужно видеть. Без групп раскрыты — иначе в карточке
+                                 нечего показать. -->
+                            <details class="schema-section border-top" :open="!groups.length">
+                                <summary class="px-3 py-2 schema-summary">
+                                    {{ t('sourcesShow.schema.all_tables') }}<template v-if="sqlSchema.length"> · {{ sqlSchema.length }}</template>
+                                </summary>
+
+                                <!-- Браузер таблиц: что есть в источнике и как это написать в запросе.
+                                     Доступен тем же, кто видит консоль: схема отдаётся по праву
+                                     «manage data sources». -->
+                                <template v-if="canManageSources">
+                                    <div v-if="schemaLoading" class="card-body text-secondary">
+                                        {{ t('sourcesShow.schema.loading') }}
+                                    </div>
+
+                                    <div v-else-if="!sqlSchema.length" class="card-body">
+                                        <p class="text-secondary mb-0">{{ t('sourcesShow.schema.unavailable') }}</p>
+                                    </div>
+
+                                    <template v-else>
+                                        <div class="card-body py-2 border-bottom">
+                                            <input v-model="tableSearch" type="search" class="form-control form-control-sm"
+                                                   :placeholder="t('sourcesShow.schema.search_placeholder')"
+                                                   :aria-label="t('sourcesShow.schema.search_placeholder')" />
+                                        </div>
+
+                                        <div class="list-group list-group-flush schema-browser">
+                                            <div v-if="!filteredTables.length" class="list-group-item text-secondary">
+                                                {{ t('sourcesShow.schema.no_match') }}
+                                            </div>
+
+                                            <div v-for="table in filteredTables" :key="table.name" class="list-group-item p-0">
+                                                <div class="schema-table d-flex align-items-center gap-1 ps-3 pe-2 py-1">
+                                                    <button type="button" class="schema-table-name flex-fill"
+                                                            :aria-expanded="isExpanded(table)"
+                                                            :title="table.name"
+                                                            @click="toggleTable(table)">
+                                                        <span class="schema-caret" :class="{ open: isExpanded(table) }" aria-hidden="true">▸</span>
+                                                        <span class="text-truncate font-weight-medium">{{ table.name }}</span>
+                                                        <span class="text-secondary small ms-2 flex-shrink-0">{{ table.columns.length }}</span>
+                                                    </button>
+                                                    <button type="button" class="schema-action"
+                                                            :title="t('sourcesShow.schema.insert_name')"
+                                                            :aria-label="t('sourcesShow.schema.insert_name')"
+                                                            @click="insertName(table.name)">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                                                             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                                             stroke-linejoin="round" aria-hidden="true" focusable="false">
+                                                            <path d="M12 5v14" /><path d="M5 12h14" />
+                                                        </svg>
+                                                    </button>
+                                                    <button type="button" class="schema-action schema-action-primary"
+                                                            :title="t('sourcesShow.schema.preview')"
+                                                            :aria-label="t('sourcesShow.schema.preview')"
+                                                            :disabled="sqlRunning"
+                                                            @click="previewTable(table)">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                                                             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                                             stroke-linejoin="round" aria-hidden="true" focusable="false">
+                                                            <path d="M7 4v16l13 -8z" />
+                                                        </svg>
+                                                    </button>
+                                                </div>
+
+                                                <ul v-if="isExpanded(table)" class="list-unstyled schema-columns mb-0">
+                                                    <li v-for="column in table.columns" :key="column.name">
+                                                        <button type="button" class="schema-column d-flex w-100 text-start px-3 py-1"
+                                                                :title="t('sourcesShow.schema.insert_name')"
+                                                                @click="insertName(column.name)">
+                                                            <span class="flex-fill text-truncate">{{ column.name }}</span>
+                                                            <span class="text-secondary small ms-2 flex-shrink-0">{{ column.type }}</span>
+                                                        </button>
+                                                    </li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </template>
+
+                                <div v-else class="card-body">
+                                    <p class="text-secondary mb-0">{{ t('sourcesShow.sqlConsole.no_permission') }}</p>
+                                </div>
+                            </details>
                         </div>
                     </div>
 
@@ -397,17 +627,17 @@ onBeforeUnmount(() => {
 
                             <template v-else>
                                 <div class="card-body">
-                                    <textarea
+                                    <SqlEditor
+                                        ref="sqlEditor"
                                         v-model="sqlQuery"
-                                        class="form-control sql-console-editor"
-                                        spellcheck="false"
-                                        rows="6"
+                                        :rows="6"
+                                        :max-rows="20"
+                                        :schema="sqlSchema"
+                                        :dialect="sqlDialect"
                                         :placeholder="t('sourcesShow.sqlConsole.placeholder')"
                                         :aria-label="t('sourcesShow.sqlConsole.aria')"
-                                        @keydown.tab.prevent="onSqlTab"
-                                        @keydown.ctrl.enter.prevent="runSqlConsoleQuery"
-                                        @keydown.meta.enter.prevent="runSqlConsoleQuery"
-                                    ></textarea>
+                                        @run="runSqlConsoleQuery"
+                                    />
 
                                     <div class="d-flex align-items-center gap-2 mt-2">
                                         <button type="button" class="btn btn-primary"
@@ -422,7 +652,15 @@ onBeforeUnmount(() => {
                                             </svg>
                                             {{ t('sourcesShow.sqlConsole.run_button') }}
                                         </button>
-                                        <span class="text-secondary small">{{ t('sourcesShow.sqlConsole.hint') }}</span>
+                                        <select v-if="sqlHistory.length" class="form-select form-select-sm w-auto"
+                                                :aria-label="t('sourcesShow.sqlConsole.history_label')"
+                                                @change="pickHistory">
+                                            <option value="">{{ t('sourcesShow.sqlConsole.history_label') }}</option>
+                                            <option v-for="(item, index) in sqlHistory" :key="index" :value="index">
+                                                {{ historyLabel(item) }}
+                                            </option>
+                                        </select>
+                                        <span class="text-secondary small ms-auto d-none d-md-inline">{{ t('sourcesShow.sqlConsole.hint') }}</span>
                                     </div>
 
                                     <div v-if="sqlError" class="alert alert-danger mt-3 mb-0" role="alert">
@@ -444,15 +682,25 @@ onBeforeUnmount(() => {
                                             </thead>
                                             <tbody>
                                             <tr v-for="(row, index) in sqlResult.rows" :key="index">
-                                                <td v-for="(value, key) in row" :key="key">{{ value }}</td>
+                                                <td v-for="(value, key) in row" :key="key">
+                                                    <span v-if="formatCell(value) === null" class="text-secondary fst-italic">NULL</span>
+                                                    <template v-else>{{ formatCell(value) }}</template>
+                                                </td>
                                             </tr>
                                             </tbody>
                                         </table>
                                     </div>
 
-                                    <div class="card-footer text-secondary small">
-                                        {{ t('sourcesShow.sqlConsole.rows_label', { count: sqlResult.row_count }) }}
-                                        <span v-if="sqlResult.truncated"> · {{ t('sourcesShow.sqlConsole.truncated_label') }}</span>
+                                    <div class="card-footer d-flex align-items-center text-secondary small">
+                                        <span>
+                                            {{ t('sourcesShow.sqlConsole.rows_label', { count: sqlResult.row_count }) }}
+                                            <span v-if="sqlResult.truncated"> · {{ t('sourcesShow.sqlConsole.truncated_label') }}</span>
+                                            <span v-if="sqlElapsed"> · {{ t('sourcesShow.sqlConsole.elapsed_label', { seconds: sqlElapsed }) }}</span>
+                                        </span>
+                                        <button v-if="sqlResult.rows.length" type="button" class="btn btn-sm ms-auto"
+                                                @click="downloadCsv">
+                                            {{ t('sourcesShow.sqlConsole.export_csv') }}
+                                        </button>
                                     </div>
                                 </template>
                             </template>
@@ -565,17 +813,88 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.sql-console-editor {
-    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-    font-size: 13px;
-    line-height: 1.5;
-    tab-size: 4;
-    white-space: pre;
-    overflow-x: auto;
-}
-
 .sql-console-result {
     max-height: 420px;
     overflow: auto;
+}
+
+/* Шапка остаётся на виду, пока листаешь длинный результат. */
+.sql-console-result thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--tblr-bg-surface, #fff);
+    box-shadow: 0 1px 0 var(--tblr-border-color, #e6e7e9);
+}
+
+.schema-browser {
+    max-height: 460px;
+    overflow-y: auto;
+}
+
+.schema-table-name {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    padding: 6px 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+}
+
+.schema-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--tblr-secondary, #667382);
+}
+
+.schema-action:hover:not(:disabled) {
+    background: rgba(var(--tblr-primary-rgb, 32, 107, 196), 0.1);
+    color: var(--tblr-primary, #206bc4);
+}
+
+.schema-action:disabled {
+    opacity: 0.4;
+}
+
+.schema-caret {
+    display: inline-block;
+    width: 1em;
+    transition: transform 0.12s;
+}
+
+.schema-caret.open {
+    transform: rotate(90deg);
+}
+
+.schema-columns {
+    background: var(--tblr-bg-surface-secondary, #f6f8fb);
+    padding-bottom: 4px;
+}
+
+.schema-column {
+    border: 0;
+    background: transparent;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12.5px;
+    color: inherit;
+    padding-left: 2rem !important;
+}
+
+.schema-column:hover {
+    background: rgba(var(--tblr-primary-rgb, 32, 107, 196), 0.08);
+}
+
+.schema-summary {
+    cursor: pointer;
+    font-weight: 500;
 }
 </style>
