@@ -1,8 +1,9 @@
 import axios from 'axios';
+import { API_URL } from '../shared/server.js';
 
 
 const api = axios.create({
-    baseURL: '/api/',
+    baseURL: `${API_URL}/api/`,
     headers: {
         'Accept': 'application/json',
     },

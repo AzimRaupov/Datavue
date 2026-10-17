@@ -1,5 +1,6 @@
 import Echo from "laravel-echo";
 import Pusher from "pusher-js";
+import { API_URL } from "../shared/server.js";
 
 window.Pusher = Pusher;
 
@@ -30,7 +31,7 @@ function createEcho() {
         // Приложение одностраничное и ходит с токеном в заголовке, а не с кукой,
         // поэтому маршрут авторизации подписки объявлен под охраной sanctum
         // (см. bootstrap/app.php: withBroadcasting).
-        authEndpoint: "/broadcasting/auth",
+        authEndpoint: `${API_URL}/broadcasting/auth`,
 
         // Заголовок собирается на каждую подписку, а не один раз при создании:
         // токен появляется после входа и меняется при смене пароля, а соединение
@@ -39,7 +40,7 @@ function createEcho() {
             authorize: (socketId, callback) => {
                 const token = localStorage.getItem("token");
 
-                fetch("/broadcasting/auth", {
+                fetch(`${API_URL}/broadcasting/auth`, {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",

@@ -18,7 +18,7 @@ const bars = [62, 78, 54, 91, 70, 86, 48]
     <div class="dv-window">
         <div class="dv-window-bar">
             <span class="dv-dot"></span><span class="dv-dot"></span><span class="dv-dot"></span>
-            <span class="dv-window-url"><TablerIcon name="lock" class="icon-sm text-green" /> datavue.startcoding.tj</span>
+            <span class="dv-window-url"><TablerIcon name="lock" class="icon-sm text-green" /> datavue.xyz</span>
         </div>
 
         <div class="dv-window-body">

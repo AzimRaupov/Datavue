@@ -1,4 +1,4 @@
-package com.silkroadtravel.app;
+package com.datavue.app;
 
 import com.getcapacitor.BridgeActivity;
 

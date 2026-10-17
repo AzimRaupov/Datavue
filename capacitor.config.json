@@ -1,9 +1,9 @@
 {
   "appId": "com.datavue.app",
   "appName": "Datavue",
-  "webDir": "public/build",
+  "webDir": "dist-mobile",
   "server": {
-    "url": "http://192.168.10.196:8000",
-    "cleartext": true
+    "androidScheme": "https",
+    "hostname": "app.datavue.local"
   }
 }
