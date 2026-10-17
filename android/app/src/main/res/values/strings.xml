@@ -2,6 +2,6 @@
 <resources>
     <string name="app_name">Datavue</string>
     <string name="title_activity_main">Datavue</string>
-    <string name="package_name">com.silkroadtravel.app</string>
-    <string name="custom_url_scheme">com.silkroadtravel.app</string>
+    <string name="package_name">com.datavue.app</string>
+    <string name="custom_url_scheme">com.datavue.app</string>
 </resources>

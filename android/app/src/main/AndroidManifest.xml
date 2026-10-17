@@ -23,21 +23,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!--
-                Возврат из внешней оплаты: Stripe редиректит на
-                silkroad://wallet?topup=success, Android будит это приложение
-                (launchMode="singleTask" — существующий экземпляр, а не новый),
-                а Capacitor отдаёт адрес в appUrlOpen. Без этого фильтра ссылка
-                осталась бы в браузере, где нет сессии приложения.
-                Схема должна совпадать с MOBILE_DEEP_LINK_SCHEME в .env.
-            -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="silkroad" />
-            </intent-filter>
-
         </activity>
 
         <provider
@@ -54,14 +39,4 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
-
-    <!--
-        Геолокация в WebView: витрина пишет позицию раз в минуту через
-        navigator.geolocation. Системный диалог показывает сам Capacitor
-        (BridgeWebChromeClient.onGeolocationPermissionsShowPrompt), но без
-        этих разрешений в манифесте он запросить их не может, и браузерный
-        вызов сразу возвращает отказ — приложение осталось бы только с IP.
-    -->
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 </manifest>

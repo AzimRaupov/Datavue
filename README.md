@@ -111,3 +111,18 @@ composer test
 ## Известные ограничения
 
 - Виджет `map` (картограмма) добавлен в каталог, но пока не подключён на фронтенде (`WidgetContainer.vue`/`Map.vue` не читают данные виджета) — помечен `is_ai_selectable = false`, чтобы ИИ не предлагал его при выборе типа визуализации.
+
+## Android-приложение
+
+Capacitor-оболочка с автономным интерфейсом: JS, CSS и шрифты лежат внутри APK
+(`dist-mobile`), а с сервера берутся только данные по API и сокеты Reverb.
+Адрес сервера задаётся при сборке (`MOBILE_API_URL`, по умолчанию `https://datavue.xyz`).
+Точка входа — `resources/js/mobile.js`, конфиг сборки — `vite.mobile.config.js`.
+
+```bash
+npm run android:sync                     # собрать интерфейс и скопировать в android/
+cd android && ./gradlew assembleDebug    # APK: android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+Другой сервер: `MOBILE_API_URL=https://example.com npm run android:sync`.
+Для работы сокетов на сервере должен быть задеплоен `config/cors.php` (разрешает `/broadcasting/auth`).

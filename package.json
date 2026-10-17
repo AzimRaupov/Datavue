@@ -4,7 +4,9 @@
     "type": "module",
     "scripts": {
         "build": "vite build",
-        "dev": "vite"
+        "dev": "vite",
+        "build:mobile": "vite build --config vite.mobile.config.js",
+        "android:sync": "npm run build:mobile && cap sync android"
     },
     "devDependencies": {
         "@capacitor/android": "^8.5.1",
