@@ -8,6 +8,8 @@ use App\Http\Controllers\Chat\ExportController;
 use App\Http\Controllers\Chat\MessageController;
 use App\Http\Controllers\Dashboard\DashboardBuilderController;
 use App\Http\Controllers\Dashboard\DashboardController;
+use App\Http\Controllers\Report\ScheduledReportController;
+use App\Http\Controllers\Dashboard\DashboardExportController;
 use App\Http\Controllers\Dashboard\DashboardWidgetController;
 use App\Http\Controllers\Dashboard\WorkspaceController;
 use App\Http\Controllers\DataSource\DataSourceConnectionController;
@@ -80,9 +82,32 @@ Route::middleware(['auth:sanctum', 'active'])->prefix('company')->group(function
     Route::get('alerts/{alert}/history', [AlertRunController::class, 'history'])
         ->middleware('permission:view alerts');
 
+    // Отчёты по расписанию: дашборд в PDF/Word на почту раз в день, неделю или месяц.
+    Route::get('workspaces/{workspace}/scheduled-reports', [ScheduledReportController::class, 'index'])
+        ->middleware('permission:view reports');
+    Route::post('workspaces/{workspace}/scheduled-reports', [ScheduledReportController::class, 'store'])
+        ->middleware('permission:manage reports');
+
+    Route::get('scheduled-reports/{report}', [ScheduledReportController::class, 'show'])
+        ->middleware('permission:view reports');
+    Route::match(['put', 'patch'], 'scheduled-reports/{report}', [ScheduledReportController::class, 'update'])
+        ->middleware('permission:manage reports');
+    Route::delete('scheduled-reports/{report}', [ScheduledReportController::class, 'destroy'])
+        ->middleware('permission:manage reports');
+    Route::post('scheduled-reports/{report}/toggle', [ScheduledReportController::class, 'toggle'])
+        ->middleware('permission:manage reports');
+    Route::post('scheduled-reports/{report}/run', [ScheduledReportController::class, 'run'])
+        ->middleware(['permission:manage reports', 'throttle:10,1']);
+    Route::get('scheduled-reports/{report}/history', [ScheduledReportController::class, 'history'])
+        ->middleware('permission:view reports');
+
     Route::get('dashboards', [DashboardController::class, 'index'])->middleware('permission:view dashboards');
     Route::get('dashboards/{dashboard}', [DashboardController::class, 'show'])->middleware('permission:view dashboards');
     Route::post('dashboards', [DashboardController::class, 'store'])->middleware('permission:create dashboards');
+    Route::post('dashboards/{dashboard}/export', [DashboardExportController::class, 'store'])
+        ->middleware(['permission:view dashboards', 'throttle:20,1']);
+    Route::get('dashboard-exports/{export}', [DashboardExportController::class, 'show'])
+        ->middleware('permission:view dashboards');
     Route::match(['put', 'patch'], 'dashboards/{dashboard}', [DashboardController::class, 'update'])->middleware('permission:edit dashboards');
 
     Route::match(['put', 'patch'], 'dashboards/{dashboard}/widgets', [DashboardController::class, 'updateWidgets'])

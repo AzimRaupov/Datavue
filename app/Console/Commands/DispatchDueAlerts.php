@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Helpers\Alert\AlertNotifier;
 use App\Jobs\AlertCheckJob;
 use App\Models\Alert;
 use Illuminate\Console\Command;
@@ -13,8 +14,16 @@ class DispatchDueAlerts extends Command
 
     protected $description = 'Ставит в очередь проверку алертов, для которых подошло время';
 
-    public function handle(): int
+    public function handle(AlertNotifier $notifier): int
     {
+        // Уведомления, которые не ушли из-за недоступной почты, повторяются здесь же: у отключённого
+        // алерта проверок больше нет, и без этого письмо «алерт отключён» не дошло бы никогда.
+        $retried = $notifier->retryPending();
+
+        if ($retried > 0) {
+            $this->info("Повторно отправлено уведомлений: {$retried}.");
+        }
+
         $batch = (int) config('alerts.dispatch_batch');
 
         $due = Alert::query()->due()->limit($batch)->get(['id', 'interval_minutes']);

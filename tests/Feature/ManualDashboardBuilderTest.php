@@ -490,7 +490,10 @@ it('показывает в пространстве только его даш�
         ->and($ids)->not->toContain($foreign->id)
 
         ->and($response['current_dashboard_id'])->toBe($generated->id)
-        ->and($response['chat']['id'])->toBe($chat->id);
+        // На обзоре пространства разговор выбирают из списка `chats`; поле `chat` приходит,
+        // только когда открыт конкретный дашборд.
+        ->and($response['chat'])->toBeNull()
+        ->and(collect($response['chats'])->pluck('id'))->toContain($chat->id);
 });
 
 it('находит пространство по дашборду и по чату', function () {

@@ -29,6 +29,10 @@ class Alert extends Model
         'last_triggered_at',
         'last_notified_at',
         'last_error_notified_at',
+        'pending_notice',
+        'pending_check_id',
+        'pending_attempts',
+        'pending_retry_at',
         'consecutive_failures',
         'disabled_reason',
         'recipients',
@@ -50,6 +54,8 @@ class Alert extends Model
         'last_triggered_at' => 'datetime',
         'last_notified_at' => 'datetime',
         'last_error_notified_at' => 'datetime',
+        'pending_attempts' => 'integer',
+        'pending_retry_at' => 'datetime',
     ];
 
     protected $attributes = [

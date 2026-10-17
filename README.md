@@ -126,3 +126,27 @@ cd android && ./gradlew assembleDebug    # APK: android/app/build/outputs/apk/de
 
 Другой сервер: `MOBILE_API_URL=https://example.com npm run android:sync`.
 Для работы сокетов на сервере должен быть задеплоен `config/cors.php` (разрешает `/broadcasting/auth`).
+
+## Почта: проверка и тесты
+
+```bash
+php artisan mail:check                  # настройки, вход на SMTP, тестовое письмо на адрес отправителя
+php artisan mail:check --to=me@mail.ru  # отправить проверочное письмо на другой адрес
+php artisan mail:check --no-send        # только настройки и вход на SMTP-сервер
+```
+
+Команда подсказывает причину, если что-то не так (режим `log`, неверный пароль, закрытый порт, нужен «пароль приложения»).
+Запускайте её и на сервере после настройки `MAIL_*` в `.env`.
+
+Обычные тесты (`./vendor/bin/pest`) почту не отправляют. **Живые** тесты отправляют настоящие письма на указанный ящик
+и проверяют по IMAP, что они дошли (вложение PDF/DOCX, ссылка на скачивание, письма алертов):
+
+```bash
+MAIL_LIVE_TEST_TO=you@gmail.com DB_CONNECTION=mysql DB_DATABASE=datavue \
+    ./vendor/bin/pest tests/Feature/Live --group=live-mail     # 1. почта сама по себе
+    ./vendor/bin/pest tests/Feature/Live --group=live-report   # 2. отчёты по расписанию
+    ./vendor/bin/pest tests/Feature/Live --group=live-alert    # 3. алерты
+```
+
+Нужны: настроенный SMTP, локальная MySQL с данными, запущенное приложение (`EXPORT_RENDER_URL`) и Chrome.
+Тесты работают с базой разработки и удаляют только то, что создали сами. Письма в ящике остаются (тема содержит метку `LIVE-…`).

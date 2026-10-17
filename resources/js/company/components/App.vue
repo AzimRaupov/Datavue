@@ -1,12 +1,18 @@
 <script setup>
 import { ref, computed, provide, onMounted, watch, nextTick } from 'vue';
 import axios from 'axios';
+import { useRoute } from 'vue-router';
 
 import Header from './Header.vue';
 import Toast from './Toast.vue';
 import NotFound from "../../viewer/components/Errors/NotFound.vue";
 
 const token = localStorage.getItem('token');
+
+const route = useRoute();
+
+// Страница выгрузки (её снимает headless Chrome) рисуется без оболочки: ни шапки, ни кнопки тем.
+const isExport = computed(() => route.meta?.export === true);
 
 const user = ref(null);
 const loading = ref(true);
@@ -196,14 +202,14 @@ watch(user, async (value) => {
     <!-- Пользователь авторизован -->
     <template v-else-if="user">
         <div class="page">
-            <Header v-if="!isDirector" />
+            <Header v-if="!isDirector && !isExport" />
 
             <router-view />
         </div>
 
         <Toast ref="toastRef" />
 
-        <div class="settings">
+        <div v-if="!isExport" class="settings">
             <a
                 href="#"
                 class="btn btn-floating btn-icon btn-primary"

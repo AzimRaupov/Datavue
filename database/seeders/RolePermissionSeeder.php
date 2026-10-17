@@ -34,6 +34,9 @@ class RolePermissionSeeder extends Seeder
 
         'write alert code',
 
+        'view reports',
+        'manage reports',
+
         'view users',
         'manage users',
         'manage roles',
@@ -59,6 +62,8 @@ class RolePermissionSeeder extends Seeder
             'view alerts',
             'manage alerts',
             'write alert code',
+            'view reports',
+            'manage reports',
             'view users',
         ],
 
@@ -67,6 +72,7 @@ class RolePermissionSeeder extends Seeder
             'view chats',
             'view data sources',
             'view alerts',
+            'view reports',
         ],
 
         'director' => [
@@ -117,6 +123,14 @@ class RolePermissionSeeder extends Seeder
                 'view alerts' => 'Видеть алерты и их историю проверок',
                 'manage alerts' => 'Создавать, менять и удалять алерты',
                 'write alert code' => 'Писать SQL и Python-условия алертов',
+            ],
+        ],
+
+        'reports' => [
+            'label' => 'Отчёты по расписанию',
+            'items' => [
+                'view reports' => 'Видеть отчёты по расписанию и историю отправок',
+                'manage reports' => 'Создавать, менять и удалять отчёты по расписанию',
             ],
         ],
 

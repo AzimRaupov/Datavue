@@ -13,7 +13,9 @@ import WidgetSettingsDrawer from "../../components/builder/WidgetSettingsDrawer.
 import WidgetCodeModal from "../../components/builder/WidgetCodeModal.vue";
 import AiChatSidebar from "../../components/chat/AiChatSidebar.vue";
 import AlertList from "../../components/alerts/AlertList.vue";
+import ReportList from "../../components/reports/ReportList.vue";
 import DashboardWidgetsView from "../../components/dashboard/DashboardWidgetsView.vue";
+import DashboardExportMenu from "../../components/dashboard/DashboardExportMenu.vue";
 import { typesOf, currentTypeId, changeWidgetType } from "../../utils/widgetTypes.js";
 import { usePrintArea } from "../../composables/usePrintArea.js";
 import { dashboardStatusInfo } from "../../utils/dashboardStatus.js";
@@ -52,6 +54,8 @@ const canCreate = computed(() => permissions.value.includes("create dashboards")
 const canWriteCode = computed(() => permissions.value.includes("write widget code"));
 const canChat = computed(() => permissions.value.includes("create chats"));
 const canManageAlerts = computed(() => permissions.value.includes("manage alerts"));
+const canViewReports = computed(() => permissions.value.includes("view reports"));
+const canManageReports = computed(() => permissions.value.includes("manage reports"));
 
 // --- Состояние пространства -------------------------------------------------
 
@@ -75,11 +79,11 @@ const mode = computed(() => (route.query.mode === "edit" && canEdit.value ? "edi
 const isEditing = computed(() => mode.value === "edit");
 
 /**
- * Вкладка обзора пространства (Дашборды/Чаты/Алерты) — тоже в адресе
+ * Вкладка обзора пространства (Дашборды/Чаты/Алерты/Отчёты) — тоже в адресе
  * (?tab=alerts), тем же приёмом, что и режим сборки: ссылка «открой мне
  * алерты этого пространства» обязана открывать именно их.
  */
-const OVERVIEW_TABS = ["dashboards", "chats", "alerts"];
+const OVERVIEW_TABS = ["dashboards", "chats", "alerts", "reports"];
 const overviewTab = computed(() => (OVERVIEW_TABS.includes(route.query.tab) ? route.query.tab : "dashboards"));
 
 function setOverviewTab(tab) {
@@ -829,6 +833,7 @@ onBeforeUnmount(() => {
                                                 @click="printDashboard">
                                             {{ t('workspacePage.print_title') }}
                                         </button>
+                                        <DashboardExportMenu v-if="dashboardId && !isEditing" items :dashboard-id="dashboardId" />
                                     </div>
                                 </div>
 
@@ -880,6 +885,8 @@ onBeforeUnmount(() => {
                                         <path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 19v-4h-4" />
                                     </svg>
                                 </button>
+
+                                <DashboardExportMenu v-if="dashboardId && !isEditing" class="d-none d-md-block" :dashboard-id="dashboardId" />
 
                                 <button v-if="dashboard && !isEditing" class="btn d-none d-md-inline-flex" type="button" :title="t('workspacePage.print_title')"
                                         :aria-label="t('workspacePage.print_title')" @click="printDashboard">
@@ -955,6 +962,12 @@ onBeforeUnmount(() => {
                             <a class="nav-link" :class="{ active: overviewTab === 'alerts' }"
                                href="#" @click.prevent="setOverviewTab('alerts')">
                                 {{ t('workspacePage.tabs.alerts') }}
+                            </a>
+                        </li>
+                        <li v-if="canViewReports" class="nav-item">
+                            <a class="nav-link" :class="{ active: overviewTab === 'reports' }"
+                               href="#" @click.prevent="setOverviewTab('reports')">
+                                {{ t('workspacePage.tabs.reports') }}
                             </a>
                         </li>
                     </ul>
@@ -1071,6 +1084,16 @@ onBeforeUnmount(() => {
                             :workspace-id="workspaceId"
                             :can-manage="canManageAlerts"
                             :has-data-source="!!dataSource"
+                        />
+                    </div>
+
+                    <!-- Отчёты по расписанию: дашборд в PDF/Word на почту. -->
+                    <div v-if="canViewReports" v-show="overviewTab === 'reports'">
+                        <ReportList
+                            v-if="workspaceId"
+                            :workspace-id="workspaceId"
+                            :dashboards="dashboards"
+                            :can-manage="canManageReports"
                         />
                     </div>
                 </div>

@@ -21,6 +21,10 @@ return [
 
     'disable_after_failures' => (int) env('ALERT_DISABLE_AFTER_FAILURES', 10),
 
+    // Сколько раз повторять отправку уведомления, которое не ушло из-за недоступной почты.
+    // Пауза между попытками растёт: 5, 10, 20, 40, 80 минут, дальше раз в 2 часа.
+    'notice_retry_attempts' => (int) env('ALERT_NOTICE_RETRY_ATTEMPTS', 12),
+
     'history_ttl_days' => (int) env('ALERT_HISTORY_TTL_DAYS', 90),
 
     'max_per_company' => (int) env('ALERT_MAX_PER_COMPANY', 100),

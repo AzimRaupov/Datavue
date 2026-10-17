@@ -17,6 +17,15 @@ Schedule::command('exports:prune')
     ->dailyAt('04:00')
     ->withoutOverlapping();
 
+Schedule::command('dashboard-exports:prune')
+    ->dailyAt('04:10')
+    ->withoutOverlapping();
+
+Schedule::command('reports:dispatch')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();
+
 Schedule::command('alerts:dispatch')
     ->everyMinute()
     ->withoutOverlapping()
