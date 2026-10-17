@@ -64,6 +64,7 @@ class DuckDbConnectionLocalProvider
         try {
             $process = Process::run([
                 'duckdb',
+                '-readonly',
                 $this->pathDb,
                 '-c',
                 'SELECT 1 AS test_connection',
@@ -93,8 +94,13 @@ class DuckDbConnectionLocalProvider
 
     public function query(string $query, array $bindings = [])
     {
+        // -readonly: без него CLI берёт эксклюзивную блокировку файла, и при
+        // параллельной загрузке виджетов дашборда все процессы, кроме одного,
+        // падают с «Could not set lock on file». Ошибка здесь глотается, а
+        // виджет остаётся без данных и пропадает с дашборда.
         $command = [
             'duckdb',
+            '-readonly',
             $this->pathDb,
             '-json',
             '-c',

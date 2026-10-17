@@ -190,7 +190,7 @@ PYTHON;
 
         return <<<PYTHON
 def query(sql_query, params=None):
-    db = duckdb.connect({$pathDb})
+    db = duckdb.connect({$pathDb}, read_only=True)
 
     try:
         result = db.execute(sql_query, params or ()).fetchall()
@@ -305,7 +305,7 @@ PYTHON;
 
         return <<<PYTHON
 def query_df(sql_query, params=None):
-    db = duckdb.connect({$pathDb})
+    db = duckdb.connect({$pathDb}, read_only=True)
 
     try:
         return db.execute(sql_query, params or ()).fetchdf()
