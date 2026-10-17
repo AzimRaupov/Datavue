@@ -17,6 +17,25 @@ return [
 
     'preview_rows' => (int) env('EXPORT_PREVIEW_ROWS', 10),
 
+    /*
+    | Экспорт дашборда (PDF/Word): страницу дашборда открывает headless Chrome
+    | на сервере и снимает её как есть. render_url — адрес, по которому сам сервер
+    | достаёт своё приложение (по умолчанию APP_URL), chrome_path — путь к Chrome/Chromium
+    | (пусто — искать в PATH).
+    */
+    'dashboard' => [
+        'render_url' => env('EXPORT_RENDER_URL', env('APP_URL', 'http://127.0.0.1')),
+        'chrome_path' => env('EXPORT_CHROME_PATH'),
+        'node' => env('EXPORT_NODE_BINARY', 'node'),
+        // Ширина страницы дашборда при съёмке, px. 1280 — как на экране компьютера: сетка виджетов
+        // (например, четыре карточки в ряд) совпадает с тем, что видит человек.
+        'width' => (int) env('EXPORT_DASHBOARD_WIDTH', 1280),
+        // PDF — страницы A4; альбомные, чтобы такая ширина оставалась читаемой.
+        'pdf_landscape' => (bool) env('EXPORT_DASHBOARD_PDF_LANDSCAPE', true),
+        'timeout' => (int) env('EXPORT_DASHBOARD_TIMEOUT', 240),
+        'ttl_days' => (int) env('EXPORT_DASHBOARD_TTL_DAYS', 7),
+    ],
+
     'pdf_fonts' => [
         'regular' => [
             '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',

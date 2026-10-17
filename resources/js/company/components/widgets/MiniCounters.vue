@@ -12,7 +12,7 @@
 
                         <div class="col-auto">
                             <span
-                                class="avatar avatar-lx cursor-pointer"
+                                class="avatar avatar-lx cursor-pointer export-hidden"
                                 :class="copiedIndex === index ? 'bg-success-lt text-success' : ''"
                                 :title="copiedIndex === index ? t('widgets.minicounters.copied') : t('widgets.minicounters.copy_value')"
                                 @click="copyValue(counter, index)"
@@ -35,7 +35,7 @@
                         <h4 class="subheader mb-1">{{ counter.name }}</h4>
 
                         <span
-                            class="cursor-pointer text-secondary"
+                            class="cursor-pointer text-secondary export-hidden"
                             :class="copiedIndex === index ? 'text-success' : ''"
                             :title="copiedIndex === index ? t('widgets.minicounters.copied') : t('widgets.minicounters.copy_value')"
                             @click="copyValue(counter, index)"

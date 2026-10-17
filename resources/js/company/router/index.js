@@ -16,6 +16,7 @@ import SourceCreate from "../pages/sources/CreatePage.vue";
 import ChatsIndex from "../pages/chats/IndexPage.vue";
 import AlertForm from "../pages/alerts/AlertForm.vue";
 import DirectorPage from "../pages/director/IndexPage.vue";
+import ExportDashboardPage from "../pages/ExportDashboardPage.vue";
 
 const routes = [
     {
@@ -171,6 +172,14 @@ const routes = [
     | (см. guard ниже), генерация/перегенерация/экспорт работают через тот же
     | чат, что и у остальных ролей.
     */
+    // Служебная страница для выгрузки в PDF/Word: её открывает headless Chrome на
+    // сервере (DashboardExportJob). Оболочка приложения на ней шапку не рисует.
+    {
+        path: '/export/dashboard/:id(\\d+)',
+        name: 'company.export.dashboard',
+        component: ExportDashboardPage,
+        meta: { export: true },
+    },
     {
         path: '/director',
         name: 'director.home',
@@ -199,7 +208,7 @@ function currentRoles() {
 // конструктор/источники/сотрудники ему всё равно ответят 403. Редирект здесь
 // чисто ради интерфейса: чтобы старая закладка или прямой адрес не показывали
 // пустую страницу с ошибкой, а сразу уводили в его единственный экран.
-const DIRECTOR_ALLOWED_ROUTES = new Set(['director.home', 'director.chat', 'settings.profile']);
+const DIRECTOR_ALLOWED_ROUTES = new Set(['director.home', 'director.chat', 'settings.profile', 'company.export.dashboard']);
 
 const router = createRouter({
 

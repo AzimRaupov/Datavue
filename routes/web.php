@@ -22,6 +22,10 @@ Route::get('/exports/{token}', [\App\Http\Controllers\Chat\ExportController::cla
     ->name('chat-exports.download')
     ->where('token', '[A-Za-z0-9]+');
 
+Route::get('/dashboard-exports/{token}', [\App\Http\Controllers\Dashboard\DashboardExportController::class, 'download'])
+    ->name('dashboard-exports.download')
+    ->where('token', '[A-Za-z0-9]+');
+
 Route::get('/alert-history/{token}/csv', [\App\Http\Controllers\Alert\AlertHistoryExportController::class, 'download'])
     ->name('alert-history.csv')
     ->where('token', '[A-Za-z0-9]+');
