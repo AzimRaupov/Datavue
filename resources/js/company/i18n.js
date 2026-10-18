@@ -478,6 +478,16 @@ const messages = {
                 delete_failed: 'Не удалось удалить чат.',
             },
         },
+        searchSelect: {
+            search: 'Поиск…',
+            empty: 'Ничего не найдено',
+        },
+        widgetLoading: {
+            title: 'Загрузка виджетов',
+            subtitle: 'Заглушки всех семейств: {count} шт. Так виджет выглядит, пока ждёт данные.',
+            back: 'Галерея виджетов',
+            open: 'Заглушки загрузки',
+        },
         sourcesShow: {
             back_to_sources: 'Источники данных',
             title_fallback: 'Источник данных',
@@ -879,6 +889,11 @@ const messages = {
                 column_placeholder: 'колонка',
             },
             data_tab: {
+                heads: {
+                    table: 'Таблица',
+                    condition: 'Условие связи',
+                    type: 'Тип',
+                },
                 table_label: 'Таблица',
                 table_placeholder: 'Выберите таблицу',
                 table_hint: 'С неё начинается запрос. Остальные подключаются связями ниже.',
@@ -918,6 +933,16 @@ const messages = {
                 colors_hint: 'Порядок — как у рядов на графике: первый цвет достаётся первому ряду. Нетронутые ячейки следуют теме оформления.',
             },
             builder_tab: {
+                heads: {
+                    table: 'Таблица',
+                    agg: 'Функция',
+                    column: 'Колонка',
+                    label: 'Название',
+                    target: 'Цель',
+                    grain: 'Группировка',
+                    op: 'Условие',
+                    value: 'Значение',
+                },
                 metrics: {
                     label: 'Метрики',
                     table_aria: 'Таблица метрики',
@@ -1765,6 +1790,16 @@ const messages = {
                 delete_failed: 'Failed to delete the chat.',
             },
         },
+        searchSelect: {
+            search: 'Search…',
+            empty: 'Nothing found',
+        },
+        widgetLoading: {
+            title: 'Widget loading',
+            subtitle: 'Placeholders of every family: {count}. This is how a widget looks while waiting for data.',
+            back: 'Widget gallery',
+            open: 'Loading placeholders',
+        },
         sourcesShow: {
             back_to_sources: 'Data Sources',
             title_fallback: 'Data source',
@@ -2166,6 +2201,11 @@ const messages = {
                 column_placeholder: 'column',
             },
             data_tab: {
+                heads: {
+                    table: 'Table',
+                    condition: 'Join condition',
+                    type: 'Type',
+                },
                 table_label: 'Table',
                 table_placeholder: 'Select a table',
                 table_hint: 'The query starts from it. Other tables connect through relations below.',
@@ -2205,6 +2245,16 @@ const messages = {
                 colors_hint: 'Order matches the series on the chart: the first color goes to the first series. Untouched cells follow the theme.',
             },
             builder_tab: {
+                heads: {
+                    table: 'Table',
+                    agg: 'Function',
+                    column: 'Column',
+                    label: 'Label',
+                    target: 'Target',
+                    grain: 'Group by',
+                    op: 'Condition',
+                    value: 'Value',
+                },
                 metrics: {
                     label: 'Metrics',
                     table_aria: 'Metric table',
@@ -3051,6 +3101,16 @@ const messages = {
                 delete_failed: 'Нест кардани чат бомуваффақият анҷом наёфт.',
             },
         },
+        searchSelect: {
+            search: 'Ҷустуҷӯ…',
+            empty: 'Ҳеҷ чиз ёфт нашуд',
+        },
+        widgetLoading: {
+            title: 'Боркунии виджетҳо',
+            subtitle: 'Ҷойгиркунакҳои ҳамаи оилаҳо: {count}. Виджет ҳангоми интизории додаҳо чунин менамояд.',
+            back: 'Галереяи виджетҳо',
+            open: 'Ҷойгиркунакҳои боркунӣ',
+        },
         sourcesShow: {
             back_to_sources: 'Манбаъҳои маълумот',
             title_fallback: 'Манбаи маълумот',
@@ -3452,6 +3512,11 @@ const messages = {
                 column_placeholder: 'сутун',
             },
             data_tab: {
+                heads: {
+                    table: 'Ҷадвал',
+                    condition: 'Шарти пайваст',
+                    type: 'Намуд',
+                },
                 table_label: 'Ҷадвал',
                 table_placeholder: 'Ҷадвалро интихоб кунед',
                 table_hint: 'Дархост аз он оғоз меёбад. Ҷадвалҳои дигар тавассути алоқаҳо дар поён пайваст мешаванд.',
@@ -3491,6 +3556,16 @@ const messages = {
                 colors_hint: 'Тартиб — мисли қаторҳо дар график: ранги якум ба қатори якум мерасад. Ячейкаҳои дастнарас мавзӯи тарҳро пайравӣ мекунанд.',
             },
             builder_tab: {
+                heads: {
+                    table: 'Ҷадвал',
+                    agg: 'Функсия',
+                    column: 'Сутун',
+                    label: 'Ном',
+                    target: 'Ҳадаф',
+                    grain: 'Гурӯҳбандӣ',
+                    op: 'Шарт',
+                    value: 'Қимат',
+                },
                 metrics: {
                     label: 'Метрикаҳо',
                     table_aria: 'Ҷадвали метрика',

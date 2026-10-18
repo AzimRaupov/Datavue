@@ -3,6 +3,7 @@ import { ref, computed, watch, onBeforeUnmount } from "vue";
 import { useI18n } from "vue-i18n";
 import api from "../../api.js";
 import SqlEditor from "../SqlEditor.vue";
+import SearchSelect from "../SearchSelect.vue";
 import { queryTemplateFor, COLUMN_HINTS } from "./queryTemplates.js";
 import { CHART_COLORS } from "../widgets/palette.js";
 import { supportsColors } from "../widgets/registry.js";
@@ -249,6 +250,44 @@ const tablesInPlay = computed(() => {
 
     return names;
 });
+
+// Шаблоны колонок сеток (см. .wb-grid в app.css): подписи и поля строк на одной линии.
+const JOIN_COLS = "minmax(0, 1fr) minmax(0, 2fr) 84px 68px";
+const DIMENSION_COLS = "minmax(0, 1fr) 150px 32px";
+const FILTER_COLS = "minmax(0, 1fr) 130px minmax(0, 1fr) 32px";
+const SORT_COLS = "minmax(0, 1.2fr) minmax(0, 1fr) 90px";
+
+const metricCols = computed(() => [
+    metricsIndependent.value ? "minmax(0, 1fr)" : null,
+    "140px",
+    "minmax(0, 1.2fr)",
+    "minmax(0, 1fr)",
+    needsTarget.value ? "72px" : null,
+    "32px",
+].filter(Boolean).join(" "));
+
+/** Варианты для SearchSelect: таблицы и колонки источника. */
+function tableOptions(list) {
+    return list.map((item) => ({ value: item.name, label: item.name }));
+}
+
+function columnOptions(list, label = (column) => column.title ?? column.name) {
+    return list.map((column) => ({
+        value: column.key ?? column.name,
+        label: label(column),
+        hint: column.type ?? undefined,
+    }));
+}
+
+function pairOptions(join) {
+    return [
+        ...pairsFor(join).map((pair) => ({
+            value: pairKey(pair),
+            label: `${pair.left_table}.${pair.left} = ${join.table}.${pair.right}`,
+        })),
+        { value: "__manual__", label: t("widgetSettings.data_tab.joins.manual_option") },
+    ];
+}
 
 function columnsOf(name) {
     return tables.value.find((item) => item.name === name)?.columns ?? [];
@@ -1009,165 +1048,113 @@ onBeforeUnmount(() => {
             <div class="widget-drawer-body p-3">
                 <!-- ============ 1. ДАННЫЕ: ТАБЛИЦЫ И СВЯЗИ ============ -->
                 <template v-if="tab === 'data'">
-                    <div class="mb-3">
-                        <label class="form-label">{{ t('widgetSettings.data_tab.table_label') }}</label>
-                        <select v-model="table" class="form-select" @change="onTableChange">
-                            <option value="" disabled>{{ t('widgetSettings.data_tab.table_placeholder') }}</option>
-                            <option v-for="item in tables" :key="item.name" :value="item.name">
-                                {{ item.name }}
-                            </option>
-                        </select>
-                        <div class="form-hint">
-                            {{ t('widgetSettings.data_tab.table_hint') }}
-                        </div>
-                    </div>
+                    <section class="wb-section">
+                        <header class="wb-section-head">
+                            <h4 class="wb-section-title">{{ t('widgetSettings.data_tab.table_label') }}</h4>
+                            <span v-if="t('widgetSettings.data_tab.table_hint')" class="wb-info" :title="t('widgetSettings.data_tab.table_hint')" tabindex="0" aria-label="info">ⓘ</span>
+                        </header>
+                        <SearchSelect v-model="table" :options="tableOptions(tables)"
+                                      :placeholder="t('widgetSettings.data_tab.table_placeholder')"
+                                      :aria-label="t('widgetSettings.data_tab.table_label')"
+                                      @change="onTableChange" />
+                    </section>
 
                     <template v-if="table">
-                        <div class="mb-3">
-                            <div class="d-flex align-items-center mb-1">
-                                <label class="form-label mb-0">{{ t('widgetSettings.data_tab.joins.label') }}</label>
-                                <button type="button" class="btn btn-sm ms-auto"
-                                        :disabled="!joinableTables('').length"
-                                        :title="joinableTables('').length ? '' : t('widgetSettings.data_tab.joins.add_disabled_title')"
-                                        @click="addJoin">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
-                                         viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                                         stroke-linecap="round" stroke-linejoin="round" class="icon">
-                                        <path d="M12 5l0 14" />
-                                        <path d="M5 12l14 0" />
-                                    </svg>
-                                    {{ t('widgetSettings.data_tab.joins.add_button') }}
-                                </button>
+                        <section class="wb-section">
+                        <header class="wb-section-head">
+                            <h4 class="wb-section-title">{{ t('widgetSettings.data_tab.joins.label') }}</h4>
+                            <span v-if="joins.length" class="wb-count">{{ joins.length }}</span>
+                            <span v-if="joins.length ? t('widgetSettings.data_tab.joins.hint') : ''" class="wb-info" :title="joins.length ? t('widgetSettings.data_tab.joins.hint') : ''" tabindex="0" aria-label="info">ⓘ</span>
+                            <button type="button" class="btn btn-sm"
+                                    :disabled="!joinableTables('').length"
+                                    :title="joinableTables('').length ? '' : t('widgetSettings.data_tab.joins.add_disabled_title')"
+                                    @click="addJoin">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5l0 14" /><path d="M5 12l14 0" /></svg>
+                                {{ t('widgetSettings.data_tab.joins.add_button') }}
+                            </button>
+                            </header>
+
+                            <div v-if="joins.length" class="wb-grid wb-heads" :style="{ '--wb-cols': JOIN_COLS }">
+                                <span>{{ t('widgetSettings.data_tab.heads.table') }}</span>
+                                <span>{{ t('widgetSettings.data_tab.heads.condition') }}</span>
+                                <span>{{ t('widgetSettings.data_tab.heads.type') }}</span>
+                                <span></span>
                             </div>
 
                             <div v-for="(join, index) in joins" :key="'j' + index"
-                                 class="row g-1 mb-1 align-items-center">
-                                <div class="col-3">
-                                    <select v-model="join.table" class="form-select form-select-sm"
-                                            :aria-label="t('widgetSettings.data_tab.joins.table_aria')"
-                                            @change="onJoinTableChange(join)">
-                                        <option value="" disabled>{{ t('widgetSettings.data_tab.joins.table_placeholder') }}</option>
-                                        <option v-for="item in joinableTables(join.table)"
-                                                :key="item.name" :value="item.name">
-                                            {{ item.name }}
-                                        </option>
-                                    </select>
+                                 class="wb-grid wb-row" :style="{ '--wb-cols': JOIN_COLS }">
+                                <SearchSelect v-model="join.table" small
+                                              :options="tableOptions(joinableTables(join.table))"
+                                              :placeholder="t('widgetSettings.data_tab.joins.table_placeholder')"
+                                              :aria-label="t('widgetSettings.data_tab.joins.table_aria')"
+                                              @change="onJoinTableChange(join)" />
+
+                                <SearchSelect v-if="!join.manual" small
+                                              :disabled="!join.table"
+                                              :options="pairOptions(join)"
+                                              :placeholder="t('widgetSettings.data_tab.joins.pair_placeholder')"
+                                              :aria-label="t('widgetSettings.data_tab.joins.pair_aria')"
+                                              :model-value="join.left ? `${join.left_table}.${join.left}=${join.right}` : ''"
+                                              @change="onPairChange(join, $event)" />
+
+                                <div v-else class="wb-pair">
+                                    <SearchSelect small
+                                                  :options="columnOptions(leftColumns(join), (column) => `${column.table}.${column.name}`)"
+                                                  :placeholder="t('widgetSettings.common.column_placeholder')"
+                                                  :aria-label="t('widgetSettings.data_tab.joins.left_column_aria')"
+                                                  :model-value="leftKey(join)"
+                                                  @change="onLeftChange(join, $event)" />
+                                    <span class="wb-eq">=</span>
+                                    <SearchSelect v-model="join.right" small
+                                                  :disabled="!join.table"
+                                                  :options="columnOptions(columnsOf(join.table), (column) => column.name)"
+                                                  :placeholder="t('widgetSettings.common.column_placeholder')"
+                                                  :aria-label="t('widgetSettings.data_tab.joins.right_column_aria')" />
                                 </div>
 
-                                <div v-if="!join.manual" class="col-5">
-                                    <select class="form-select form-select-sm"
-                                            :disabled="!join.table"
-                                            :aria-label="t('widgetSettings.data_tab.joins.pair_aria')"
-                                            :value="join.left ? `${join.left_table}.${join.left}=${join.right}` : ''"
-                                            @change="onPairChange(join, $event.target.value)">
-                                        <option value="" disabled>{{ t('widgetSettings.data_tab.joins.pair_placeholder') }}</option>
-                                        <option v-for="pair in pairsFor(join)" :key="pairKey(pair)"
-                                                :value="pairKey(pair)">
-                                            {{ pair.left_table }}.{{ pair.left }} = {{ join.table }}.{{ pair.right }}
-                                        </option>
-                                        <option value="__manual__">{{ t('widgetSettings.data_tab.joins.manual_option') }}</option>
-                                    </select>
-                                </div>
+                                <select v-model="join.type" class="form-select form-select-sm"
+                                        :aria-label="t('widgetSettings.data_tab.joins.type_aria')">
+                                    <option v-for="(label, key) in joinTypes" :key="key" :value="key" :title="label">
+                                        {{ key }}
+                                    </option>
+                                </select>
 
-                                <template v-else>
-                                    <div class="col-3">
-                                        <select class="form-select form-select-sm"
-                                                :aria-label="t('widgetSettings.data_tab.joins.left_column_aria')"
-                                                :value="leftKey(join)"
-                                                @change="onLeftChange(join, $event.target.value)">
-                                            <option value="" disabled>{{ t('widgetSettings.common.column_placeholder') }}</option>
-                                            <option v-for="column in leftColumns(join)"
-                                                    :key="column.key" :value="column.key">
-                                                {{ column.table }}.{{ column.name }}
-                                            </option>
-                                        </select>
-                                    </div>
-                                    <div class="col-auto text-secondary small">=</div>
-                                    <div class="col-2">
-                                        <select v-model="join.right" class="form-select form-select-sm"
-                                                :disabled="!join.table"
-                                                :aria-label="t('widgetSettings.data_tab.joins.right_column_aria')">
-                                            <option value="" disabled>{{ t('widgetSettings.common.column_placeholder') }}</option>
-                                            <option v-for="column in columnsOf(join.table)"
-                                                    :key="column.name" :value="column.name">
-                                                {{ column.name }}
-                                            </option>
-                                        </select>
-                                    </div>
-                                </template>
-
-                                <div class="col-2">
-                                    <select v-model="join.type" class="form-select form-select-sm"
-                                            :aria-label="t('widgetSettings.data_tab.joins.type_aria')">
-                                        <option v-for="(label, key) in joinTypes" :key="key"
-                                                :value="key" :title="label">
-                                            {{ key }}
-                                        </option>
-                                    </select>
-                                </div>
-
-                                <div class="col-auto">
-                                    <div class="btn-list flex-nowrap">
-                                        <button type="button" class="btn btn-icon btn-sm"
-                                                :title="join.manual ? t('widgetSettings.data_tab.joins.toggle_to_known_title') : t('widgetSettings.data_tab.joins.toggle_to_manual_title')"
-                                                @click="join.manual = !join.manual">
-                                            <svg v-if="join.manual" xmlns="http://www.w3.org/2000/svg" width="24"
-                                                 height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                                                 class="icon">
-                                                <path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4" />
-                                                <path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4" />
-                                            </svg>
-                                            <svg v-else xmlns="http://www.w3.org/2000/svg" width="24" height="24"
-                                                 viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                                                 class="icon">
-                                                <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
-                                                <path d="M13.5 6.5l4 4" />
-                                            </svg>
-                                        </button>
-                                        <button type="button" class="btn btn-icon btn-sm"
-                                                :aria-label="t('widgetSettings.data_tab.joins.remove_title')" :title="t('widgetSettings.data_tab.joins.remove_title')"
-                                                @click="removeAt(joins, index)">
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
-                                                 viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                                                 class="icon">
-                                                <path d="M18 6l-12 12" />
-                                                <path d="M6 6l12 12" />
-                                            </svg>
-                                        </button>
-                                    </div>
+                                <div class="wb-actions">
+                                    <button type="button" class="btn btn-icon btn-sm wb-remove"
+                                            :title="join.manual ? t('widgetSettings.data_tab.joins.toggle_to_known_title') : t('widgetSettings.data_tab.joins.toggle_to_manual_title')"
+                                            :aria-label="join.manual ? t('widgetSettings.data_tab.joins.toggle_to_known_title') : t('widgetSettings.data_tab.joins.toggle_to_manual_title')"
+                                            @click="join.manual = !join.manual">
+                                        <svg v-if="join.manual" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                            <path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4" /><path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4" />
+                                        </svg>
+                                        <svg v-else xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                            <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" /><path d="M13.5 6.5l4 4" />
+                                        </svg>
+                                    </button>
+                                    <button type="button" class="btn btn-icon btn-sm wb-remove"
+                                            :aria-label="t('widgetSettings.data_tab.joins.remove_title')"
+                                            :title="t('widgetSettings.data_tab.joins.remove_title')"
+                                            @click="removeAt(joins, index)">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6l-12 12" /><path d="M6 6l12 12" /></svg>
+                                    </button>
                                 </div>
                             </div>
 
-                            <div v-if="!joins.length" class="text-secondary small">
-                                {{ t('widgetSettings.data_tab.joins.empty') }}
-                            </div>
+                            <div v-if="!joins.length" class="wb-empty">{{ t('widgetSettings.data_tab.joins.empty') }}</div>
 
-                            <div v-if="joins.length && !joinableTables('').length" class="form-hint text-warning">
+                            <p v-if="joins.length && !joinableTables('').length" class="wb-hint wb-hint-warning">
                                 {{ t('widgetSettings.data_tab.joins.none_found_warning') }}
-                            </div>
-
-                            <div v-if="joins.length" class="form-hint">
-                                {{ t('widgetSettings.data_tab.joins.hint') }}
-                            </div>
-                        </div>
+                            </p>
+                        </section>
 
                         <!-- Что уже участвует в запросе -->
-                        <div class="mb-2">
-                            <div class="text-secondary small mb-1">{{ t('widgetSettings.data_tab.tables_in_play_label') }}</div>
-                            <div class="d-flex flex-wrap gap-1">
-                                <span v-for="name in tablesInPlay" :key="name" class="badge bg-secondary-lt">
-                                    {{ name }}
-                                </span>
-                            </div>
+                        <div class="d-flex flex-wrap align-items-center gap-1 px-1">
+                            <span class="text-secondary small me-1">{{ t('widgetSettings.data_tab.tables_in_play_label') }}</span>
+                            <span v-for="name in tablesInPlay" :key="name" class="badge bg-secondary-lt">{{ name }}</span>
                         </div>
                     </template>
 
-                    <div v-else class="text-secondary">
-                        {{ t('widgetSettings.data_tab.no_table_hint') }}
-                    </div>
+                    <div v-else class="wb-empty">{{ t('widgetSettings.data_tab.no_table_hint') }}</div>
                 </template>
 
                 <!-- ============ 2. ВИДЖЕТ: ЗАГОЛОВОК, ВИД, ЦВЕТА ============ -->
@@ -1227,235 +1214,169 @@ onBeforeUnmount(() => {
                 <template v-else-if="tab === 'builder'">
                     <template v-if="table">
                         <!-- МЕТРИКИ -->
-                        <div class="mb-3">
-                            <div class="d-flex align-items-center mb-1">
-                                <label class="form-label mb-0">{{ t('widgetSettings.builder_tab.metrics.label') }}</label>
-                                <button type="button" class="btn btn-sm ms-auto" @click="addMetric">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
-                                         viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                                         stroke-linecap="round" stroke-linejoin="round" class="icon">
-                                        <path d="M12 5l0 14" />
-                                        <path d="M5 12l14 0" />
-                                    </svg>
-                                    {{ t('widgetSettings.common.add') }}
-                                </button>
+                        <section class="wb-section">
+                        <header class="wb-section-head">
+                            <h4 class="wb-section-title">{{ t('widgetSettings.builder_tab.metrics.label') }}</h4>
+                            <span v-if="metrics.length" class="wb-count">{{ metrics.length }}</span>
+                            <span v-if="metricsIndependent ? t('widgetSettings.builder_tab.metrics.independent_hint') : ''" class="wb-info" :title="metricsIndependent ? t('widgetSettings.builder_tab.metrics.independent_hint') : ''" tabindex="0">ⓘ</span>
+                            <button type="button" class="btn btn-sm" @click="addMetric">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5l0 14" /><path d="M5 12l14 0" /></svg>
+                                {{ t('widgetSettings.common.add') }}
+                            </button>
+                        </header>
+
+                            <div v-if="metrics.length" class="wb-grid wb-heads" :style="{ '--wb-cols': metricCols }">
+                                <span v-if="metricsIndependent">{{ t('widgetSettings.builder_tab.heads.table') }}</span>
+                                <span>{{ t('widgetSettings.builder_tab.heads.agg') }}</span>
+                                <span>{{ t('widgetSettings.builder_tab.heads.column') }}</span>
+                                <span>{{ t('widgetSettings.builder_tab.heads.label') }}</span>
+                                <span v-if="needsTarget">{{ t('widgetSettings.builder_tab.heads.target') }}</span>
+                                <span></span>
                             </div>
 
                             <div v-for="(metric, index) in metrics" :key="'m' + index"
-                                 class="row g-1 mb-1 align-items-center">
-                                <div v-if="metricsIndependent" class="col-3">
-                                    <select v-model="metric.table" class="form-select form-select-sm"
-                                            :aria-label="t('widgetSettings.builder_tab.metrics.table_aria')"
-                                            @change="onMetricTableChange(metric)">
-                                        <option v-for="item in tables" :key="item.name"
-                                                :value="item.name">
-                                            {{ item.name }}
-                                        </option>
-                                    </select>
-                                </div>
-                                <div :class="metricsIndependent ? 'col-3' : 'col-4'">
-                                    <select v-model="metric.agg" class="form-select form-select-sm"
-                                            :aria-label="t('widgetSettings.builder_tab.metrics.agg_aria')">
-                                        <option v-for="(label, key) in aggregates" :key="key" :value="key">
-                                            {{ label }}
-                                        </option>
-                                    </select>
-                                </div>
-                                <div :class="metricsIndependent ? 'col-3' : 'col-4'">
-                                    <select v-if="needsColumn(metric.agg)" v-model="metric.column"
-                                            class="form-select form-select-sm" :aria-label="t('widgetSettings.builder_tab.metrics.column_aria')">
-                                        <option value="" disabled>{{ t('widgetSettings.common.column_placeholder') }}</option>
-                                        <option v-for="column in columnsForMetric(metric)"
-                                                :key="column.key" :value="column.key">
-                                            {{ column.title }}
-                                        </option>
-                                    </select>
-                                    <span v-else class="text-secondary small">{{ t('widgetSettings.builder_tab.metrics.all_rows') }}</span>
-                                </div>
-                                <div :class="(needsTarget || metricsIndependent) ? 'col-2' : 'col-3'">
-                                    <input v-model="metric.label" type="text"
-                                           class="form-control form-control-sm"
-                                           :placeholder="t('widgetSettings.builder_tab.metrics.label_placeholder')" :aria-label="t('widgetSettings.builder_tab.metrics.label_aria')" />
-                                </div>
-                                <div v-if="needsTarget" class="col-1">
-                                    <input v-model="metric.target" type="number" min="0"
-                                           class="form-control form-control-sm"
-                                           :placeholder="t('widgetSettings.builder_tab.metrics.target_placeholder')"
-                                           :aria-label="t('widgetSettings.builder_tab.metrics.target_aria', { name: metric.label || index + 1 })" />
-                                </div>
-                                <div class="col-1 text-end">
-                                    <button type="button" class="btn btn-icon btn-sm"
-                                            :aria-label="t('widgetSettings.builder_tab.metrics.remove_title')" :title="t('widgetSettings.builder_tab.metrics.remove_title')"
-                                            @click="removeAt(metrics, index)">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
-                                             viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                                             stroke-linecap="round" stroke-linejoin="round" class="icon">
-                                            <path d="M18 6l-12 12" />
-                                            <path d="M6 6l12 12" />
-                                        </svg>
-                                    </button>
-                                </div>
+                                 class="wb-grid wb-row" :style="{ '--wb-cols': metricCols }">
+                                <SearchSelect v-if="metricsIndependent" v-model="metric.table" small
+                                              :options="tableOptions(tables)"
+                                              :aria-label="t('widgetSettings.builder_tab.metrics.table_aria')"
+                                              @change="onMetricTableChange(metric)" />
+                                <select v-model="metric.agg" class="form-select form-select-sm"
+                                        :aria-label="t('widgetSettings.builder_tab.metrics.agg_aria')">
+                                    <option v-for="(label, key) in aggregates" :key="key" :value="key">{{ label }}</option>
+                                </select>
+                                <SearchSelect v-if="needsColumn(metric.agg)" v-model="metric.column" small
+                                              :options="columnOptions(columnsForMetric(metric))"
+                                              :placeholder="t('widgetSettings.common.column_placeholder')"
+                                              :aria-label="t('widgetSettings.builder_tab.metrics.column_aria')" />
+                                <span v-else class="text-secondary small">{{ t('widgetSettings.builder_tab.metrics.all_rows') }}</span>
+                                <input v-model="metric.label" type="text" class="form-control form-control-sm"
+                                       :placeholder="t('widgetSettings.builder_tab.metrics.label_placeholder')"
+                                       :aria-label="t('widgetSettings.builder_tab.metrics.label_aria')" />
+                                <input v-if="needsTarget" v-model="metric.target" type="number" min="0"
+                                       class="form-control form-control-sm"
+                                       :placeholder="t('widgetSettings.builder_tab.metrics.target_placeholder')"
+                                       :aria-label="t('widgetSettings.builder_tab.metrics.target_aria', { name: metric.label || index + 1 })" />
+                                <button type="button" class="btn btn-icon btn-sm wb-remove"
+                                        :aria-label="t('widgetSettings.builder_tab.metrics.remove_title')" :title="t('widgetSettings.builder_tab.metrics.remove_title')"
+                                        @click="removeAt(metrics, index)">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6l-12 12" /><path d="M6 6l12 12" /></svg>
+                                </button>
                             </div>
 
-                            <div v-if="!metrics.length" class="text-secondary small">
-                                {{ t('widgetSettings.builder_tab.metrics.empty') }}
-                            </div>
-                            <div v-else-if="metricsIndependent" class="form-hint">
-                                {{ t('widgetSettings.builder_tab.metrics.independent_hint') }}
-                            </div>
-                        </div>
+                            <div v-if="!metrics.length" class="wb-empty">{{ t('widgetSettings.builder_tab.metrics.empty') }}</div>
+                        </section>
 
                         <!-- РАЗБИВКА -->
-                        <div class="mb-3">
-                            <div class="d-flex align-items-center mb-1">
-                                <label class="form-label mb-0">{{ t('widgetSettings.builder_tab.dimensions.label') }}</label>
-                                <button type="button" class="btn btn-sm ms-auto"
-                                        :disabled="dimensions.length >= (slots?.dimensions?.max ?? 2)"
-                                        @click="addDimension">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
-                                         viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                                         stroke-linecap="round" stroke-linejoin="round" class="icon">
-                                        <path d="M12 5l0 14" />
-                                        <path d="M5 12l14 0" />
-                                    </svg>
-                                    {{ t('widgetSettings.common.add') }}
-                                </button>
+                        <section class="wb-section">
+                        <header class="wb-section-head">
+                            <h4 class="wb-section-title">{{ t('widgetSettings.builder_tab.dimensions.label') }}</h4>
+                            <span v-if="dimensions.length" class="wb-count">{{ dimensions.length }}</span>
+                            <span v-if="slots?.hint ?? ''" class="wb-info" :title="slots?.hint ?? ''" tabindex="0">ⓘ</span>
+                            <button type="button" class="btn btn-sm" :disabled="dimensions.length >= (slots?.dimensions?.max ?? 2)" @click="addDimension">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5l0 14" /><path d="M5 12l14 0" /></svg>
+                                {{ t('widgetSettings.common.add') }}
+                            </button>
+                        </header>
+
+                            <div v-if="dimensions.length" class="wb-grid wb-heads" :style="{ '--wb-cols': DIMENSION_COLS }">
+                                <span>{{ t('widgetSettings.builder_tab.heads.column') }}</span>
+                                <span>{{ t('widgetSettings.builder_tab.heads.grain') }}</span>
+                                <span></span>
                             </div>
 
                             <div v-for="(dimension, index) in dimensions" :key="'d' + index"
-                                 class="row g-1 mb-1 align-items-center">
-                                <div class="col-6">
-                                    <select v-model="dimension.column" class="form-select form-select-sm"
-                                            :aria-label="t('widgetSettings.builder_tab.dimensions.column_aria')">
-                                        <option v-for="column in columns" :key="column.key"
-                                                :value="column.key">
-                                            {{ column.title }}
-                                        </option>
-                                    </select>
-                                </div>
-                                <div class="col-5">
-                                    <select v-if="columnKind(dimension.column) === 'date'"
-                                            v-model="dimension.grain"
-                                            class="form-select form-select-sm"
-                                            :aria-label="t('widgetSettings.builder_tab.dimensions.grain_aria')">
-                                        <option value="">{{ t('widgetSettings.builder_tab.dimensions.grain_none') }}</option>
-                                        <option v-for="(label, key) in grains" :key="key" :value="key">
-                                            {{ label }}
-                                        </option>
-                                    </select>
-                                </div>
-                                <div class="col-1 text-end">
-                                    <button type="button" class="btn btn-icon btn-sm"
-                                            :aria-label="t('widgetSettings.builder_tab.dimensions.remove_title')" :title="t('widgetSettings.builder_tab.dimensions.remove_title')"
-                                            @click="removeAt(dimensions, index)">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
-                                             viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                                             stroke-linecap="round" stroke-linejoin="round" class="icon">
-                                            <path d="M18 6l-12 12" />
-                                            <path d="M6 6l12 12" />
-                                        </svg>
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div v-if="!dimensions.length" class="text-secondary small">
-                                {{ t('widgetSettings.builder_tab.dimensions.empty') }}
-                            </div>
-
-                            <div v-if="slots?.hint" class="text-secondary small mt-1">
-                                {{ slots.hint }}
-                            </div>
-                        </div>
-
-                        <!-- УСЛОВИЯ -->
-                        <div class="mb-3">
-                            <div class="d-flex align-items-center mb-1">
-                                <label class="form-label mb-0">{{ t('widgetSettings.builder_tab.filters.label') }}</label>
-                                <button type="button" class="btn btn-sm ms-auto" @click="addFilter">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
-                                         viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                                         stroke-linecap="round" stroke-linejoin="round" class="icon">
-                                        <path d="M12 5l0 14" />
-                                        <path d="M5 12l14 0" />
-                                    </svg>
-                                    {{ t('widgetSettings.common.add') }}
+                                 class="wb-grid wb-row" :style="{ '--wb-cols': DIMENSION_COLS }">
+                                <SearchSelect v-model="dimension.column" small
+                                              :options="columnOptions(columns)"
+                                              :aria-label="t('widgetSettings.builder_tab.dimensions.column_aria')" />
+                                <select v-if="columnKind(dimension.column) === 'date'" v-model="dimension.grain"
+                                        class="form-select form-select-sm"
+                                        :aria-label="t('widgetSettings.builder_tab.dimensions.grain_aria')">
+                                    <option value="">{{ t('widgetSettings.builder_tab.dimensions.grain_none') }}</option>
+                                    <option v-for="(label, key) in grains" :key="key" :value="key">{{ label }}</option>
+                                </select>
+                                <span v-else></span>
+                                <button type="button" class="btn btn-icon btn-sm wb-remove"
+                                        :aria-label="t('widgetSettings.builder_tab.dimensions.remove_title')" :title="t('widgetSettings.builder_tab.dimensions.remove_title')"
+                                        @click="removeAt(dimensions, index)">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6l-12 12" /><path d="M6 6l12 12" /></svg>
                                 </button>
                             </div>
 
-                            <div v-for="(filter, index) in filters" :key="'f' + index"
-                                 class="row g-1 mb-1 align-items-center">
-                                <div class="col-4">
-                                    <select v-model="filter.column" class="form-select form-select-sm"
-                                            :aria-label="t('widgetSettings.builder_tab.filters.column_aria')">
-                                        <option v-for="column in columns" :key="column.key"
-                                                :value="column.key">
-                                            {{ column.title }}
-                                        </option>
-                                    </select>
-                                </div>
-                                <div class="col-4">
-                                    <select v-model="filter.op" class="form-select form-select-sm"
-                                            :aria-label="t('widgetSettings.builder_tab.filters.op_aria')">
-                                        <option v-for="(label, key) in operators" :key="key" :value="key">
-                                            {{ label }}
-                                        </option>
-                                    </select>
-                                </div>
-                                <div class="col-3">
-                                    <input v-if="operatorNeedsValue(filter.op)" v-model="filter.value"
-                                           type="text" class="form-control form-control-sm"
-                                           :placeholder="t('widgetSettings.builder_tab.filters.value_placeholder')" :aria-label="t('widgetSettings.builder_tab.filters.value_aria')" />
-                                </div>
-                                <div class="col-1 text-end">
-                                    <button type="button" class="btn btn-icon btn-sm"
-                                            :aria-label="t('widgetSettings.builder_tab.filters.remove_title')" :title="t('widgetSettings.builder_tab.filters.remove_title')"
-                                            @click="removeAt(filters, index)">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
-                                             viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                                             stroke-linecap="round" stroke-linejoin="round" class="icon">
-                                            <path d="M18 6l-12 12" />
-                                            <path d="M6 6l12 12" />
-                                        </svg>
-                                    </button>
-                                </div>
+                            <div v-if="!dimensions.length" class="wb-empty">{{ t('widgetSettings.builder_tab.dimensions.empty') }}</div>
+                        </section>
+
+                        <!-- УСЛОВИЯ -->
+                        <section class="wb-section">
+                        <header class="wb-section-head">
+                            <h4 class="wb-section-title">{{ t('widgetSettings.builder_tab.filters.label') }}</h4>
+                            <span v-if="filters.length" class="wb-count">{{ filters.length }}</span>
+                            <button type="button" class="btn btn-sm" @click="addFilter">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5l0 14" /><path d="M5 12l14 0" /></svg>
+                                {{ t('widgetSettings.common.add') }}
+                            </button>
+                        </header>
+
+                            <div v-if="filters.length" class="wb-grid wb-heads" :style="{ '--wb-cols': FILTER_COLS }">
+                                <span>{{ t('widgetSettings.builder_tab.heads.column') }}</span>
+                                <span>{{ t('widgetSettings.builder_tab.heads.op') }}</span>
+                                <span>{{ t('widgetSettings.builder_tab.heads.value') }}</span>
+                                <span></span>
                             </div>
 
-                            <div v-if="!filters.length" class="text-secondary small">
-                                {{ t('widgetSettings.builder_tab.filters.empty') }}
+                            <div v-for="(filter, index) in filters" :key="'f' + index"
+                                 class="wb-grid wb-row" :style="{ '--wb-cols': FILTER_COLS }">
+                                <SearchSelect v-model="filter.column" small
+                                              :options="columnOptions(columns)"
+                                              :aria-label="t('widgetSettings.builder_tab.filters.column_aria')" />
+                                <select v-model="filter.op" class="form-select form-select-sm"
+                                        :aria-label="t('widgetSettings.builder_tab.filters.op_aria')">
+                                    <option v-for="(label, key) in operators" :key="key" :value="key">{{ label }}</option>
+                                </select>
+                                <input v-if="operatorNeedsValue(filter.op)" v-model="filter.value"
+                                       type="text" class="form-control form-control-sm"
+                                       :placeholder="t('widgetSettings.builder_tab.filters.value_placeholder')"
+                                       :aria-label="t('widgetSettings.builder_tab.filters.value_aria')" />
+                                <span v-else></span>
+                                <button type="button" class="btn btn-icon btn-sm wb-remove"
+                                        :aria-label="t('widgetSettings.builder_tab.filters.remove_title')" :title="t('widgetSettings.builder_tab.filters.remove_title')"
+                                        @click="removeAt(filters, index)">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6l-12 12" /><path d="M6 6l12 12" /></svg>
+                                </button>
                             </div>
-                        </div>
+
+                            <div v-if="!filters.length" class="wb-empty">{{ t('widgetSettings.builder_tab.filters.empty') }}</div>
+                        </section>
 
                         <!-- СОРТИРОВКА И ЛИМИТ -->
-                        <div class="row g-2">
-                            <div class="col-5">
-                                <label class="form-label">{{ t('widgetSettings.builder_tab.sort.label') }}</label>
-                                <select v-model="sort.by" class="form-select form-select-sm">
-                                    <option value="metric">{{ t('widgetSettings.builder_tab.sort.by_metric') }}</option>
-                                    <option value="dimension">{{ t('widgetSettings.builder_tab.sort.by_dimension') }}</option>
-                                    <option value="none">{{ t('widgetSettings.builder_tab.sort.none') }}</option>
-                                </select>
+                        <section class="wb-section">
+                            <div class="wb-grid" :style="{ '--wb-cols': SORT_COLS }">
+                                <div>
+                                    <div class="wb-field-label">{{ t('widgetSettings.builder_tab.sort.label') }}</div>
+                                    <select v-model="sort.by" class="form-select form-select-sm">
+                                        <option value="metric">{{ t('widgetSettings.builder_tab.sort.by_metric') }}</option>
+                                        <option value="dimension">{{ t('widgetSettings.builder_tab.sort.by_dimension') }}</option>
+                                        <option value="none">{{ t('widgetSettings.builder_tab.sort.none') }}</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <div class="wb-field-label">{{ t('widgetSettings.builder_tab.sort.order_label') }}</div>
+                                    <select v-model="sort.dir" class="form-select form-select-sm" :disabled="sort.by === 'none'">
+                                        <option value="desc">{{ t('widgetSettings.builder_tab.sort.desc') }}</option>
+                                        <option value="asc">{{ t('widgetSettings.builder_tab.sort.asc') }}</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <div class="wb-field-label">{{ t('widgetSettings.builder_tab.sort.limit_label') }}</div>
+                                    <input v-model="limit" type="number" min="1" max="5000" class="form-control form-control-sm" />
+                                </div>
                             </div>
-                            <div class="col-4">
-                                <label class="form-label">{{ t('widgetSettings.builder_tab.sort.order_label') }}</label>
-                                <select v-model="sort.dir" class="form-select form-select-sm"
-                                        :disabled="sort.by === 'none'">
-                                    <option value="desc">{{ t('widgetSettings.builder_tab.sort.desc') }}</option>
-                                    <option value="asc">{{ t('widgetSettings.builder_tab.sort.asc') }}</option>
-                                </select>
-                            </div>
-                            <div class="col-3">
-                                <label class="form-label">{{ t('widgetSettings.builder_tab.sort.limit_label') }}</label>
-                                <input v-model="limit" type="number" min="1" max="5000"
-                                       class="form-control form-control-sm" />
-                            </div>
-                        </div>
+                        </section>
                     </template>
 
                     <div v-else class="empty">
                         <div class="empty-title">{{ t('widgetSettings.builder_tab.empty_state.title') }}</div>
-                        <p class="empty-subtitle text-secondary">
-                            {{ t('widgetSettings.builder_tab.empty_state.subtitle') }}
-                        </p>
+                        <p class="empty-subtitle text-secondary">{{ t('widgetSettings.builder_tab.empty_state.subtitle') }}</p>
                         <div class="empty-action">
                             <button class="btn btn-primary" type="button" @click="tab = 'data'">
                                 {{ t('widgetSettings.builder_tab.empty_state.button') }}

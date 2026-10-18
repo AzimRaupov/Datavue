@@ -49,6 +49,7 @@ class DatabaseSeeder extends Seeder
             TreemapSeeder::class,
             FunnelSeeder::class,
             MapSeeder::class,
+            CompanySeeder::class,
         ]);
 
     }

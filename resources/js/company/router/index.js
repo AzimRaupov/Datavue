@@ -10,6 +10,7 @@ import Profile from "../pages/settings/Profile.vue";
 import Users from "../pages/settings/Users.vue";
 import UserForm from "../pages/settings/UserForm.vue";
 import AllWidgets from "../pages/AllWidgets.vue";
+import WidgetLoadingPreview from "../pages/WidgetLoadingPreview.vue";
 import SourcesIndex from "../pages/sources/IndexPage.vue";
 import SourceShow from "../pages/sources/ShowPage.vue";
 import SourceCreate from "../pages/sources/CreatePage.vue";
@@ -164,6 +165,12 @@ const routes = [
         path: '/widgets',
         name: 'company.widgets',
         component: AllWidgets
+    },
+    // Служебная страница: заглушки загрузки всех виджетов для настройки анимации.
+    {
+        path: '/widgets/loading',
+        name: 'company.widgets.loading',
+        component: WidgetLoadingPreview
     },
 
     /*

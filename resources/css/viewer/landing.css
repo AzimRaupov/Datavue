@@ -248,6 +248,16 @@ html {
     padding: .5rem;
 }
 
+/* Квадратный логотип на кремовом фоне: показываем целиком, а не режем под 3:2 */
+.dv-client-cream {
+    background: #fef9ed;
+}
+
+.dv-client-cream img {
+    object-fit: contain;
+    transform: scale(1.2);
+}
+
 /* ---------- Доверие и CTA ---------- */
 
 .dv-trust {

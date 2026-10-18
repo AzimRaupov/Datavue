@@ -203,10 +203,16 @@ onMounted(load);
                     </div>
                 </div>
 
-                <label class="form-check form-switch m-0">
-                    <input v-model="showAiOnly" class="form-check-input" type="checkbox">
-                    <span class="form-check-label">{{ t('allWidgets.ai_only') }}</span>
-                </label>
+                <div class="d-flex align-items-center gap-3">
+                    <router-link class="btn btn-sm" :to="{ name: 'company.widgets.loading' }">
+                        {{ t('widgetLoading.open') }}
+                    </router-link>
+
+                    <label class="form-check form-switch m-0">
+                        <input v-model="showAiOnly" class="form-check-input" type="checkbox">
+                        <span class="form-check-label">{{ t('allWidgets.ai_only') }}</span>
+                    </label>
+                </div>
             </div>
 
             <div v-if="isLoading" class="text-secondary py-5 text-center">{{ t('allWidgets.loading') }}</div>

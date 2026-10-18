@@ -21,14 +21,12 @@ const sources = [
 ]
 
 const clients = [
-    { file: 'bg-maorif.png', name: 'Маорифи ноҳияи Бобоҷон Ғафуров', wide: true },
 
     { file: 'fatir.jpg', name: 'Фатир' },
     { file: 'asr.png', name: 'ASR Construction Company', zoom: true },
-    { file: 'kompazit.png', name: 'Kompazit Group', zoom: true },
-
     { file: 'khimus.jpg', name: 'Химус' },
-    { file: 'sun_light.png', name: 'Sun Light', zoom: true },
+    { file: 'kompazit.png', name: 'Kompazit Group', zoom: true },
+    { file: 'anas.png', name: 'Ширинихои Анас', cream: true },
 ]
 
 const flow = [
@@ -97,7 +95,7 @@ const security = [
 
                 <div class="row g-3 g-lg-4 justify-content-center">
                     <div v-for="c in clients" :key="c.file" class="col-6 col-md-4 col-lg-2">
-                        <div class="dv-client" :class="{ 'dv-client-wide': c.wide, 'dv-client-zoom': c.zoom }" :title="c.name">
+                        <div class="dv-client" :class="{ 'dv-client-wide': c.wide, 'dv-client-zoom': c.zoom, 'dv-client-cream': c.cream }" :title="c.name">
                             <img
                                 :src="`/company-logos/${c.file}`"
                                 :alt="c.name"

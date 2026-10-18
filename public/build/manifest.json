@@ -103,7 +103,7 @@
     ]
   },
   "node_modules/@capacitor/browser/dist/esm/web.js": {
-    "file": "assets/web-BK6MRY0o.js",
+    "file": "assets/web-DKI48YbO.js",
     "name": "web",
     "src": "node_modules/@capacitor/browser/dist/esm/web.js",
     "isDynamicEntry": true,
@@ -182,7 +182,7 @@
     "src": "node_modules/@tabler/core/dist/img/flags/tj.svg"
   },
   "resources/css/admin/app.css": {
-    "file": "assets/app-DL8ue_ri.css",
+    "file": "assets/app-C38i6kJp.css",
     "name": "app",
     "names": [
       "app.css"
@@ -191,7 +191,7 @@
     "isEntry": true
   },
   "resources/css/company/app.css": {
-    "file": "assets/app-DFg2nSrM.css",
+    "file": "assets/app-I0tSis4W.css",
     "name": "app",
     "names": [
       "app.css"
@@ -222,7 +222,7 @@
     ]
   },
   "resources/js/company/app.js": {
-    "file": "assets/app-BfdYpOQV.js",
+    "file": "assets/app-Dnqj8HAN.js",
     "name": "app",
     "src": "resources/js/company/app.js",
     "isEntry": true,
@@ -243,7 +243,7 @@
       "node_modules/@capacitor/browser/dist/esm/web.js"
     ],
     "css": [
-      "assets/app-Bqp6m-Kd.css"
+      "assets/app-BXJfLluy.css"
     ]
   },
   "resources/js/viewer/app.js": {
