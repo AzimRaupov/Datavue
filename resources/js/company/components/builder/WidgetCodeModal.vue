@@ -1,8 +1,9 @@
 <script setup>
-import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from "vue";
+import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
 import { Modal } from "bootstrap";
 import { useI18n } from "vue-i18n";
 import api from "../../api.js";
+import SqlEditor from "../SqlEditor.vue";
 import { templateFor } from "./codeTemplates.js";
 
 /**
@@ -24,6 +25,7 @@ const props = defineProps({
     dashboardId: { type: [String, Number], required: true },
     widget: { type: Object, default: null },
     schema: { type: Array, default: () => [] },
+    dialect: { type: String, default: 'duckdb' },
 });
 
 const emit = defineEmits(["saved", "closed"]);
@@ -69,18 +71,6 @@ watch(
 );
 
 /** Tab внутри кода — отступ, а не переход к следующему полю. */
-function onTab(event) {
-    const field = event.target;
-    const start = field.selectionStart;
-    const end = field.selectionEnd;
-
-    code.value = code.value.slice(0, start) + "    " + code.value.slice(end);
-
-    nextTick(() => {
-        field.selectionStart = field.selectionEnd = start + 4;
-    });
-}
-
 async function runDraft() {
     if (running.value) return;
 
@@ -229,14 +219,15 @@ onBeforeUnmount(() => {
                                 </span>
                             </label>
 
-                            <textarea
+                            <SqlEditor
                                 v-model="code"
-                                class="form-control builder-code"
-                                spellcheck="false"
-                                rows="18"
+                                language="python"
+                                :schema="schema"
+                                :rows="18"
+                                :max-rows="32"
                                 :aria-label="t('widgetCodeModal.code_aria')"
-                                @keydown.tab.prevent="onTab"
-                            ></textarea>
+                                @run="runDraft"
+                            />
 
                             <div class="d-flex gap-2 mt-2 flex-wrap">
                                 <button type="button" class="btn"
@@ -283,10 +274,10 @@ onBeforeUnmount(() => {
 
                             <div class="mb-3">
                                 <div class="form-label">{{ t('widgetCodeModal.trial_query_label') }}</div>
-                                <textarea v-model="sql" class="form-control builder-code" rows="3"
-                                          spellcheck="false"
-                                          placeholder="SELECT * FROM orders LIMIT 10"
-                                          :aria-label="t('widgetCodeModal.sql_aria')"></textarea>
+                                <SqlEditor v-model="sql" :rows="3" :max-rows="12" :schema="schema" :dialect="dialect"
+                                           placeholder="SELECT * FROM orders LIMIT 10"
+                                           :aria-label="t('widgetCodeModal.sql_aria')"
+                                           @run="runSql" />
                                 <button type="button" class="btn btn-sm mt-2"
                                         :class="{ 'btn-loading': sqlRunning }"
                                         :disabled="sqlRunning" @click="runSql">
@@ -336,15 +327,6 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.builder-code {
-    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-    font-size: 13px;
-    line-height: 1.5;
-    tab-size: 4;
-    white-space: pre;
-    overflow-x: auto;
-}
-
 /*
  * Голый <pre> Tabler отдаёт под примеры кода: тёмная заливка
  * (--tblr-bg-surface-dark) и светлый текст (--tblr-light). Здесь заливка уже

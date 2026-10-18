@@ -18,7 +18,8 @@ import Funnel from "./Funnel.vue";
  * пропсы он ждёт. Используется и на дашборде (WidgetContainer), и в галерее
  * виджетов — иначе галерея показывала бы не то, что реально отрисуется.
  *
- * placeholder — форма заглушки на время генерации.
+ * placeholder — форма заглушки на время генерации (см. widgets/WidgetPlaceholder.vue):
+ * у line, bar, table и счётчиков своя, у остальных семейств — по своей форме.
  *
  * colors — умеет ли семейство красить ряды своей палитрой. Признак живёт
  * здесь, рядом с компонентом, потому что отвечает на него именно компонент:
@@ -31,16 +32,16 @@ export const FAMILIES = {
     "mini-counters": { component: MiniCounters, placeholder: "counters", colors: true },
     "bar": { component: Bar, placeholder: "bars", colors: true },
     "line": { component: Line, placeholder: "chart", colors: true },
-    "pie": { component: Pie, placeholder: "circle", colors: true },
-    "radial": { component: Radial, placeholder: "circle", colors: true },
-    "combo": { component: Combo, placeholder: "bars", colors: true },
+    "pie": { component: Pie, placeholder: "pie", colors: true },
+    "radial": { component: Radial, placeholder: "radial", colors: true },
+    "combo": { component: Combo, placeholder: "combo", colors: true },
     // У таблицы нет рядов — красить нечего.
     "table": { component: Table, placeholder: "table", colors: false },
-    "scatter": { component: Scatter, placeholder: "chart", colors: true },
-    "radar": { component: Radar, placeholder: "chart", colors: true },
-    "heatmap": { component: Heatmap, placeholder: "bars", colors: true },
-    "treemap": { component: Treemap, placeholder: "chart", colors: true },
-    "funnel": { component: Funnel, placeholder: "bars", colors: true },
+    "scatter": { component: Scatter, placeholder: "scatter", colors: true },
+    "radar": { component: Radar, placeholder: "radar", colors: true },
+    "heatmap": { component: Heatmap, placeholder: "heatmap", colors: true },
+    "treemap": { component: Treemap, placeholder: "treemap", colors: true },
+    "funnel": { component: Funnel, placeholder: "funnel", colors: true },
 };
 
 export function familyOf(name) {

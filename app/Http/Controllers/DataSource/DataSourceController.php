@@ -131,6 +131,30 @@ class DataSourceController extends Controller
         ]);
     }
 
+    /**
+     * Таблицы и колонки источника — для подсказок в SQL-консоли. Тот же
+     * кэшированный SourceSchema, что у конструктора виджетов и алертов.
+     */
+    public function schema(Request $request, $id)
+    {
+        $source = $this->findForCompany($request, $id);
+
+        try {
+            $tables = SourceSchema::tables($source);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Не удалось прочитать схему источника: ' . $e->getMessage(),
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'dialect' => SourceSchema::dialect($source),
+            'tables' => $tables,
+        ]);
+    }
+
     public function group(Request $request, $id)
     {
         $source = $this->findForCompany($request, $id);

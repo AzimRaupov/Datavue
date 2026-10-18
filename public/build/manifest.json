@@ -3,9 +3,34 @@
     "file": "assets/_plugin-vue_export-helper-BDNMzG2s.js",
     "name": "_plugin-vue_export-helper"
   },
-  "_axios-a3X_zc1S.js": {
-    "file": "assets/axios-a3X_zc1S.js",
-    "name": "axios"
+  "_dist-BXHiW81K.js": {
+    "file": "assets/dist-BXHiW81K.js",
+    "name": "dist",
+    "imports": [
+      "_server-BkzOtGYS.js"
+    ]
+  },
+  "_dist-BxJ0mQc9.js": {
+    "file": "assets/dist-BxJ0mQc9.js",
+    "name": "dist",
+    "imports": [
+      "_server-BkzOtGYS.js"
+    ]
+  },
+  "_dist-DgQo2mlS.js": {
+    "file": "assets/dist-DgQo2mlS.js",
+    "name": "dist",
+    "imports": [
+      "_server-BkzOtGYS.js",
+      "_dist-BxJ0mQc9.js"
+    ]
+  },
+  "_dist-_4Xfbn1d.js": {
+    "file": "assets/dist-_4Xfbn1d.js",
+    "name": "dist",
+    "imports": [
+      "_dist-BXHiW81K.js"
+    ]
   },
   "_fonts-DkuEHybc.css": {
     "file": "assets/fonts-DkuEHybc.css",
@@ -59,18 +84,89 @@
     "file": "assets/instrument-sans-600-normal-DMks36a2.woff",
     "src": "_instrument-sans-600-normal-DMks36a2.woff"
   },
+  "_server-BkzOtGYS.js": {
+    "file": "assets/server-BkzOtGYS.js",
+    "name": "server"
+  },
   "_tabler-theme-BV97WOhk.css": {
     "file": "assets/tabler-theme-BV97WOhk.css",
     "src": "_tabler-theme-BV97WOhk.css"
   },
-  "_tabler-theme-CTTKb4rQ.js": {
-    "file": "assets/tabler-theme-CTTKb4rQ.js",
+  "_tabler-theme-BgFthJWG.js": {
+    "file": "assets/tabler-theme-BgFthJWG.js",
     "name": "tabler-theme",
     "imports": [
-      "_axios-a3X_zc1S.js"
+      "_server-BkzOtGYS.js"
     ],
     "css": [
       "assets/tabler-theme-BV97WOhk.css"
+    ]
+  },
+  "node_modules/@capacitor/browser/dist/esm/web.js": {
+    "file": "assets/web-DKI48YbO.js",
+    "name": "web",
+    "src": "node_modules/@capacitor/browser/dist/esm/web.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/company/app.js"
+    ]
+  },
+  "node_modules/@codemirror/autocomplete/dist/index.js": {
+    "file": "assets/dist-DP2exrwA.js",
+    "name": "dist",
+    "src": "node_modules/@codemirror/autocomplete/dist/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_dist-BxJ0mQc9.js",
+      "_dist-DgQo2mlS.js",
+      "node_modules/@codemirror/language/dist/index.js"
+    ]
+  },
+  "node_modules/@codemirror/commands/dist/index.js": {
+    "file": "assets/dist-BXSKXAkp.js",
+    "name": "dist",
+    "src": "node_modules/@codemirror/commands/dist/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_dist-BxJ0mQc9.js",
+      "_dist-DgQo2mlS.js",
+      "_dist-BXHiW81K.js",
+      "node_modules/@codemirror/language/dist/index.js"
+    ]
+  },
+  "node_modules/@codemirror/lang-python/dist/index.js": {
+    "file": "assets/dist-BZsZcZnS.js",
+    "name": "dist",
+    "src": "node_modules/@codemirror/lang-python/dist/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_dist-BXHiW81K.js",
+      "node_modules/@codemirror/language/dist/index.js",
+      "node_modules/@codemirror/autocomplete/dist/index.js",
+      "_dist-_4Xfbn1d.js"
+    ]
+  },
+  "node_modules/@codemirror/lang-sql/dist/index.js": {
+    "file": "assets/dist-BnLCx_UQ.js",
+    "name": "dist",
+    "src": "node_modules/@codemirror/lang-sql/dist/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_dist-BXHiW81K.js",
+      "node_modules/@codemirror/language/dist/index.js",
+      "node_modules/@codemirror/autocomplete/dist/index.js",
+      "_dist-_4Xfbn1d.js"
+    ]
+  },
+  "node_modules/@codemirror/language/dist/index.js": {
+    "file": "assets/dist-BqULUgY_.js",
+    "name": "dist",
+    "src": "node_modules/@codemirror/language/dist/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_dist-BxJ0mQc9.js",
+      "_dist-DgQo2mlS.js",
+      "_dist-BXHiW81K.js"
     ]
   },
   "node_modules/@tabler/core/dist/img/flags/gb.svg": {
@@ -86,7 +182,7 @@
     "src": "node_modules/@tabler/core/dist/img/flags/tj.svg"
   },
   "resources/css/admin/app.css": {
-    "file": "assets/app-D6RhMdBQ.css",
+    "file": "assets/app-C38i6kJp.css",
     "name": "app",
     "names": [
       "app.css"
@@ -95,7 +191,7 @@
     "isEntry": true
   },
   "resources/css/company/app.css": {
-    "file": "assets/app-DFg2nSrM.css",
+    "file": "assets/app-I0tSis4W.css",
     "name": "app",
     "names": [
       "app.css"
@@ -113,12 +209,12 @@
     "isEntry": true
   },
   "resources/js/admin/app.js": {
-    "file": "assets/app-COW751sv.js",
+    "file": "assets/app-CyvS-ttw.js",
     "name": "app",
     "src": "resources/js/admin/app.js",
     "isEntry": true,
     "imports": [
-      "_axios-a3X_zc1S.js",
+      "_server-BkzOtGYS.js",
       "__plugin-vue_export-helper-BDNMzG2s.js"
     ],
     "css": [
@@ -126,30 +222,41 @@
     ]
   },
   "resources/js/company/app.js": {
-    "file": "assets/app-BlnhPygn.js",
+    "file": "assets/app-Dnqj8HAN.js",
     "name": "app",
     "src": "resources/js/company/app.js",
     "isEntry": true,
     "imports": [
-      "_axios-a3X_zc1S.js",
+      "_server-BkzOtGYS.js",
       "__plugin-vue_export-helper-BDNMzG2s.js",
-      "_tabler-theme-CTTKb4rQ.js"
+      "_tabler-theme-BgFthJWG.js"
+    ],
+    "dynamicImports": [
+      "_dist-BxJ0mQc9.js",
+      "_dist-DgQo2mlS.js",
+      "node_modules/@codemirror/commands/dist/index.js",
+      "node_modules/@codemirror/language/dist/index.js",
+      "node_modules/@codemirror/lang-sql/dist/index.js",
+      "node_modules/@codemirror/lang-python/dist/index.js",
+      "node_modules/@codemirror/autocomplete/dist/index.js",
+      "_dist-BXHiW81K.js",
+      "node_modules/@capacitor/browser/dist/esm/web.js"
     ],
     "css": [
-      "assets/app-BN-c-SOF.css"
+      "assets/app-BXJfLluy.css"
     ]
   },
   "resources/js/viewer/app.js": {
-    "file": "assets/app-CxfIVRyD.js",
+    "file": "assets/app-CMudpt0o.js",
     "name": "app",
     "src": "resources/js/viewer/app.js",
     "isEntry": true,
     "imports": [
-      "_axios-a3X_zc1S.js",
-      "_tabler-theme-CTTKb4rQ.js"
+      "_server-BkzOtGYS.js",
+      "_tabler-theme-BgFthJWG.js"
     ],
     "css": [
-      "assets/app-GxV1d6qf.css"
+      "assets/app-AvI63Qnm.css"
     ],
     "assets": [
       "assets/ru-hMULjJ5u.svg",

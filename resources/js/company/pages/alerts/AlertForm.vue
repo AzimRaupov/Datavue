@@ -3,6 +3,8 @@ import { ref, reactive, computed, onMounted, inject } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import api from "../../api.js";
+import SqlEditor from "../../components/SqlEditor.vue";
+import SearchSelect from "../../components/SearchSelect.vue";
 
 /**
  * Заведение и правка алерта — отдельной страницей, а не модалкой
@@ -57,6 +59,14 @@ const tableColumns = computed(() => {
     const table = schema.value.tables.find((t) => t.name === form.builder.table);
     return table?.columns ?? [];
 });
+
+const tableOptions = computed(() =>
+    schema.value.tables.map((tbl) => ({ value: tbl.name, label: tbl.name }))
+);
+
+const columnOptions = computed(() =>
+    tableColumns.value.map((col) => ({ value: col.name, label: col.name, hint: col.type ?? undefined }))
+);
 
 const metricLabels = computed(() =>
     form.builder.metrics.map((m, i) => m.label || m.column || t("alerts.form.metric_fallback", { n: i + 1 }))
@@ -321,10 +331,9 @@ onMounted(load);
                                 <template v-if="form.mode === 'builder'">
                                     <div class="mb-3">
                                         <label class="form-label required">{{ t("alerts.form.builder.table") }}</label>
-                                        <select v-model="form.builder.table" class="form-select">
-                                            <option value="" disabled>{{ t("alerts.form.builder.table_placeholder") }}</option>
-                                            <option v-for="tbl in schema.tables" :key="tbl.name" :value="tbl.name">{{ tbl.name }}</option>
-                                        </select>
+                                        <SearchSelect v-model="form.builder.table" :options="tableOptions"
+                                                      :placeholder="t('alerts.form.builder.table_placeholder')"
+                                                      :aria-label="t('alerts.form.builder.table')" />
                                         <div class="form-hint">{{ t("alerts.form.builder.table_hint") }}</div>
                                     </div>
 
@@ -336,10 +345,10 @@ onMounted(load);
                                             </select>
                                         </div>
                                         <div class="col-3">
-                                            <select v-if="needsColumn(metric.agg)" v-model="metric.column" class="form-select form-select-sm">
-                                                <option value="" disabled>{{ t("alerts.form.builder.column_placeholder") }}</option>
-                                                <option v-for="col in tableColumns" :key="col.name" :value="col.name">{{ col.name }}</option>
-                                            </select>
+                                            <SearchSelect v-if="needsColumn(metric.agg)" v-model="metric.column" small
+                                                          :options="columnOptions"
+                                                          :placeholder="t('alerts.form.builder.column_placeholder')"
+                                                          :aria-label="t('alerts.form.builder.column_placeholder')" />
                                             <span v-else class="text-secondary small d-block pt-2">{{ t("alerts.form.builder.all_rows") }}</span>
                                         </div>
                                         <div class="col-4">
@@ -363,10 +372,10 @@ onMounted(load);
                                     <label class="form-label">{{ t("alerts.form.builder.dimensions") }}</label>
                                     <div v-for="(dim, index) in form.builder.dimensions" :key="'d'+index" class="row g-2 mb-2">
                                         <div class="col-9">
-                                            <select v-model="dim.column" class="form-select form-select-sm">
-                                                <option value="" disabled>{{ t("alerts.form.builder.column_placeholder") }}</option>
-                                                <option v-for="col in tableColumns" :key="col.name" :value="col.name">{{ col.name }}</option>
-                                            </select>
+                                            <SearchSelect v-model="dim.column" small
+                                                          :options="columnOptions"
+                                                          :placeholder="t('alerts.form.builder.column_placeholder')"
+                                                          :aria-label="t('alerts.form.builder.column_placeholder')" />
                                         </div>
                                         <div class="col-3">
                                             <button type="button" class="btn btn-sm btn-icon" @click="removeDimension(index)">
@@ -384,10 +393,10 @@ onMounted(load);
                                     <label class="form-label">{{ t("alerts.form.builder.filters") }}</label>
                                     <div v-for="(filter, index) in form.builder.filters" :key="'f'+index" class="row g-2 mb-2">
                                         <div class="col-4">
-                                            <select v-model="filter.column" class="form-select form-select-sm">
-                                                <option value="" disabled>{{ t("alerts.form.builder.column_placeholder") }}</option>
-                                                <option v-for="col in tableColumns" :key="col.name" :value="col.name">{{ col.name }}</option>
-                                            </select>
+                                            <SearchSelect v-model="filter.column" small
+                                                          :options="columnOptions"
+                                                          :placeholder="t('alerts.form.builder.column_placeholder')"
+                                                          :aria-label="t('alerts.form.builder.column_placeholder')" />
                                         </div>
                                         <div class="col-3">
                                             <select v-model="filter.op" class="form-select form-select-sm">
@@ -414,23 +423,30 @@ onMounted(load);
                                 <!-- SQL -->
                                 <template v-else-if="form.mode === 'sql'">
                                     <label class="form-label">{{ t("alerts.form.sql.label") }}</label>
-                                    <textarea v-model="form.query" class="form-control font-monospace" rows="8"
-                                              :disabled="!canWriteCode" placeholder="SELECT id FROM orders WHERE status = 'failed'"></textarea>
+                                    <SqlEditor v-model="form.query" :rows="8" :schema="schema.tables"
+                                               :dialect="schema.data_source?.dialect ?? 'duckdb'"
+                                               :disabled="!canWriteCode"
+                                               :aria-label="t('alerts.form.sql.label')"
+                                               placeholder="SELECT id FROM orders WHERE status = 'failed'"
+                                               @run="runPreview" />
                                     <div class="form-hint">{{ t("alerts.form.sql.hint") }}</div>
                                 </template>
 
                                 <!-- Python -->
                                 <template v-else>
                                     <label class="form-label">{{ t("alerts.form.python.label") }}</label>
-                                    <textarea v-model="form.code" class="form-control font-monospace" rows="12" :disabled="!canWriteCode"
-                                              placeholder="def main():
+                                    <SqlEditor v-model="form.code" language="python" :rows="12" :schema="schema.tables"
+                                               :disabled="!canWriteCode"
+                                               :aria-label="t('alerts.form.python.label')"
+                                               placeholder="def main():
     rows = query(&quot;SELECT COUNT(*) AS c FROM orders WHERE status = 'failed'&quot;)
     failed = rows[0][0]
     print(json.dumps({
         &quot;triggered&quot;: failed > 0,
         &quot;value&quot;: failed,
         &quot;message&quot;: f&quot;Проваленных заказов: {failed}&quot;,
-    }))"></textarea>
+    }))"
+                                               @run="runPreview" />
                                     <div class="form-hint">{{ t("alerts.form.python.hint") }}</div>
                                 </template>
 

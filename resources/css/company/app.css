@@ -310,6 +310,177 @@ html, body, #app {
     .widget-drawer-resize { display: none; }
 }
 
+/* Настройка виджета: секции и строки форм. Все поля строки лежат на одной сетке
+   (--wb-cols задаёт шаблон колонок), поэтому подписи над ними и поля в строках
+   выровнены, а правый край и кнопки удаления идут ровной линией. */
+.wb-section {
+    margin-bottom: 12px;
+    padding: 12px;
+    border: 1px solid var(--tblr-border-color);
+    border-radius: 8px;
+    background: var(--tblr-bg-surface);
+}
+
+.wb-section-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 30px;
+    margin-bottom: 10px;
+}
+
+.wb-section-title {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.wb-info {
+    color: var(--tblr-secondary);
+    font-size: 14px;
+    line-height: 1;
+    cursor: help;
+}
+
+.wb-count {
+    padding: 0 7px;
+    border-radius: 10px;
+    background: var(--tblr-bg-surface-secondary);
+    color: var(--tblr-secondary);
+    font-size: 12px;
+    line-height: 20px;
+}
+
+.wb-section-head > .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+}
+
+.wb-grid {
+    display: grid;
+    grid-template-columns: var(--wb-cols);
+    align-items: center;
+    gap: 8px;
+}
+
+.wb-grid > * {
+    min-width: 0;
+}
+
+.wb-heads {
+    margin-bottom: 4px;
+    color: var(--tblr-secondary);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+}
+
+.wb-row + .wb-row {
+    margin-top: 6px;
+}
+
+.wb-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border-color: transparent;
+    background: transparent;
+    color: var(--tblr-secondary);
+}
+
+.wb-remove:hover {
+    background: var(--tblr-bg-surface-secondary);
+    color: var(--tblr-body-color);
+}
+
+.wb-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 2px;
+}
+
+/* Условие связи: два поля и «=» между ними, либо одно поле с готовой парой. */
+.wb-pair {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.wb-pair > * {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.wb-pair > .wb-eq {
+    flex: 0 0 auto;
+    color: var(--tblr-secondary);
+}
+
+.wb-empty {
+    padding: 10px;
+    border: 1px dashed var(--tblr-border-color);
+    border-radius: 6px;
+    color: var(--tblr-secondary);
+    font-size: 13px;
+    text-align: center;
+}
+
+.wb-hint {
+    margin: 8px 0 0;
+    color: var(--tblr-secondary);
+    font-size: 12px;
+}
+
+.wb-hint-warning {
+    color: var(--tblr-warning);
+}
+
+.wb-field-label {
+    margin-bottom: 4px;
+    color: var(--tblr-secondary);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+}
+
+@media (max-width: 575.98px) {
+    .wb-grid.wb-heads {
+        display: none;
+    }
+
+    /* На телефоне строка складывается в два столбца: пять полей в ряд нерабочие. */
+    .wb-grid {
+        display: flex;
+        flex-wrap: wrap;
+    }
+
+    .wb-grid > * {
+        flex: 1 1 calc(50% - 8px);
+    }
+
+    .wb-grid > span:empty {
+        display: none;
+    }
+
+    .wb-grid > .wb-remove,
+    .wb-grid > .wb-actions {
+        flex: 0 0 auto;
+        margin-left: auto;
+    }
+
+    .wb-row {
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--tblr-border-color-translucent, var(--tblr-border-color));
+    }
+}
+
 /* Каталог виджетов (offcanvas) — у Bootstrap ширина по умолчанию 400px,
    что шире экрана телефона и обрезается краем viewport. */
 @media (max-width: 991.98px) {

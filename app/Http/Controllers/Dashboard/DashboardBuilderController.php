@@ -114,7 +114,11 @@ class DashboardBuilderController extends Controller
         }
 
         return response()->json([
-            'data_source' => ['id' => $dataSource->id, 'name' => $dataSource->name],
+            'data_source' => [
+                'id' => $dataSource->id,
+                'name' => $dataSource->name,
+                'dialect' => SourceSchema::dialect($dataSource),
+            ],
             'tables' => $tables,
             'relations' => $relations,
 

@@ -478,6 +478,16 @@ const messages = {
                 delete_failed: 'Не удалось удалить чат.',
             },
         },
+        searchSelect: {
+            search: 'Поиск…',
+            empty: 'Ничего не найдено',
+        },
+        widgetLoading: {
+            title: 'Загрузка виджетов',
+            subtitle: 'Заглушки всех семейств: {count} шт. Так виджет выглядит, пока ждёт данные.',
+            back: 'Галерея виджетов',
+            open: 'Заглушки загрузки',
+        },
         sourcesShow: {
             back_to_sources: 'Источники данных',
             title_fallback: 'Источник данных',
@@ -506,6 +516,14 @@ const messages = {
                 title: 'Схема данных',
                 not_parsed: 'Схема ещё не разобрана. Она будет построена автоматически, когда вы зададите первый вопрос в чате на этом источнике.',
                 summary: '{groups} смысловых групп · {tables} таблиц',
+                tables_count: 'Таблиц: {count}',
+                all_tables: 'Все таблицы базы данных',
+                loading: 'Читаем схему…',
+                unavailable: 'Не удалось прочитать таблицы источника.',
+                search_placeholder: 'Найти таблицу или колонку',
+                no_match: 'Ничего не найдено.',
+                insert_name: 'Вставить имя в запрос',
+                preview: 'Показать первые 100 строк',
             },
             sqlConsole: {
                 title: 'SQL-консоль',
@@ -518,6 +536,9 @@ const messages = {
                 no_rows: 'Запрос не вернул ни одной строки.',
                 rows_label: 'Строк: {count}',
                 truncated_label: 'показаны первые 200 строк',
+                elapsed_label: '{seconds} с',
+                export_csv: 'Скачать CSV',
+                history_label: 'Недавние запросы',
                 error_default: 'Не удалось выполнить запрос.',
             },
             refresh_modal: {
@@ -868,6 +889,11 @@ const messages = {
                 column_placeholder: 'колонка',
             },
             data_tab: {
+                heads: {
+                    table: 'Таблица',
+                    condition: 'Условие связи',
+                    type: 'Тип',
+                },
                 table_label: 'Таблица',
                 table_placeholder: 'Выберите таблицу',
                 table_hint: 'С неё начинается запрос. Остальные подключаются связями ниже.',
@@ -907,6 +933,16 @@ const messages = {
                 colors_hint: 'Порядок — как у рядов на графике: первый цвет достаётся первому ряду. Нетронутые ячейки следуют теме оформления.',
             },
             builder_tab: {
+                heads: {
+                    table: 'Таблица',
+                    agg: 'Функция',
+                    column: 'Колонка',
+                    label: 'Название',
+                    target: 'Цель',
+                    grain: 'Группировка',
+                    op: 'Условие',
+                    value: 'Значение',
+                },
                 metrics: {
                     label: 'Метрики',
                     table_aria: 'Таблица метрики',
@@ -1754,6 +1790,16 @@ const messages = {
                 delete_failed: 'Failed to delete the chat.',
             },
         },
+        searchSelect: {
+            search: 'Search…',
+            empty: 'Nothing found',
+        },
+        widgetLoading: {
+            title: 'Widget loading',
+            subtitle: 'Placeholders of every family: {count}. This is how a widget looks while waiting for data.',
+            back: 'Widget gallery',
+            open: 'Loading placeholders',
+        },
         sourcesShow: {
             back_to_sources: 'Data Sources',
             title_fallback: 'Data source',
@@ -1782,6 +1828,14 @@ const messages = {
                 title: 'Data schema',
                 not_parsed: 'The schema hasn’t been parsed yet. It will be built automatically when you ask the first question in a chat on this source.',
                 summary: '{groups} topic group(s) · {tables} table(s)',
+                tables_count: 'Tables: {count}',
+                all_tables: 'All database tables',
+                loading: 'Reading the schema…',
+                unavailable: 'Could not read the source’s tables.',
+                search_placeholder: 'Find a table or column',
+                no_match: 'Nothing found.',
+                insert_name: 'Insert the name into the query',
+                preview: 'Show the first 100 rows',
             },
             sqlConsole: {
                 title: 'SQL console',
@@ -1794,6 +1848,9 @@ const messages = {
                 no_rows: 'The query returned no rows.',
                 rows_label: 'Rows: {count}',
                 truncated_label: 'first 200 rows shown',
+                elapsed_label: '{seconds} s',
+                export_csv: 'Download CSV',
+                history_label: 'Recent queries',
                 error_default: 'Failed to run the query.',
             },
             refresh_modal: {
@@ -2144,6 +2201,11 @@ const messages = {
                 column_placeholder: 'column',
             },
             data_tab: {
+                heads: {
+                    table: 'Table',
+                    condition: 'Join condition',
+                    type: 'Type',
+                },
                 table_label: 'Table',
                 table_placeholder: 'Select a table',
                 table_hint: 'The query starts from it. Other tables connect through relations below.',
@@ -2183,6 +2245,16 @@ const messages = {
                 colors_hint: 'Order matches the series on the chart: the first color goes to the first series. Untouched cells follow the theme.',
             },
             builder_tab: {
+                heads: {
+                    table: 'Table',
+                    agg: 'Function',
+                    column: 'Column',
+                    label: 'Label',
+                    target: 'Target',
+                    grain: 'Group by',
+                    op: 'Condition',
+                    value: 'Value',
+                },
                 metrics: {
                     label: 'Metrics',
                     table_aria: 'Metric table',
@@ -3029,6 +3101,16 @@ const messages = {
                 delete_failed: 'Нест кардани чат бомуваффақият анҷом наёфт.',
             },
         },
+        searchSelect: {
+            search: 'Ҷустуҷӯ…',
+            empty: 'Ҳеҷ чиз ёфт нашуд',
+        },
+        widgetLoading: {
+            title: 'Боркунии виджетҳо',
+            subtitle: 'Ҷойгиркунакҳои ҳамаи оилаҳо: {count}. Виджет ҳангоми интизории додаҳо чунин менамояд.',
+            back: 'Галереяи виджетҳо',
+            open: 'Ҷойгиркунакҳои боркунӣ',
+        },
         sourcesShow: {
             back_to_sources: 'Манбаъҳои маълумот',
             title_fallback: 'Манбаи маълумот',
@@ -3057,6 +3139,14 @@ const messages = {
                 title: 'Сохтори маълумот',
                 not_parsed: 'Сохтор ҳанӯз таҳлил нашудааст. Он ба таври худкор сохта мешавад, вақте ки шумо дар чат дар ин манбаъ саволи аввалро гузоред.',
                 summary: '{groups} гурӯҳи мазмунӣ · {tables} ҷадвал',
+                tables_count: 'Ҷадвалҳо: {count}',
+                all_tables: 'Ҳамаи ҷадвалҳои пойгоҳи додаҳо',
+                loading: 'Сохтор хонда мешавад…',
+                unavailable: 'Хондани ҷадвалҳои манбаъ муяссар нашуд.',
+                search_placeholder: 'Ҷадвал ё сутунро ҷустуҷӯ кунед',
+                no_match: 'Ҳеҷ чиз ёфт нашуд.',
+                insert_name: 'Номро ба дархост гузоштан',
+                preview: '100 сатри аввалро нишон додан',
             },
             sqlConsole: {
                 title: 'SQL-консол',
@@ -3069,6 +3159,9 @@ const messages = {
                 no_rows: 'Дархост ягон сатр барнагардонд.',
                 rows_label: 'Сатрҳо: {count}',
                 truncated_label: '200 сатри аввал нишон дода шуд',
+                elapsed_label: '{seconds} с',
+                export_csv: 'Боргирии CSV',
+                history_label: 'Дархостҳои охирин',
                 error_default: 'Иҷрои дархост муяссар нашуд.',
             },
             refresh_modal: {
@@ -3419,6 +3512,11 @@ const messages = {
                 column_placeholder: 'сутун',
             },
             data_tab: {
+                heads: {
+                    table: 'Ҷадвал',
+                    condition: 'Шарти пайваст',
+                    type: 'Намуд',
+                },
                 table_label: 'Ҷадвал',
                 table_placeholder: 'Ҷадвалро интихоб кунед',
                 table_hint: 'Дархост аз он оғоз меёбад. Ҷадвалҳои дигар тавассути алоқаҳо дар поён пайваст мешаванд.',
@@ -3458,6 +3556,16 @@ const messages = {
                 colors_hint: 'Тартиб — мисли қаторҳо дар график: ранги якум ба қатори якум мерасад. Ячейкаҳои дастнарас мавзӯи тарҳро пайравӣ мекунанд.',
             },
             builder_tab: {
+                heads: {
+                    table: 'Ҷадвал',
+                    agg: 'Функсия',
+                    column: 'Сутун',
+                    label: 'Ном',
+                    target: 'Ҳадаф',
+                    grain: 'Гурӯҳбандӣ',
+                    op: 'Шарт',
+                    value: 'Қимат',
+                },
                 metrics: {
                     label: 'Метрикаҳо',
                     table_aria: 'Ҷадвали метрика',

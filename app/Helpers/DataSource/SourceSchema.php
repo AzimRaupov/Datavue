@@ -9,6 +9,18 @@ class SourceSchema
 {
     private const TTL_MINUTES = 5;
 
+    /**
+     * Диалект SQL для редактора запросов. Всё, что не mysql/postgres/sqlite
+     * (таблицы, Google Sheets и прочие загруженные источники), лежит локально
+     * в DuckDB и пишется на его диалекте.
+     */
+    public static function dialect(DataSource $dataSource): string
+    {
+        $type = $dataSource->type->name ?? null;
+
+        return in_array($type, ['mysql', 'postgres', 'sqlite'], true) ? $type : 'duckdb';
+    }
+
     public static function tables(DataSource $dataSource): array
     {
         return Cache::remember(
