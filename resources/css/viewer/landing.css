@@ -22,23 +22,73 @@ html {
 
 /* ---------- Hero ---------- */
 
+.dv-landing {
+    overflow-x: clip;
+    --dv-grad: linear-gradient(120deg, var(--tblr-primary) 0%, var(--tblr-azure) 55%, var(--tblr-cyan) 100%);
+}
+
 .dv-hero {
     position: relative;
     overflow: hidden;
-    padding: 2.5rem 0 3rem;
+    padding: 4rem 0 5rem;
 }
 
-/* Мягкое голубое свечение за заголовком — единственный «декор» на странице. */
-.dv-hero::before {
+/* Цветные размытые пятна и сетка за заголовком. */
+.dv-hero-bg {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.dv-hero-bg::after {
     content: '';
     position: absolute;
-    top: -12rem;
-    left: 50%;
-    width: 56rem;
-    height: 28rem;
-    transform: translateX(-50%);
-    background: radial-gradient(closest-side, rgba(var(--tblr-primary-rgb), .18), transparent);
-    pointer-events: none;
+    inset: 0;
+    background-image:
+        linear-gradient(var(--tblr-border-color) 1px, transparent 1px),
+        linear-gradient(90deg, var(--tblr-border-color) 1px, transparent 1px);
+    background-size: 56px 56px;
+    opacity: .5;
+    mask-image: radial-gradient(ellipse 60% 55% at 50% 30%, #000 20%, transparent 75%);
+}
+
+.dv-blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: .45;
+    animation: dv-drift 18s ease-in-out infinite alternate;
+}
+
+.dv-blob-1 {
+    top: -10rem;
+    left: 8%;
+    width: 30rem;
+    height: 30rem;
+    background: var(--tblr-primary);
+}
+
+.dv-blob-2 {
+    top: -6rem;
+    right: 6%;
+    width: 26rem;
+    height: 26rem;
+    background: var(--tblr-azure);
+    animation-delay: -6s;
+}
+
+.dv-blob-3 {
+    top: 14rem;
+    left: 42%;
+    width: 22rem;
+    height: 22rem;
+    background: var(--tblr-cyan);
+    opacity: .22;
+    animation-delay: -11s;
+}
+
+@keyframes dv-drift {
+    to { transform: translate3d(3rem, 2rem, 0) scale(1.08); }
 }
 
 .dv-hero .container {
@@ -46,60 +96,253 @@ html {
 }
 
 .dv-hero-copy {
-    max-width: 46rem;
-    margin: 0 auto 3rem;
+    max-width: 50rem;
+    margin: 0 auto 4rem;
     text-align: center;
 }
 
 .dv-hero-badge {
     display: inline-flex;
     align-items: center;
-    gap: .35rem;
-    margin-bottom: 1.25rem;
-    padding: .4rem .75rem;
+    gap: .55rem;
+    margin-bottom: 1.5rem;
+    padding: .4rem 1rem;
     font-size: .8125rem;
+    font-weight: 600;
+    color: var(--tblr-primary);
+    background: rgba(var(--tblr-primary-rgb), .08);
+    border: 1px solid rgba(var(--tblr-primary-rgb), .22);
+    border-radius: 999px;
+    backdrop-filter: blur(6px);
+}
+
+.dv-hero-dot {
+    position: relative;
+    width: .5rem;
+    height: .5rem;
+    background: var(--tblr-primary);
+    border-radius: 50%;
+}
+
+.dv-hero-dot::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: inherit;
+    border-radius: inherit;
+    animation: dv-ping 2s cubic-bezier(0, 0, .2, 1) infinite;
+}
+
+@keyframes dv-ping {
+    75%, 100% { transform: scale(3); opacity: 0; }
 }
 
 .dv-hero-title {
-    margin: 0 0 1rem;
-    font-size: clamp(2.25rem, 5.5vw, 3.75rem);
+    margin: 0 0 1.25rem;
+    font-size: clamp(2.5rem, 6vw, 4.5rem);
     font-weight: 700;
-    line-height: 1.08;
-    letter-spacing: -.03em;
+    line-height: 1.05;
+    letter-spacing: -.035em;
 }
 
 .dv-accent {
     display: block;
     color: var(--tblr-primary);
+    background: var(--dv-grad);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
 }
 
 .dv-hero-lead {
-    margin: 0 auto 2rem;
-    max-width: 32rem;
-    font-size: 1.25rem;
+    margin: 0 auto 2.25rem;
+    max-width: 34rem;
+    font-size: 1.3rem;
+    line-height: 1.55;
     color: var(--tblr-secondary);
 }
 
+.dv-btn-glow {
+    border: 0;
+    background: var(--dv-grad);
+    box-shadow: 0 .75rem 1.75rem -.5rem rgba(var(--tblr-primary-rgb), .65);
+    transition: transform .15s ease, box-shadow .15s ease;
+}
+
+.dv-btn-glow:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 1rem 2rem -.5rem rgba(var(--tblr-primary-rgb), .75);
+}
+
+.dv-btn-soft {
+    background: var(--tblr-bg-surface);
+    transition: transform .15s ease;
+}
+
+.dv-btn-soft:hover {
+    transform: translateY(-2px);
+}
+
+.dv-works {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: .5rem;
+    margin-top: 2rem;
+}
+
+.dv-works-label {
+    margin-right: .25rem;
+    font-size: .8125rem;
+    color: var(--tblr-secondary);
+}
+
+.dv-works-chip {
+    padding: .2rem .7rem;
+    font-size: .8125rem;
+    font-weight: 500;
+    color: var(--tblr-body-color);
+    background: var(--tblr-bg-surface);
+    border: 1px solid var(--tblr-border-color);
+    border-radius: 999px;
+}
+
 .dv-hero-visual {
+    position: relative;
     max-width: 62rem;
     margin: 0 auto;
+}
+
+/* Цветное свечение под макетом. */
+.dv-hero-visual::before {
+    content: '';
+    position: absolute;
+    inset: 8% 6% -6%;
+    background: var(--dv-grad);
+    border-radius: 2rem;
+    filter: blur(60px);
+    opacity: .3;
+}
+
+.dv-hero-visual .dv-window {
+    position: relative;
+    border-radius: 16px;
+    box-shadow: 0 2.5rem 5rem -1.5rem rgba(var(--tblr-primary-rgb), .45), 0 0 0 1px rgba(var(--tblr-primary-rgb), .08);
+}
+
+.dv-float {
+    position: absolute;
+    z-index: 2;
+    display: none;
+    align-items: center;
+    gap: .6rem;
+    padding: .7rem .9rem;
+    font-size: .8125rem;
+    background: var(--tblr-bg-surface);
+    border: 1px solid var(--tblr-border-color);
+    border-radius: 12px;
+    box-shadow: 0 1rem 2rem -.75rem rgba(var(--tblr-primary-rgb), .35);
+    animation: dv-bob 6s ease-in-out infinite;
+}
+
+.dv-float-alert {
+    top: -1.5rem;
+    right: -2.5rem;
+}
+
+.dv-float-kpi {
+    bottom: -1.75rem;
+    left: -2.5rem;
+    animation-delay: -3s;
+}
+
+.dv-float-value {
+    font-size: 1.1rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.dv-float-value small {
+    font-size: .75rem;
+    font-weight: 600;
+}
+
+@keyframes dv-bob {
+    50% { transform: translateY(-.6rem); }
+}
+
+@media (min-width: 1200px) {
+    .dv-float {
+        display: flex;
+    }
+}
+
+/* ---------- Появление при прокрутке ---------- */
+
+.dv-reveal {
+    opacity: 0;
+    transform: translateY(1.5rem);
+    transition: opacity .6s ease, transform .6s cubic-bezier(.2, .7, .2, 1);
+    transition-delay: var(--d, 0ms);
+}
+
+.dv-reveal.is-visible {
+    opacity: 1;
+    transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dv-reveal {
+        opacity: 1;
+        transform: none;
+        transition: none;
+    }
+
+    .dv-blob,
+    .dv-float,
+    .dv-hero-dot::after {
+        animation: none;
+    }
 }
 
 /* ---------- Общие элементы секций ---------- */
 
 .dv-landing .section {
-    padding: 4.5rem 0;
+    padding: 5.5rem 0;
 }
 
 .dv-landing .section-header {
-    margin-bottom: 2.5rem;
+    margin-bottom: 3rem;
+}
+
+.dv-landing .section-title {
+    font-size: clamp(1.75rem, 3.5vw, 2.5rem);
+    font-weight: 700;
+    letter-spacing: -.025em;
+}
+
+/* Чередующиеся полосы с мягкой подсветкой вместо плоской заливки. */
+.dv-landing .section-light {
+    background:
+        linear-gradient(180deg, transparent, rgba(var(--tblr-primary-rgb), .045) 22%, rgba(var(--tblr-primary-rgb), .045) 78%, transparent);
+}
+
+.dv-eyebrow {
+    margin-bottom: 1.5rem;
+    font-size: .75rem;
+    font-weight: 600;
+    letter-spacing: .14em;
+    text-align: center;
+    text-transform: uppercase;
+    color: var(--tblr-secondary);
 }
 
 .dv-pill {
     display: inline-flex;
     align-items: center;
     gap: .35rem;
-    padding: .35rem .8rem;
+    padding: .4rem .9rem;
     font-size: .875rem;
     font-weight: 500;
     color: var(--tblr-body-color);
@@ -109,26 +352,46 @@ html {
 }
 
 .dv-tile {
-    padding: 1.5rem;
+    position: relative;
+    padding: 1.75rem;
+    overflow: hidden;
     background: var(--tblr-bg-surface);
     border: 1px solid var(--tblr-border-color);
-    border-radius: var(--tblr-border-radius-lg, 8px);
-    transition: transform .15s ease, box-shadow .15s ease;
+    border-radius: 16px;
+    transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+}
+
+/* Цветная линия сверху проявляется при наведении. */
+.dv-tile::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--dv-grad);
+    opacity: 0;
+    transition: opacity .2s ease;
 }
 
 .dv-tile:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 .75rem 1.5rem rgba(var(--tblr-primary-rgb), .1);
+    transform: translateY(-4px);
+    border-color: rgba(var(--tblr-primary-rgb), .35);
+    box-shadow: 0 1.25rem 2.5rem -1rem rgba(var(--tblr-primary-rgb), .3);
+}
+
+.dv-tile:hover::before {
+    opacity: 1;
 }
 
 .dv-tile-icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 3rem;
-    height: 3rem;
-    margin-bottom: 1rem;
-    border-radius: 12px;
+    width: 3.25rem;
+    height: 3.25rem;
+    margin-bottom: 1.1rem;
+    border-radius: 14px;
 }
 
 .dv-tile-icon-sm {
@@ -148,53 +411,125 @@ html {
     height: 1.15rem;
 }
 
+/* Блоки «текст + макет» */
+
+.dv-feature-title {
+    margin: 0 0 .75rem;
+    font-size: clamp(1.6rem, 3vw, 2.15rem);
+    font-weight: 700;
+    line-height: 1.15;
+    letter-spacing: -.025em;
+}
+
+.dv-feature-text {
+    margin: 0;
+    font-size: 1.15rem;
+    line-height: 1.55;
+    color: var(--tblr-secondary);
+}
+
+/* «Сцена» под макетом: цветной фон с точечным узором. */
+.dv-stage {
+    position: relative;
+    padding: 2rem;
+    overflow: hidden;
+    background:
+        radial-gradient(circle at 0% 0%, rgba(var(--tblr-primary-rgb), .16), transparent 55%),
+        radial-gradient(circle at 100% 100%, rgba(var(--tblr-cyan-rgb), .16), transparent 55%),
+        var(--tblr-bg-surface-secondary, var(--tblr-body-bg));
+    border: 1px solid var(--tblr-border-color);
+    border-radius: 24px;
+}
+
+.dv-stage::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(var(--tblr-border-color) 1px, transparent 1px);
+    background-size: 18px 18px;
+    mask-image: linear-gradient(135deg, #000, transparent 70%);
+    pointer-events: none;
+}
+
+.dv-stage > * {
+    position: relative;
+}
+
+@media (max-width: 575.98px) {
+    .dv-stage {
+        padding: 1rem;
+        border-radius: 18px;
+    }
+}
+
 /* ---------- Шаги ---------- */
 
 .dv-flow {
+    position: relative;
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 1.5rem;
-    position: relative;
+}
+
+/* Пунктирная линия, соединяющая иконки шагов. */
+.dv-flow::before {
+    content: '';
+    position: absolute;
+    top: 2.25rem;
+    left: 12.5%;
+    right: 12.5%;
+    border-top: 2px dashed rgba(var(--tblr-primary-rgb), .35);
 }
 
 .dv-flow-step {
     position: relative;
-    padding: 1.5rem;
+    padding: 0 .5rem;
     text-align: center;
-    background: var(--tblr-bg-surface);
-    border: 1px solid var(--tblr-border-color);
-    border-radius: var(--tblr-border-radius-lg, 8px);
+}
+
+.dv-flow-icon {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 4.5rem;
+    height: 4.5rem;
+    margin-bottom: 1.25rem;
+    color: #fff;
+    background: var(--dv-grad);
+    border-radius: 50%;
+    box-shadow: 0 0 0 .5rem var(--tblr-body-bg), 0 .75rem 1.5rem -.5rem rgba(var(--tblr-primary-rgb), .6);
+}
+
+.dv-flow-icon .icon {
+    width: 1.75rem;
+    height: 1.75rem;
 }
 
 .dv-flow-num {
     position: absolute;
-    top: .75rem;
-    left: .9rem;
-    font-size: .8125rem;
+    top: -.15rem;
+    right: -.15rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    font-size: .75rem;
     font-weight: 700;
     color: var(--tblr-primary);
-    opacity: .7;
-}
-
-/* Стрелка между карточками. */
-.dv-flow-step:not(:last-child)::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    right: -1.05rem;
-    width: .55rem;
-    height: .55rem;
-    border-top: 2px solid var(--tblr-border-color-dark, var(--tblr-border-color));
-    border-right: 2px solid var(--tblr-border-color-dark, var(--tblr-border-color));
-    transform: translateY(-50%) rotate(45deg);
+    background: var(--tblr-bg-surface);
+    border: 1px solid rgba(var(--tblr-primary-rgb), .3);
+    border-radius: 50%;
 }
 
 @media (max-width: 991.98px) {
     .dv-flow {
         grid-template-columns: repeat(2, 1fr);
+        row-gap: 2.5rem;
     }
 
-    .dv-flow-step::after {
+    .dv-flow::before {
         display: none;
     }
 }
@@ -209,27 +544,54 @@ html {
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
-    gap: .5rem;
-    margin-top: 4rem;
+    gap: .6rem;
+    margin-top: 4.5rem;
+}
+
+.dv-widget-cloud .badge {
+    padding: .45rem .9rem;
+    font-size: .8125rem;
+    border: 1px solid rgba(var(--tblr-primary-rgb), .18);
+    border-radius: 999px;
+    transition: transform .15s ease, background-color .15s ease, color .15s ease;
+}
+
+.dv-widget-cloud .badge:hover {
+    transform: translateY(-2px);
+    color: #fff;
+    background: var(--tblr-primary) !important;
 }
 
 /* ---------- Клиенты ---------- */
+
+.dv-clients {
+    padding: 1rem 0 3rem;
+}
+
+.dv-client-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+}
 
 /* Логотипы пришли в разных пропорциях и с собственным фоном, поэтому каждый
    лежит в карточке одного размера. cover по центру обрезает поля у широких
    картинок (вместе с водяным знаком в углу) и не трогает сам знак. */
 .dv-client {
+    width: 10.5rem;
     aspect-ratio: 3 / 2;
     overflow: hidden;
     background: #fff;
     border: 1px solid var(--tblr-border-color);
-    border-radius: var(--tblr-border-radius-lg, 8px);
-    transition: transform .15s ease, box-shadow .15s ease;
+    border-radius: 14px;
+    transition: transform .2s ease, box-shadow .2s ease;
 }
 
 .dv-client:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 .75rem 1.5rem rgba(var(--tblr-primary-rgb), .1);
+    transform: translateY(-3px);
+    box-shadow: 0 1rem 2rem -1rem rgba(var(--tblr-primary-rgb), .35);
 }
 
 .dv-client img {
@@ -266,6 +628,11 @@ html {
     align-items: center;
     justify-content: center;
     gap: 1rem 2.5rem;
+    padding: 1.5rem 2rem;
+    background: var(--tblr-bg-surface);
+    border: 1px solid var(--tblr-border-color);
+    border-radius: 20px;
+    box-shadow: 0 1rem 2.5rem -1.5rem rgba(var(--tblr-primary-rgb), .3);
 }
 
 .dv-trust-item {
@@ -282,20 +649,31 @@ html {
     font-weight: 500;
 }
 
-/* Светлая плашка с точечным узором вместо сплошной заливки. */
+/* Светлая плашка с цветным свечением. */
 .dv-cta {
     position: relative;
     overflow: hidden;
-    padding: 3rem 3.5rem;
+    padding: 3.5rem 4rem;
     background:
-        radial-gradient(circle at 0% 0%, rgba(var(--tblr-primary-rgb), .12), transparent 40%),
-        radial-gradient(circle at 100% 100%, rgba(var(--tblr-green-rgb, 47, 179, 68), .1), transparent 40%),
+        radial-gradient(circle at 92% 8%, rgba(var(--tblr-azure-rgb), .25), transparent 45%),
+        radial-gradient(circle at 0% 100%, rgba(var(--tblr-primary-rgb), .2), transparent 50%),
+        radial-gradient(circle at 60% 120%, rgba(var(--tblr-teal-rgb), .14), transparent 45%),
         var(--tblr-bg-surface);
-    border: 1px solid var(--tblr-border-color);
-    border-radius: 16px;
+    border: 1px solid rgba(var(--tblr-primary-rgb), .18);
+    border-radius: 28px;
+    box-shadow: 0 2rem 4rem -2.5rem rgba(var(--tblr-primary-rgb), .5);
 }
 
-.dv-cta::before,
+.dv-cta::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(rgba(var(--tblr-primary-rgb), .22) 1px, transparent 1px);
+    background-size: 20px 20px;
+    mask-image: linear-gradient(to bottom right, transparent 25%, #000 100%);
+    pointer-events: none;
+}
+
 .dv-auth-side::before {
     content: '';
     position: absolute;
@@ -312,15 +690,17 @@ html {
 }
 
 .dv-cta-title {
-    margin-bottom: 1.5rem;
-    font-size: clamp(1.75rem, 3.5vw, 2.25rem);
+    margin-bottom: 1.75rem;
+    font-size: clamp(1.9rem, 3.8vw, 2.75rem);
     font-weight: 700;
-    letter-spacing: -.02em;
+    line-height: 1.12;
+    letter-spacing: -.025em;
 }
 
 @media (max-width: 575.98px) {
     .dv-cta {
-        padding: 2rem 1.5rem;
+        padding: 2.25rem 1.5rem;
+        border-radius: 22px;
     }
 }
 
