@@ -27,9 +27,8 @@ const worksWith = ['MySQL', 'PostgreSQL', 'Excel', 'CSV', 'Google Sheets', 'Duck
 const clients = [
 
     { file: 'fatir.jpg', name: 'Фатир' },
-    { file: 'kompazit.png', name: 'Kompazit Group', zoom: true },
-    { file: 'khimus.jpg', name: 'Химус' },
     { file: 'anas.png', name: 'Ширинихои Анас', cream: true },
+    { file: 'khimus.jpg', name: 'Химус' },
 ]
 
 const flow = [

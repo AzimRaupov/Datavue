@@ -573,20 +573,30 @@ html {
     flex-wrap: wrap;
     align-items: center;
     justify-content: center;
-    gap: 1rem;
+    gap: 1.5rem;
 }
 
 /* Логотипы пришли в разных пропорциях и с собственным фоном, поэтому каждый
    лежит в карточке одного размера. cover по центру обрезает поля у широких
    картинок (вместе с водяным знаком в углу) и не трогает сам знак. */
 .dv-client {
-    width: 10.5rem;
+    width: 14rem;
     aspect-ratio: 3 / 2;
     overflow: hidden;
     background: #fff;
     border: 1px solid var(--tblr-border-color);
-    border-radius: 14px;
+    border-radius: 16px;
     transition: transform .2s ease, box-shadow .2s ease;
+}
+
+@media (max-width: 575.98px) {
+    .dv-client-row {
+        gap: 1rem;
+    }
+
+    .dv-client {
+        width: calc(50% - .5rem);
+    }
 }
 
 .dv-client:hover {
