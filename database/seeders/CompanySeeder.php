@@ -12,7 +12,6 @@ class CompanySeeder extends Seeder
 
     private const COMPANIES = [
         ['name' => 'Фатир Агро', 'email' => 'info@ordifatir.com'],
-        ['name' => 'ASR Stroy Imkon', 'email' => 'info@asrimk.com'],
         ['name' => 'Химус', 'email' => 'info@chymetj.com'],
         ['name' => 'Ширинихои Анас', 'email' => 'anas_sw@gmail.com'],
         ['name' => 'Kompazit Group', 'email' => 'atex-en@mail.ru'],

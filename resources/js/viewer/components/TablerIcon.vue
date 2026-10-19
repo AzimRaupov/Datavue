@@ -24,6 +24,7 @@ const ICONS = {
     chevronRight: ['M9 6l6 6l-6 6'],
     arrowRight: ['M5 12l14 0', 'M13 18l6 -6', 'M13 6l6 6'],
     check: ['M5 12l5 5l10 -10'],
+    trendingUp: ['M3 17l6 -6l4 4l8 -8', 'M14 7l7 0l0 7'],
     trendingDown: ['M3 7l6 6l4 -4l8 8', 'M21 10l0 7l-7 0'],
     send: ['M10 14l11 -11', 'M21 3l-6.5 18a.55 .55 0 0 1 -1 0l-3.5 -7l-7 -3.5a.55 .55 0 0 1 0 -1l18 -6.5'],
     clock: ['M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0', 'M12 7v5l3 3'],
