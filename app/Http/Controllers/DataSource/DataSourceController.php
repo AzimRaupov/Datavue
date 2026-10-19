@@ -178,6 +178,7 @@ class DataSourceController extends Controller
         $source->forceFill([
             'grouping_status' => 'queued',
             'grouping_stage' => 'В очереди',
+            'grouping_step' => 0,
             'grouping_message' => null,
         ])->save();
 
@@ -235,6 +236,7 @@ class DataSourceController extends Controller
         return response()->json([
             'status' => $source->grouping_status,
             'stage' => $source->grouping_stage,
+            'step' => (int) $source->grouping_step,
             'message' => $source->grouping_message,
             'groups_count' => DataSourceGroup::query()
                 ->where('data_source_id', $source->id)

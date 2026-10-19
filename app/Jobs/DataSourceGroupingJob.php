@@ -71,7 +71,7 @@ class DataSourceGroupingJob implements ShouldQueue
                 'failed',
                 'failed',
                 'Не удалось сгруппировать таблицы',
-                0,
+                (int) $dataSource->grouping_step,
                 3,
                 $e->getMessage()
             );
@@ -94,6 +94,7 @@ class DataSourceGroupingJob implements ShouldQueue
         $dataSource->forceFill([
             'grouping_status' => $status,
             'grouping_stage' => $label,
+            'grouping_step' => $step,
             'grouping_message' => $message,
         ])->save();
 

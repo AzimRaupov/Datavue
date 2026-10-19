@@ -301,27 +301,43 @@ function listenGrouping() {
     echo = useEcho();
 
     echo.private(`data_source.${id}`)
-        .listen('.DataSourceGroupingProgress', (e) => applyProgress(e));
+        .listen('.DataSourceGroupingProgress', (e) => applyProgress(e))
+        // События, отправленные до того, как подписка поднялась, не повторяются:
+        // сразу после подписки забираем текущее состояние обычным запросом.
+        .subscribed(syncGrouping)
+        .error(() => {
+            // Подписку отклонили или сокет недоступен — остаётся опрос ниже.
+        });
 
-    // Запасной путь: сокет мог не подняться или событие потеряться.
-    // Опрос раз в 5 секунд стоит дёшево и гарантирует, что мастер
-    // не зависнет навсегда на «в очереди».
-    pollTimer = setInterval(async () => {
-        try {
-            const { data } = await api.get(`/data_source/${id}/grouping`);
+    // Запасной путь: сокет мог не подняться или событие потеряться. Сервер хранит
+    // номер этапа, поэтому опрос двигает этапы так же, как сокет, просто с задержкой.
+    pollTimer = setInterval(syncGrouping, 3000);
+}
 
-            if (data.status !== groupingStatus.value) {
-                applyProgress({
-                    status: data.status,
-                    label: data.stage || groupingLabel.value,
-                    step: data.status === 'completed' ? 3 : groupingStep.value,
-                    message: data.message,
-                });
-            }
-        } catch {
-            // Молча: это подстраховка, а не основной канал.
-        }
-    }, 5000);
+async function syncGrouping() {
+    if (!createdSource.value) return;
+
+    try {
+        const { data } = await api.get(`/data_source/${createdSource.value.id}/grouping`);
+
+        // Группировку ещё не поставили в очередь — показывать нечего.
+        if (data.status === 'pending') return;
+
+        const finished = data.status === 'completed' || data.status === 'failed';
+        const moved = data.step > groupingStep.value || data.status !== groupingStatus.value;
+
+        // Ответ мог устареть относительно события из сокета, поэтому назад не идём.
+        if (!finished && !moved) return;
+
+        applyProgress({
+            status: data.status,
+            label: data.stage || groupingLabel.value,
+            step: finished && data.status === 'completed' ? 3 : Math.max(data.step, groupingStep.value),
+            message: data.message,
+        });
+    } catch {
+        // Молча: это подстраховка, а не основной канал.
+    }
 }
 
 function applyProgress(payload) {

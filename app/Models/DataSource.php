@@ -28,12 +28,14 @@ class DataSource extends Model
         'options',
         'grouping_status',
         'grouping_stage',
+        'grouping_step',
         'grouping_message',
         'refreshed_at',
     ];
 
     protected $casts = [
         'port' => 'integer',
+        'grouping_step' => 'integer',
         'refreshed_at' => 'datetime',
         'options' => 'array',
     ];
