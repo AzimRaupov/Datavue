@@ -23,9 +23,8 @@ const sources = [
 const clients = [
 
     { file: 'fatir.jpg', name: 'Фатир' },
-    { file: 'asr.png', name: 'ASR Construction Company', zoom: true },
-    { file: 'khimus.jpg', name: 'Химус' },
     { file: 'kompazit.png', name: 'Kompazit Group', zoom: true },
+    { file: 'khimus.jpg', name: 'Химус' },
     { file: 'anas.png', name: 'Ширинихои Анас', cream: true },
 ]
 
