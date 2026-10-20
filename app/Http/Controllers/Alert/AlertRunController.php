@@ -39,11 +39,9 @@ class AlertRunController extends Controller
             ], 422);
         }
 
-        try {
-            $relations = SourceSchema::relations($dataSource, array_column($tables, 'name'));
-        } catch (Throwable) {
-            $relations = [];
-        }
+        // Связи между таблицами форме алерта не нужны, а их поиск гоняет
+        // пробные JOIN-ы по данным клиента и подолгу держит страницу.
+        $relations = [];
 
         return response()->json([
             'data_source' => [

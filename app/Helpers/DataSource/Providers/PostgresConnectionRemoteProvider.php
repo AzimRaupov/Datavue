@@ -46,6 +46,15 @@ class PostgresConnectionRemoteProvider extends AbstractSqlConnectionProvider
         return '"' . str_replace('"', '""', $identifier) . '"';
     }
 
+    protected function setStatementTimeout(?int $milliseconds): void
+    {
+        $this->connection()->statement(
+            $milliseconds === null
+                ? 'SET statement_timeout = DEFAULT'
+                : 'SET statement_timeout = '.(int) $milliseconds
+        );
+    }
+
     public function showTables(): array
     {
         $rows = $this->query(
