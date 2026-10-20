@@ -3,10 +3,30 @@
 namespace App\Helpers\DataSource\Providers;
 
 use App\Helpers\DataSource\Concerns\ManagesRemoteConnection;
+use Illuminate\Support\Facades\Log;
 
 abstract class AbstractSqlConnectionProvider
 {
     use ManagesRemoteConnection;
+
+    /**
+     * Потолок на «пробные» JOIN-ы в detectRelations(). Каждая проба — это
+     * полный JOIN по данным клиента, а пар колонок квадратично много: на схеме
+     * из 20 таблиц их сотни. Без потолка форма создания алерта висела минутами
+     * (см. /company/workspace/{id}/alerts/new). Внешние ключи под потолок не
+     * попадают — они известны из схемы и их немного.
+     */
+    protected const MAX_RELATION_PROBES = 150;
+
+    /** Общий бюджет времени на поиск связей по данным, секунды. */
+    protected const RELATION_TIME_BUDGET_SECONDS = 15;
+
+    /**
+     * Потолок одного JOIN-а, мс. Бюджет выше проверяется только МЕЖДУ
+     * запросами, поэтому один медленный JOIN (24k × 12k строк без индекса)
+     * иначе съедал бы его целиком.
+     */
+    protected const RELATION_QUERY_TIMEOUT_MS = 3000;
 
     abstract protected function connectionConfig(): array;
 
@@ -17,6 +37,13 @@ abstract class AbstractSqlConnectionProvider
     abstract protected function getForeignKeyRelations(): array;
 
     abstract protected function quoteIdentifier(string $identifier): string;
+
+    /**
+     * Ограничивает время одного запроса в текущей сессии; null возвращает
+     * серверное значение. По умолчанию — no-op: SQLite не умеет, а там, где
+     * умеет, синтаксис свой. Сбой здесь не должен ронять разбор схемы.
+     */
+    protected function setStatementTimeout(?int $milliseconds): void {}
 
     public function check(): array
     {
@@ -310,6 +337,27 @@ abstract class AbstractSqlConnectionProvider
 
     private function detectRelations(array $schema): array
     {
+        $startedAt = microtime(true);
+        $probes = 0;
+
+        try {
+            $this->setStatementTimeout(self::RELATION_QUERY_TIMEOUT_MS);
+        } catch (\Throwable) {
+            // Без таймаута на запрос остаются лимит проб и общий бюджет.
+        }
+
+        try {
+            return $this->collectRelations($schema, $startedAt, $probes);
+        } finally {
+            try {
+                $this->setStatementTimeout(null);
+            } catch (\Throwable) {
+            }
+        }
+    }
+
+    private function collectRelations(array $schema, float $startedAt, int &$probes): array
+    {
         $relations = [];
 
         $foreignKeys = $this->getForeignKeyRelations();
@@ -393,6 +441,25 @@ abstract class AbstractSqlConnectionProvider
                             continue;
                         }
 
+                        if (
+                            $probes >= self::MAX_RELATION_PROBES ||
+                            microtime(true) - $startedAt > self::RELATION_TIME_BUDGET_SECONDS
+                        ) {
+                            // Не просто continue: оставшиеся пары не стоит даже
+                            // перебирать. Поиск связей — подсказка, а не
+                            // обязательная часть схемы, поэтому отдаём то, что
+                            // успели, и говорим об этом в логе.
+                            Log::warning('Relation detection stopped early', [
+                                'probes' => $probes,
+                                'seconds' => round(microtime(true) - $startedAt, 1),
+                                'found' => count($relations),
+                            ]);
+
+                            break 4;
+                        }
+
+                        $probes++;
+
                         $matchRate = $this->calculateMatchRate(
                             $fromTable,
                             $fromColumn,
@@ -400,7 +467,9 @@ abstract class AbstractSqlConnectionProvider
                             $toColumn
                         );
 
-                        if ($matchRate < 80) {
+                        // null — запрос не уложился в таймаут или упал; такую
+                        // пару нельзя выдавать за найденную связь.
+                        if ($matchRate === null || $matchRate < 80) {
                             continue;
                         }
 
@@ -434,6 +503,26 @@ abstract class AbstractSqlConnectionProvider
     }
 
     private function calculateMatchRate(
+        string $fromTable,
+        string $fromColumn,
+        string $toTable,
+        string $toColumn
+    ): ?float {
+
+        try {
+            return $this->measureMatchRate($fromTable, $fromColumn, $toTable, $toColumn);
+        } catch (\Throwable $e) {
+            Log::info('Relation match rate skipped', [
+                'from' => $fromTable.'.'.$fromColumn,
+                'to' => $toTable.'.'.$toColumn,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    private function measureMatchRate(
         string $fromTable,
         string $fromColumn,
         string $toTable,

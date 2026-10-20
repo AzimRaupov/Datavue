@@ -43,6 +43,16 @@ class MysqlConnectionRemoteProvider extends AbstractSqlConnectionProvider
         return '`' . str_replace('`', '``', $identifier) . '`';
     }
 
+    protected function setStatementTimeout(?int $milliseconds): void
+    {
+        // max_execution_time действует только на SELECT — как раз наши JOIN-ы.
+        $this->connection()->statement(
+            $milliseconds === null
+                ? 'SET SESSION max_execution_time = DEFAULT'
+                : 'SET SESSION max_execution_time = '.(int) $milliseconds
+        );
+    }
+
     public function showTables(): array
     {
         $rows = $this->query('SHOW TABLES');
