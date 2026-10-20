@@ -14,7 +14,6 @@ class CompanySeeder extends Seeder
         ['name' => 'Фатир Агро', 'email' => 'info@ordifatir.com'],
         ['name' => 'Химус', 'email' => 'info@chymetj.com'],
         ['name' => 'Ширинихои Анас', 'email' => 'anas_sw@gmail.com'],
-        ['name' => 'Kompazit Group', 'email' => 'atex-en@mail.ru'],
     ];
 
     public function run(): void

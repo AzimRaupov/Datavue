@@ -1,12 +1,4 @@
-"""
-Ручная проверка обученного классификатора.
 
-    venv/bin/python ml/intents/predict.py "выгрузи заказы в excel"
-    venv/bin/python ml/intents/predict.py            # интерактивно, по строке
-
-Читает тот же JSON, что использует PHP в проде, и считает предсказание тем же
-способом — это заодно проверка, что выгрузка весов не испорчена.
-"""
 
 import json
 import math
@@ -16,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from common import context_tail, features  # noqa: E402
+from common import context_tail, features
 
 MODEL_PATH = Path(__file__).resolve().parent / "model.json"
 
@@ -30,7 +22,6 @@ def load_model(path: Path = MODEL_PATH) -> dict:
 
 
 def predict(model: dict, text: str, context: str = ""):
-    """Повторяет вычисление признаков и softmax вручную — ровно так же, как PHP."""
     vocabulary = model["vocabulary"]
     idf = model["idf"]
     weight = model.get("context_weight", 1.0)
@@ -49,8 +40,6 @@ def predict(model: dict, text: str, context: str = ""):
         vector[index] = (gram[0], value)
         norms[gram[0]] += value * value
 
-    # Блоки нормируются раздельно, и лишь потом контекст умножается на вес:
-    # так его влияние не зависит от длины реплики агента.
     scaled = {}
     total = 0.0
 

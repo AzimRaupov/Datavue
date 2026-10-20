@@ -136,21 +136,6 @@ onBeforeUnmount(() => observer?.disconnect())
         </header>
 
         <!-- CLIENTS -->
-        <section v-if="showCompanies" id="clients" class="dv-clients">
-            <div class="container">
-                <p class="dv-eyebrow">{{ t('home.clients.title') }}</p>
-
-                <div v-reveal class="dv-client-row">
-                    <div v-for="c in clients" :key="c.file" class="dv-client" :class="{ 'dv-client-wide': c.wide, 'dv-client-zoom': c.zoom, 'dv-client-cream': c.cream }" :title="c.name">
-                        <img
-                            :src="`/company-logos/${c.file}`"
-                            :alt="c.name"
-                            decoding="async"
-                        >
-                    </div>
-                </div>
-            </div>
-        </section>
 
         <!-- SOURCES -->
         <section id="sources" class="section">

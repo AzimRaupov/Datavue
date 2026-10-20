@@ -1,16 +1,3 @@
-"""
-Проверка обученного классификатора — вручную и на файле.
-
-    venv/bin/python ml/intents/check.py                      # интерактивно
-    venv/bin/python ml/intents/check.py "выгрузи в эксель"    # одна фраза
-    venv/bin/python ml/intents/check.py --file ml/intents/test.csv   # весь набор
-    venv/bin/python ml/intents/check.py --demo               # показательный прогон
-
-Важно: скрипт читает не sklearn-пайплайн, а выгруженный JSON — тот самый файл,
-по которому в проде считает PHP. То есть проверяется ровно то, что поедет
-пользователям, а не то, что осталось в памяти после обучения.
-"""
-
 import argparse
 import csv
 import sys
@@ -20,12 +7,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from predict import MODEL_PATH, load_model, predict  # noqa: E402
+from predict import MODEL_PATH, load_model, predict
 
 HERE = Path(__file__).resolve().parent
 
-# Ниже этого порога решение отдаём GPT: локальная модель не уверена.
-# Значение подбирается по таблице порогов в train.py.
 DEFAULT_THRESHOLD = 0.70
 
 DEMO = [
@@ -139,11 +124,7 @@ def check_file(model: dict, path: Path, threshold: float) -> None:
 
 
 def selftest(model: dict) -> None:
-    """Сверяет ручной расчёт с тем, что посчитал sklearn при обучении.
 
-    Расхождение здесь означает, что нормализация текста или формула TF-IDF
-    разъехались с обучением — и модель в проде видит не те признаки.
-    """
     cases = model.get("selftest") or []
 
     if not cases:

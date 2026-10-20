@@ -1,20 +1,4 @@
-"""
-Обучение классификатора намерений пользователя.
 
-    venv/bin/python ml/intents/train.py
-
-Что делает:
-  1. учит TF-IDF по символьным n-граммам + логистическую регрессию;
-  2. считает честные метрики на отложенном наборе (test.csv в обучении не участвует);
-  3. подбирает порог уверенности для каскада «локально или к GPT»;
-  4. печатает признаки, которые модель сочла решающими, — это материал для защиты;
-  5. выгружает веса в JSON, чтобы предсказание считал PHP без Python в проде.
-
-Почему логистическая регрессия, а не нейросеть: классов три, обучающих примеров
-меньше тысячи, а сигнал в задаче лексический («сохрани в csv» против «покажи»).
-Трансформер здесь не даст прироста, зато потребует torch, GPU для дообучения и
-2–4 секунды на загрузку в каждом процессе.
-"""
 
 import argparse
 import csv
@@ -35,7 +19,7 @@ from sklearn.preprocessing import normalize
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from common import (  # noqa: E402
+from common import (
     CONTEXT_CHARS, CONTEXT_WEIGHT, LABELS, NGRAM_MAX, NGRAM_MIN, SEPARATOR,
     analyzer, document,
 )
@@ -44,11 +28,7 @@ HERE = Path(__file__).resolve().parent
 
 
 def load(path: Path):
-    """Читает CSV `text[,context],label` и проверяет его пригодность.
 
-    Колонка context необязательна — старые наборы без неё читаются как есть,
-    просто у всех примеров контекст пустой.
-    """
     if not path.exists():
         sys.exit(f"Нет файла {path}. Формат описан в ml/intents/README.md")
 
@@ -68,10 +48,6 @@ def load(path: Path):
             if label not in LABELS:
                 sys.exit(f"{path}:{line_no}: неизвестная метка '{label}'. Допустимы: {LABELS}")
 
-            # Дубликат в обучении завышает вес примера, дубликат между train
-            # и test вообще превращает метрику в самообман — режем сразу.
-            # Ключ включает контекст: одна реплика при разных репликах агента —
-            # это разные примеры, в них весь смысл затеи.
             key = (text.lower(), context.lower())
 
             if key in seen:
@@ -90,20 +66,7 @@ def load(path: Path):
 
 
 class ContextTfidfVectorizer(TfidfVectorizer):
-    """TF-IDF, в котором признаки контекста весят меньше признаков сообщения.
 
-    Реплика агента длиннее сообщения в разы и даёт во столько же раз больше
-    n-грамм. Без понижающего веса вектор короткого «не надо» почти целиком
-    состоит из слов агента, и модель отвечает по предложению, которое
-    пользователь только что отклонил.
-
-    Порядок шагов: tf-idf без нормализации → умножение столбцов «c:» на вес →
-    L2-нормализация строк. Ровно эти три шага в том же порядке выполняет PHP.
-
-    Параметры перечислены явно, а не через **kwargs: sklearn клонирует
-    оценщики по сигнатуре __init__, и на **kwargs перекрёстная проверка
-    разваливается.
-    """
 
     def __init__(
         self,
@@ -123,17 +86,7 @@ class ContextTfidfVectorizer(TfidfVectorizer):
         self.context_weight = context_weight
 
     def _weight_context(self, matrix):
-        """Раздельная нормировка блоков признаков.
 
-        Сначала блок сообщения и блок контекста приводятся к единичной длине
-        каждый по отдельности, и лишь затем контекст умножается на вес.
-
-        Так его влияние равно ровно context_weight и НЕ ЗАВИСИТ от того,
-        насколько длинной оказалась реплика агента. Общая нормировка этого
-        не давала: у короткого «не надо» при длинном предложении агента
-        контекст всё равно занимал три четверти вектора, и отказ читался
-        как согласие.
-        """
         matrix = matrix.tocsr()
         names = self.get_feature_names_out()
 
@@ -163,7 +116,6 @@ class ContextTfidfVectorizer(TfidfVectorizer):
 
 
 def file_hash(path: Path) -> str:
-    """Отпечаток файла — чтобы отличить один отложенный набор от другого."""
     if not path.exists():
         return ""
 
@@ -171,7 +123,6 @@ def file_hash(path: Path) -> str:
 
 
 def document_text(document: str) -> str:
-    """Сообщение из документа, без контекстной части."""
     return document.split(SEPARATOR)[0].strip()
 
 
@@ -179,16 +130,14 @@ def build_model(c_value: float, max_features: int) -> Pipeline:
     return Pipeline([
         ("tfidf", ContextTfidfVectorizer(
             analyzer=analyzer,
-            min_df=2,           # n-грамма из единственной фразы — шум, а не признак
+            min_df=2,
             max_features=max_features,
-            sublinear_tf=True,  # 1 + log(tf): повтор не перевешивает содержание
+            sublinear_tf=True,
             context_weight=CONTEXT_WEIGHT,
         )),
         ("clf", LogisticRegression(
             C=c_value,
             max_iter=3000,
-            # Классы в датасете почти наверняка окажутся неравными — веса
-            # выравнивают их, иначе модель выучит «отвечай самым частым».
             class_weight="balanced",
         )),
     ])
@@ -214,7 +163,6 @@ def report(title: str, y_true, y_pred) -> float:
 
 
 def show_mistakes(texts, y_true, y_pred, limit: int = 15) -> None:
-    """Ошибки важнее общей цифры: по ним видно, чего не хватает в датасете."""
     mistakes = [
         (text, true, pred)
         for text, true, pred in zip(texts, y_true, y_pred)
@@ -232,11 +180,7 @@ def show_mistakes(texts, y_true, y_pred, limit: int = 15) -> None:
 
 
 def show_top_features(model: Pipeline, top: int = 12) -> None:
-    """Какие куски слов модель сочла решающими для каждого класса.
 
-    Самый наглядный слайд для защиты: видно, что признаки не прописаны руками,
-    а найдены обучением — «выгруз», «csv», «сохран» всплывают сами.
-    """
     vectorizer = model.named_steps["tfidf"]
     classifier = model.named_steps["clf"]
     names = np.array(vectorizer.get_feature_names_out())
@@ -251,18 +195,7 @@ def show_top_features(model: Pipeline, top: int = 12) -> None:
 
 
 def threshold_table(probabilities, y_true, title: str) -> None:
-    """Каскад: где проходит граница «решаем сами» и «спрашиваем GPT».
 
-    Смысл в размене. Высокий порог — почти нет ошибок, но много запросов уходит
-    к GPT, и экономии нет. Низкий — всё решаем локально, но растёт число неверных
-    маршрутов.
-
-    ВАЖНО, по какой выборке строится таблица. Раньше — по отложенной, и это была
-    методическая ошибка: на том же наборе, где выбирается рабочая точка, потом
-    сообщалась и точность. Порог подгонялся под тест, а цифра выдавалась за
-    независимую. Теперь точка выбирается по перекрёстной проверке на обучающей
-    выборке, а отложенная используется только для проверки — увидеть, совпало ли.
-    """
     confidence = probabilities.max(axis=1)
     predicted = np.array(LABELS)[probabilities.argmax(axis=1)]
     truth = np.array(y_true)
@@ -280,11 +213,7 @@ def threshold_table(probabilities, y_true, title: str) -> None:
 
 
 def learning_curve(texts, labels, c_value: float, max_features: int, out: Path) -> None:
-    """Как растёт точность с размером обучающего набора.
 
-    Отвечает на вопрос «а хватит ли данных»: если кривая ещё идёт вверх — надо
-    дописывать примеры, если вышла на полку — датасет можно не наращивать.
-    """
     sizes = [0.2, 0.4, 0.6, 0.8, 1.0]
     rows = [("train_size", "cv_accuracy")]
 
@@ -323,13 +252,7 @@ def learning_curve(texts, labels, c_value: float, max_features: int, out: Path) 
 
 
 def export_weights(model: Pipeline, out: Path, samples) -> None:
-    """Выгружает модель в JSON, чтобы предсказывал PHP.
 
-    В проде Python не запускается вовсе: у платформы каждый вызов Python — это
-    новый процесс, а старт интерпретатора с библиотеками съедает больше времени,
-    чем сама классификация. Логистическая регрессия — это скалярное произведение,
-    PHP считает его сам за доли миллисекунды.
-    """
     vectorizer = model.named_steps["tfidf"]
     classifier = model.named_steps["clf"]
 
@@ -348,9 +271,6 @@ def export_weights(model: Pipeline, out: Path, samples) -> None:
         "idf": [round(float(value), 6) for value in vectorizer.idf_],
         "coef": [[round(float(value), 6) for value in row] for row in classifier.coef_],
         "intercept": [float(value) for value in classifier.intercept_],
-        # Контрольные примеры: PHP-реализация обязана повторить эти вероятности.
-        # Без них расхождение в нормализации всплыло бы не тестом, а жалобами
-        # пользователей на странную маршрутизацию.
         "selftest": [
             {
                 "text": text.split(SEPARATOR)[0],
@@ -374,10 +294,6 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Обучение классификатора намерений")
     parser.add_argument("--train", type=Path, default=HERE / "train.csv")
     parser.add_argument("--test", type=Path, default=HERE / "test.csv")
-    # Модель лежит рядом с кодом, а не в storage/app: там всё содержимое
-    # закрыто .gitignore, и после клонирования репозитория на другой машине
-    # классификатора просто не оказывалось бы. Весит 300 КБ — версионировать
-    # такой артефакт дешевле, чем объяснять каждому, где его взять.
     parser.add_argument("--out", type=Path, default=HERE / "model.json")
     parser.add_argument("--C", type=float, default=4.0, help="Обратная сила регуляризации")
     parser.add_argument("--max-features", type=int, default=30000)
@@ -400,18 +316,8 @@ def main() -> None:
     train_texts, train_labels, _ = load(args.train)
     test_texts, test_labels, test_previews = load(args.test)
 
-    # Живые фразы из прода. Их метки поставила языковая модель — это мнение,
-    # а не истина, поэтому качество новой модели обязательно сверяется
-    # с отложенным набором (см. --report и RetrainIntentClassifier).
-    #
-    # Вес у них выше, чем у сгенерированных, и это не прихоть: живых примеров
-    # десятки против тысяч синтетических, то есть при равном весе они не влияют
-    # ни на что вовсе — дообучение работает вхолостую.
     weights = [1.0] * len(train_texts)
 
-    # Тексты отложенного набора: живой пример может дословно совпасть с тестовым
-    # («спасибо» лежал и там, и там), и тогда проверка «не просела ли модель»
-    # проверяла бы модель на том, чему её только что научили.
     test_only = {document_text(doc).lower() for doc in test_texts}
 
     for extra in args.extra:
@@ -445,8 +351,6 @@ def main() -> None:
     print(f"  обучающих: {len(train_texts)} {dict(Counter(train_labels))}")
     print(f"  отложенных: {len(test_texts)} {dict(Counter(test_labels))}")
 
-    # Пересечение наборов делает метрику бессмысленной, а заметить его глазами
-    # в тысяче строк невозможно.
     overlap = {t.lower() for t in train_texts} & {t.lower() for t in test_texts}
 
     if overlap:
@@ -455,8 +359,6 @@ def main() -> None:
 
     model = build_model(args.C, args.max_features)
 
-    # Перекрёстная проверка на обучающем наборе: показывает устойчивость,
-    # пока отложенный набор ещё не тронут.
     cv_accuracy = None
     cv_probabilities = None
     smallest_class = min(Counter(train_labels).values())
@@ -474,9 +376,6 @@ def main() -> None:
             train_labels, cv_predicted,
         )
 
-    # Вес применяется только на финальном обучении: перекрёстная проверка
-    # и кривая обучения меряют устойчивость самого набора, и там взвешивание
-    # лишь исказило бы картину.
     model.fit(train_texts, train_labels, clf__sample_weight=np.array(weights))
 
     predicted = model.predict(test_texts)
@@ -484,14 +383,9 @@ def main() -> None:
     show_mistakes(test_previews, test_labels, predicted)
     show_top_features(model)
 
-    # Рабочая точка выбирается здесь — на обучающей выборке, вслепую
-    # относительно отложенной.
     if cv_probabilities is not None:
         threshold_table(cv_probabilities, train_labels, "выбор порога (перекрёстная проверка на обучающей)")
 
-    # А это уже проверка выбранного: как та же таблица выглядит на данных,
-    # которых модель не видела. Числа должны быть близки; расхождение означает,
-    # что выборки разного состава.
     threshold_table(model.predict_proba(test_texts), test_labels, "проверка порога на отложенном наборе")
     learning_curve(train_texts, train_labels, args.C, args.max_features, HERE / "learning_curve.csv")
 
@@ -505,9 +399,6 @@ def main() -> None:
         with args.report.open("w", encoding="utf-8") as handle:
             json.dump({
                 "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                # Отпечаток отложенного набора. Точности, посчитанные на разных
-                # наборах, сравнивать нельзя — а базовая линия именно этим
-                # и занимается, пока не заметит подмену.
                 "test_hash": file_hash(args.test),
                 "accuracy": round(float(accuracy), 4),
                 "macro_f1": round(float(macro_f1), 4),
